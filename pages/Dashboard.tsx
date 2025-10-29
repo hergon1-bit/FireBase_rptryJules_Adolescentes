@@ -26,7 +26,7 @@ const StatCard: React.FC<{ icon: React.ReactNode; title: string; value: string |
 );
 
 const Dashboard: React.FC<DashboardProps> = ({ navigateTo }) => {
-    const { adolescentes, reuniones, encargados, tutores, asistencias, celebraciones, addCelebracionCumpleanos, fetchData } = useData();
+    const { adolescentes, reuniones, encargados, tutores, eventos, asistencias, celebraciones, addCelebracionCumpleanos, fetchData } = useData();
     const { user } = useAuth();
     const [isLoading, setIsLoading] = useState(false);
 
@@ -38,14 +38,28 @@ const Dashboard: React.FC<DashboardProps> = ({ navigateTo }) => {
     
     const stats = useMemo(() => {
         const adolescentesActivosData = adolescentes.filter(a => a.estado === 'Activo');
+        
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        const sevenDaysLater = new Date(today);
+        sevenDaysLater.setDate(today.getDate() + 7);
+
+        const eventosProximos = eventos.filter(evento => {
+            const [year, month, day] = evento.fechaInicio.split('-').map(Number);
+            const eventDate = new Date(year, month - 1, day); 
+            return eventDate >= today && eventDate <= sevenDaysLater;
+        }).length;
+
         return {
             adolescentesActivos: adolescentesActivosData.length,
             reunionesTotales: reuniones.length,
             encargados: encargados.length,
             tutores: tutores.length,
+            eventosProximos,
             adolescentesActivosData,
         };
-    }, [adolescentes, reuniones, encargados, tutores]);
+    }, [adolescentes, reuniones, encargados, tutores, eventos]);
     
     const proximasReuniones = useMemo(() => reuniones
         .filter(r => new Date(r.fecha) >= new Date() && r.estado === 'En Proceso')
@@ -160,9 +174,10 @@ const Dashboard: React.FC<DashboardProps> = ({ navigateTo }) => {
                 </button>
             </div>
             
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-6">
                 <StatCard icon={<UsersIcon className="text-white"/>} title="Adolescentes Activos" value={stats.adolescentesActivos} color="bg-blue-500" />
                 <StatCard icon={<ClipboardListIcon className="text-white"/>} title="Reuniones Totales" value={stats.reunionesTotales} color="bg-green-500" />
+                <StatCard icon={<CalendarDaysIcon className="text-white"/>} title="Eventos Próximos (7d)" value={stats.eventosProximos} color="bg-orange-500" />
                 <StatCard icon={<UserCheckIcon className="text-white"/>} title="Encargados" value={stats.encargados} color="bg-purple-500" />
                 <StatCard icon={<HeartHandshakeIcon className="text-white"/>} title="Tutores Registrados" value={stats.tutores} color="bg-yellow-500" />
             </div>
@@ -282,7 +297,7 @@ const Dashboard: React.FC<DashboardProps> = ({ navigateTo }) => {
 };
 
 const UserCheckIcon: React.FC<{ className?: string }> = ({ className = 'w-6 h-6' }) => (
-  <svg xmlns="http://www.w.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
     <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><polyline points="16 11 18 13 22 9"></polyline>
   </svg>
 );
