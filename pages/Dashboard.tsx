@@ -42,15 +42,12 @@ const Dashboard: React.FC<DashboardProps> = ({ navigateTo }) => {
         const today = new Date();
         today.setHours(0, 0, 0, 0);
 
-        // Set the end date to be the start of the 8th day to create a 7-day window.
-        // The check will be < this date, covering today + 6 more days.
         const sevenDaysLater = new Date(today);
         sevenDaysLater.setDate(today.getDate() + 7);
 
         const eventosProximos = eventos.filter(evento => {
             const [year, month, day] = evento.fechaInicio.split('-').map(Number);
             const eventDate = new Date(year, month - 1, day); 
-            // Check for events from the start of today up to (but not including) the start of the 8th day.
             return eventDate >= today && eventDate < sevenDaysLater;
         }).length;
 
@@ -69,21 +66,46 @@ const Dashboard: React.FC<DashboardProps> = ({ navigateTo }) => {
         .sort((a, b) => new Date(a.fecha).getTime() - new Date(b.fecha).getTime())
         .slice(0, 3), [reuniones]);
 
-    const proximosCumpleanerosDelMes = useMemo(() => stats.adolescentesActivosData.filter(a => {
+    // Combined Birthdays Logic
+    const proximosCumpleaneros = useMemo(() => {
         const hoy = new Date();
-        hoy.setHours(0, 0, 0, 0); // Compare against start of today
-        
-        const [, month, day] = a.fechaNacimiento.split('-').map(Number);
-        const cumpleEsteAno = new Date(hoy.getFullYear(), month - 1, day);
-        
-        const yaCelebrado = celebraciones.some(c => c.adolescenteId === a.id && c.ano === hoy.getFullYear());
-        
-        return cumpleEsteAno.getMonth() === hoy.getMonth() && cumpleEsteAno >= hoy && !yaCelebrado;
-    }).sort((a,b) => {
-        const dayA = parseInt(a.fechaNacimiento.split('-')[2]);
-        const dayB = parseInt(b.fechaNacimiento.split('-')[2]);
-        return dayA - dayB;
-    }), [stats.adolescentesActivosData, celebraciones]);
+        hoy.setHours(0, 0, 0, 0);
+        const currentYear = hoy.getFullYear();
+        const currentMonth = hoy.getMonth();
+
+        // 1. Adolescentes Logic
+        const cumpleanerosAdolescentes = stats.adolescentesActivosData.filter(a => {
+            if (!a.fechaNacimiento) return false;
+            const [, month, day] = a.fechaNacimiento.split('-').map(Number);
+            const cumpleEsteAno = new Date(currentYear, month - 1, day);
+            
+            // Check if already celebrated
+            const yaCelebrado = celebraciones.some(c => c.adolescenteId === a.id && c.ano === currentYear);
+            
+            return (month - 1) === currentMonth && cumpleEsteAno >= hoy && !yaCelebrado;
+        }).map(a => ({ ...a, tipo: 'Adolescente' as const }));
+
+        // 2. Encargados Logic
+        const cumpleanerosEncargados = encargados.filter(e => {
+            if (!e.fechaNacimiento) return false;
+            const [, month, day] = e.fechaNacimiento.split('-').map(Number);
+            const cumpleEsteAno = new Date(currentYear, month - 1, day);
+            return (month - 1) === currentMonth && cumpleEsteAno >= hoy;
+        }).map(e => ({ 
+            ...e, 
+            fechaNacimiento: e.fechaNacimiento!, 
+            sexo: 'Masculino', 
+            estado: 'Activo', 
+            tipo: 'Encargado' as const 
+        }));
+
+        return [...cumpleanerosAdolescentes, ...cumpleanerosEncargados].sort((a, b) => {
+            const dayA = parseInt(a.fechaNacimiento.split('-')[2]);
+            const dayB = parseInt(b.fechaNacimiento.split('-')[2]);
+            return dayA - dayB;
+        });
+
+    }, [stats.adolescentesActivosData, encargados, celebraciones]);
 
     // --- Chart Data ---
     const meetingsPerMonth = useMemo(() => {
@@ -121,15 +143,18 @@ const Dashboard: React.FC<DashboardProps> = ({ navigateTo }) => {
     
     const ageDistribution = useMemo(() => {
         const groups = { '12-13': 0, '14-15': 0, '16-17': 0, '18+': 0, };
-        stats.adolescentesActivosData.forEach(a => {
+        // Use all adolescentes instead of just active ones to ensure data is shown if status is missing
+        adolescentes.forEach(a => {
             const age = calcularEdad(a.fechaNacimiento);
-            if (age <= 13) groups['12-13']++;
-            else if (age <= 15) groups['14-15']++;
-            else if (age <= 17) groups['16-17']++;
-            else groups['18+']++;
+            if (age > 0) { // Only count valid ages
+                if (age <= 13) groups['12-13']++;
+                else if (age <= 15) groups['14-15']++;
+                else if (age <= 17) groups['16-17']++;
+                else groups['18+']++;
+            }
         });
         return Object.entries(groups).map(([name, value]) => ({ name, 'Adolescentes': value }));
-    }, [stats.adolescentesActivosData]);
+    }, [adolescentes]);
 
     const lastMeetingAttendance = useMemo(() => {
         const lastFinishedMeeting = reuniones
@@ -138,12 +163,10 @@ const Dashboard: React.FC<DashboardProps> = ({ navigateTo }) => {
 
         if (!lastFinishedMeeting) return { data: [], title: 'No hay reuniones finalizadas' };
 
-        // Base the chart on currently active adolescents for consistency with the stat card
         const activeAdolescentIds = new Set(stats.adolescentesActivosData.map(a => a.id));
 
         const meetingAsistencias = asistencias.filter(a => a.reunionId === lastFinishedMeeting.id);
         
-        // Count only currently active adolescents who were present
         const presentes = meetingAsistencias.filter(a => 
             a.estado === 'Presente' && activeAdolescentIds.has(a.adolescenteId)
         ).length;
@@ -205,7 +228,7 @@ const Dashboard: React.FC<DashboardProps> = ({ navigateTo }) => {
                         <BarChart data={ageDistribution} layout="vertical" margin={{ top: 5, right: 20, left: 20, bottom: 5 }}>
                             <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
                             <XAxis type="number" stroke="#d1d5db" />
-                            <YAxis type="category" dataKey="name" stroke="#d1d5db" width={40} fontSize={12} />
+                            <YAxis type="category" dataKey="name" stroke="#d1d5db" width={50} fontSize={12} />
                             <Tooltip contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151' }} cursor={{ fill: 'rgba(16, 185, 129, 0.1)' }}/>
                             <Bar dataKey="Adolescentes" fill="#10b981" />
                         </BarChart>
@@ -269,24 +292,29 @@ const Dashboard: React.FC<DashboardProps> = ({ navigateTo }) => {
                 <div className="lg:col-span-1 bg-surface p-6 rounded-lg shadow-lg">
                     <h2 className="text-xl font-semibold text-text-primary mb-4">Próximos Cumpleaños del Mes</h2>
                      <div className="space-y-3 max-h-64 overflow-y-auto">
-                        {proximosCumpleanerosDelMes.length > 0 ? proximosCumpleanerosDelMes.map(ado => (
-                            <div key={ado.id} className="bg-background p-3 rounded-md flex items-center justify-between">
+                        {proximosCumpleaneros.length > 0 ? proximosCumpleaneros.map(persona => (
+                            <div key={`${persona.tipo}-${persona.id}`} className="bg-background p-3 rounded-md flex items-center justify-between">
                                 <div className="flex items-center space-x-3">
-                                    <img src={`https://i.pravatar.cc/150?u=${ado.id}`} alt="avatar" className="w-10 h-10 rounded-full" />
+                                    <img src={`https://i.pravatar.cc/150?u=${persona.id}-${persona.tipo}`} alt="avatar" className="w-10 h-10 rounded-full" />
                                     <div>
-                                        <p className="font-semibold text-text-primary">{ado.nombre} {ado.apellido}</p>
-                                        <p className="text-sm text-text-secondary">Cumple {calcularEdad(ado.fechaNacimiento) + 1} años</p>
+                                        <div className="flex items-center gap-2">
+                                            <p className="font-semibold text-text-primary">{persona.nombre} {persona.apellido}</p>
+                                            {persona.tipo === 'Encargado' && <span className="text-[10px] bg-purple-500/20 text-purple-300 px-1.5 py-0.5 rounded">Encargado</span>}
+                                        </div>
+                                        <p className="text-sm text-text-secondary">Cumple {calcularEdad(persona.fechaNacimiento) + 1} años</p>
                                     </div>
                                 </div>
                                 <div className="text-right flex items-center space-x-4">
-                                     <p className="font-bold text-secondary">{new Date(calcularProximoCumpleanos(ado.fechaNacimiento)).toLocaleDateString('es-ES', { day: 'numeric', month: 'long' })}</p>
-                                     <button
-                                        onClick={() => addCelebracionCumpleanos(ado.id, new Date().getFullYear())}
-                                        title="Marcar como celebrado"
-                                        className="p-2 rounded-full text-green-400 hover:bg-green-500/20"
-                                     >
-                                         <CheckCircleIcon className="w-5 h-5" />
-                                     </button>
+                                     <p className="font-bold text-secondary">{new Date(calcularProximoCumpleanos(persona.fechaNacimiento)).toLocaleDateString('es-ES', { day: 'numeric', month: 'long' })}</p>
+                                     {persona.tipo === 'Adolescente' && (
+                                         <button
+                                            onClick={() => addCelebracionCumpleanos(persona.id, new Date().getFullYear())}
+                                            title="Marcar como celebrado"
+                                            className="p-2 rounded-full text-green-400 hover:bg-green-500/20"
+                                         >
+                                             <CheckCircleIcon className="w-5 h-5" />
+                                         </button>
+                                     )}
                                 </div>
                             </div>
                         )) : (

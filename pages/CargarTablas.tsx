@@ -2,7 +2,9 @@
 import React, { useState, useMemo, useRef, useCallback } from 'react';
 import { useData } from '../contexts/DataContext';
 import { Adolescente, Encargado, Reunion, Tutor, Asistencia, TipoAsistencia, AsistenciaDetalle, GradoParentesco } from '../types';
-import { UploadCloudIcon } from '../components/ui/Icons';
+import { UploadCloudIcon, RefreshIcon, CheckCircleIcon, CalculatorIcon, EyeIcon } from '../components/ui/Icons';
+import { api } from '../services/api';
+import { calcularEdad } from '../utils/helpers';
 
 type EntityType = 'adolescentes' | 'encargados' | 'reuniones' | 'tutores' | 'asistencias';
 
@@ -13,17 +15,20 @@ type ParsedRow = {
 };
 
 const CargarTablas: React.FC = () => {
-    // FIX: Destructured 'tutores' from useData to make it available in the component.
     const { 
         adolescentes, encargados, reuniones, tutores,
         addAdolescentesBulk, addEncargadosBulk, addReunionesBulk, 
-        addTutoresAndLinkBulk, addAsistenciasBulk
+        addTutoresAndLinkBulk, addAsistenciasBulk,
+        fetchData // Needed to refresh after manual fix
     } = useData();
 
     const [selectedTab, setSelectedTab] = useState<EntityType>('adolescentes');
     const [parsedData, setParsedData] = useState<ParsedRow[]>([]);
     const [fileName, setFileName] = useState<string | null>(null);
     const [statusMessage, setStatusMessage] = useState('Por favor, selecciona un archivo para comenzar.');
+    const [isFixingDates, setIsFixingDates] = useState(false);
+    const [isRecalculating, setIsRecalculating] = useState(false);
+    const [showDiagnosis, setShowDiagnosis] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     const existingCedulas = useMemo(() => ({
@@ -49,12 +54,41 @@ const CargarTablas: React.FC = () => {
         setStatusMessage('Por favor, selecciona un archivo para comenzar.');
     };
 
+    // Helper to normalize dates to strict YYYY-MM-DD (Supabase format)
+    const normalizeDateStr = (dateStr: string): string | null => {
+        if (!dateStr) return null;
+        dateStr = dateStr.trim();
+        
+        // 1. Already in strict YYYY-MM-DD format? Keep it.
+        if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return dateStr;
+
+        // 2. Handle YYYY/MM/DD (Common excel export) -> Convert to YYYY-MM-DD
+        if (/^\d{4}\/\d{2}\/\d{2}$/.test(dateStr)) {
+            return dateStr.replace(/\//g, '-');
+        }
+
+        // 3. Handle DD/MM/YYYY or DD-MM-YYYY -> Convert to YYYY-MM-DD
+        // The regex captures (Day), (Month), (Year 4 digits)
+        const match = dateStr.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/);
+        if (match) {
+            const day = match[1].padStart(2, '0');
+            const month = match[2].padStart(2, '0');
+            const year = match[3];
+            return `${year}-${month}-${day}`;
+        }
+        
+        return null;
+    };
+
     // --- Validation and Parsing ---
     const parseAdolescentes = useCallback((rows: string[]): ParsedRow[] => {
         const cedulasInFile = new Set<string>();
         return rows.map(rowStr => {
             const row = rowStr.split(';');
-            const [nombre, apellido, cedula, fechaNacimiento, barrio, ciudad, telefono, sexo, estado] = row.map(field => field?.trim());
+            const [nombre, apellido, cedula, rawFechaNacimiento, barrio, ciudad, telefono, sexo, estado] = row.map(field => field?.trim());
+            
+            const fechaNacimiento = normalizeDateStr(rawFechaNacimiento) || rawFechaNacimiento; // Try to fix date immediately
+
             const rawData = { nombre, apellido, cedula, fechaNacimiento, barrio, ciudad, telefono, sexo, estado };
 
             if (!nombre || !apellido || !cedula || !fechaNacimiento) return { data: rawData, isValid: false, error: 'Faltan campos obligatorios.' };
@@ -78,7 +112,10 @@ const CargarTablas: React.FC = () => {
         const cedulasInFile = new Set<string>();
         return rows.map(rowStr => {
             const row = rowStr.split(';');
-            const [nombre, apellido, cedula, fechaNacimiento, barrio, ciudad, telefono, email] = row.map(field => field?.trim());
+            const [nombre, apellido, cedula, rawFechaNacimiento, barrio, ciudad, telefono, email] = row.map(field => field?.trim());
+            
+            const fechaNacimiento = rawFechaNacimiento ? (normalizeDateStr(rawFechaNacimiento) || rawFechaNacimiento) : undefined;
+
             const rawData = { nombre, apellido, cedula, fechaNacimiento, barrio, ciudad, telefono, email };
 
             if (!nombre || !apellido || !cedula) return { data: rawData, isValid: false, error: 'Faltan campos obligatorios (Nombre, Apellido, Cédula).' };
@@ -87,7 +124,7 @@ const CargarTablas: React.FC = () => {
             
             cedulasInFile.add(cedula);
             return {
-                data: { nombre, apellido, cedula, fechaNacimiento: fechaNacimiento || undefined, barrio: barrio || '', ciudad: ciudad || '', telefono: telefono || '', email: email || '' },
+                data: { nombre, apellido, cedula, fechaNacimiento, barrio: barrio || '', ciudad: ciudad || '', telefono: telefono || '', email: email || '' },
                 isValid: true
             };
         });
@@ -97,7 +134,10 @@ const CargarTablas: React.FC = () => {
         const reunionesInFile = new Set<string>();
         return rows.map(rowStr => {
             const row = rowStr.split(';');
-            const [fecha, tema, encargadoCedula, estado] = row.map(field => field?.trim());
+            const [rawFecha, tema, encargadoCedula, estado] = row.map(field => field?.trim());
+            
+            const fecha = normalizeDateStr(rawFecha) || rawFecha;
+
             const rawData = { fecha, tema, encargadoCedula, estado };
             const reunionKey = `${fecha}_${tema}`;
 
@@ -151,7 +191,10 @@ const CargarTablas: React.FC = () => {
         const asistenciasInFile = new Set<string>();
         return rows.map(rowStr => {
             const row = rowStr.split(';');
-            const [reunionFecha, reunionTema, adolescenteCedula, estado, detalle] = row.map(field => field?.trim());
+            const [rawReunionFecha, reunionTema, adolescenteCedula, estado, detalle] = row.map(field => field?.trim());
+            
+            const reunionFecha = normalizeDateStr(rawReunionFecha) || rawReunionFecha;
+
             const rawData = { reunionFecha, reunionTema, adolescenteCedula, estado, detalle };
             const reunionKey = `${reunionFecha}_${reunionTema}`;
             const asistenciaKey = `${reunionKey}_${adolescenteCedula}`;
@@ -169,6 +212,59 @@ const CargarTablas: React.FC = () => {
             };
         });
     }, [existingReuniones, existingCedulas.adolescentes]);
+
+    // --- Fix Date Logic ---
+    const handleNormalizeDates = async () => {
+        setIsFixingDates(true);
+        setStatusMessage("Analizando fechas en la base de datos...");
+        
+        let fixedCount = 0;
+        try {
+            const promises = adolescentes.map(async (ado) => {
+                const originalDate = ado.fechaNacimiento;
+                if (!originalDate) return;
+
+                // STRICT CHECK: The date MUST be YYYY-MM-DD
+                const isStrictlyValid = /^\d{4}-\d{2}-\d{2}$/.test(originalDate);
+                
+                if (!isStrictlyValid) {
+                    // Try to normalize from formats like DD/MM/YYYY or YYYY/MM/DD
+                    const normalized = normalizeDateStr(originalDate);
+                    
+                    // Only update if we successfully normalized it and it's different
+                    if (normalized && normalized !== originalDate) {
+                        // Use direct API call to avoid triggering context refresh on every item
+                        await api.updateAdolescente({ ...ado, fechaNacimiento: normalized });
+                        fixedCount++;
+                    }
+                }
+            });
+
+            await Promise.all(promises);
+            await fetchData(); // Refresh context once at the end to recalc ages in Dashboard
+            setStatusMessage(`Proceso completado. Se corrigieron ${fixedCount} fechas al formato AAAA-MM-DD.`);
+        } catch (error) {
+            console.error(error);
+            setStatusMessage("Hubo un error al intentar corregir las fechas.");
+        } finally {
+            setIsFixingDates(false);
+        }
+    };
+
+    const handleRecalculateAges = async () => {
+        setIsRecalculating(true);
+        setStatusMessage("Sincronizando datos y recalculando edades...");
+        try {
+            await fetchData(); // This fetches fresh data from DB, triggering re-renders where age is calc'd
+            setStatusMessage("Datos sincronizados. Las edades se han recalculado en el Dashboard.");
+        } catch (e) {
+            console.error(e);
+            setStatusMessage("Error al actualizar datos.");
+        } finally {
+            setIsRecalculating(false);
+        }
+    };
+
 
     const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
         const file = event.target.files?.[0];
@@ -234,9 +330,9 @@ const CargarTablas: React.FC = () => {
             instructions: <ol className="list-decimal list-inside space-y-1">
                 <li>Nombre (Requerido)</li><li>Apellido (Requerido)</li><li>Cédula (Requerido, único)</li><li>Fecha Nacimiento (Requerido, AAAA-MM-DD)</li><li>Barrio</li><li>Ciudad</li><li>Teléfono</li><li>Sexo ('Masculino' o 'Femenino')</li><li>Estado ('Activo', 'Inactivo', o 'Anulado')</li>
             </ol>,
-            previewHeaders: ['Nombre', 'Cédula', 'Estado', 'Validación', 'Observación'],
+            previewHeaders: ['Nombre', 'Cédula', 'Fecha Nac.', 'Estado', 'Validación', 'Observación'],
             renderRow: (row: ParsedRow, index: number) => <tr key={index} className={`border-t border-border ${!row.isValid ? 'bg-red-900/40' : ''}`}>
-                <td className="p-2">{row.data.nombre || 'N/A'} {row.data.apellido || ''}</td><td className="p-2">{row.data.cedula || 'N/A'}</td><td className="p-2">{row.data.estado || 'Activo'}</td><td className={`p-2 font-semibold ${!row.isValid ? 'text-red-300' : 'text-green-300'}`}>{row.isValid ? "Válido" : "Error"}</td><td className="p-2 text-yellow-400">{row.error}</td>
+                <td className="p-2">{row.data.nombre || 'N/A'} {row.data.apellido || ''}</td><td className="p-2">{row.data.cedula || 'N/A'}</td><td className="p-2">{row.data.fechaNacimiento || 'N/A'}</td><td className="p-2">{row.data.estado || 'Activo'}</td><td className={`p-2 font-semibold ${!row.isValid ? 'text-red-300' : 'text-green-300'}`}>{row.isValid ? "Válido" : "Error"}</td><td className="p-2 text-yellow-400">{row.error}</td>
             </tr>
         },
         encargados: {
@@ -288,22 +384,125 @@ const CargarTablas: React.FC = () => {
         <div className="space-y-6">
             <h1 className="text-3xl font-bold">Cargar Datos desde Archivo</h1>
             
-            <div className="flex border-b border-border">
+            <div className="flex border-b border-border overflow-x-auto">
                 {Object.keys(TABS_CONFIG).map(key => (
-                    <button key={key} onClick={() => handleTabChange(key as EntityType)} className={`px-4 py-2 text-sm font-medium transition-colors ${selectedTab === key ? 'border-b-2 border-primary text-primary' : 'text-text-secondary hover:text-text-primary'}`}>
+                    <button key={key} onClick={() => handleTabChange(key as EntityType)} className={`px-4 py-2 text-sm font-medium transition-colors whitespace-nowrap ${selectedTab === key ? 'border-b-2 border-primary text-primary' : 'text-text-secondary hover:text-text-primary'}`}>
                         {TABS_CONFIG[key as EntityType].title}
                     </button>
                 ))}
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                <div className="lg:col-span-1 bg-surface p-6 rounded-lg shadow-lg space-y-4">
-                    <h2 className="text-xl font-semibold text-text-primary">Instrucciones</h2>
-                    <p className="text-text-secondary text-sm">Use un archivo .csv o .txt con valores separados por punto y coma (;). La primera fila debe ser un encabezado y será ignorada.</p>
-                    <div className="text-xs text-gray-400 bg-background p-3 rounded-md">{currentTabConfig.instructions}</div>
+                <div className="lg:col-span-1 space-y-6">
+                     <div className="bg-surface p-6 rounded-lg shadow-lg space-y-4">
+                        <h2 className="text-xl font-semibold text-text-primary">Instrucciones</h2>
+                        <p className="text-text-secondary text-sm">Use un archivo .csv o .txt con valores separados por punto y coma (;). La primera fila debe ser un encabezado y será ignorada.</p>
+                        <div className="text-xs text-gray-400 bg-background p-3 rounded-md overflow-x-auto">{currentTabConfig.instructions}</div>
+                    </div>
+
+                    {/* New Utility Section for Dates */}
+                    {selectedTab === 'adolescentes' && (
+                        <div className="bg-surface p-6 rounded-lg shadow-lg border border-border space-y-4">
+                            <div>
+                                <h2 className="text-lg font-semibold text-text-primary mb-2 flex items-center gap-2">
+                                    <RefreshIcon className="w-5 h-5 text-secondary" />
+                                    Mantenimiento de Datos
+                                </h2>
+                                <p className="text-sm text-text-secondary mb-4">
+                                    Utilice esta herramienta si las fechas de nacimiento se cargaron con formatos incorrectos (como DD/MM/AAAA o con barras).
+                                    Esto convertirá todas las fechas al formato estándar de la base de datos <strong>(AAAA-MM-DD)</strong>.
+                                </p>
+                                <button 
+                                    onClick={handleNormalizeDates}
+                                    disabled={isFixingDates || isRecalculating}
+                                    className="w-full bg-secondary/20 text-secondary border border-secondary hover:bg-secondary/30 font-medium py-2 px-4 rounded-lg flex justify-center items-center gap-2 transition-colors disabled:opacity-50"
+                                >
+                                    {isFixingDates ? (
+                                        <>
+                                            <RefreshIcon className="w-4 h-4 animate-spin" />
+                                            Corrigiendo...
+                                        </>
+                                    ) : (
+                                        <>
+                                            <CheckCircleIcon className="w-4 h-4" />
+                                            Normalizar Fechas
+                                        </>
+                                    )}
+                                </button>
+                            </div>
+                            
+                            <div className="pt-4 border-t border-border">
+                                <p className="text-sm text-text-secondary mb-3">
+                                    Si los datos ya están grabados correctamente en la tabla pero no ves las edades o gráficos actualizados, usa este botón para refrescar.
+                                </p>
+                                <button 
+                                    onClick={handleRecalculateAges}
+                                    disabled={isFixingDates || isRecalculating}
+                                    className="w-full bg-primary/20 text-primary border border-primary hover:bg-primary/30 font-medium py-2 px-4 rounded-lg flex justify-center items-center gap-2 transition-colors disabled:opacity-50"
+                                >
+                                    {isRecalculating ? (
+                                        <>
+                                            <RefreshIcon className="w-4 h-4 animate-spin" />
+                                            Recalculando...
+                                        </>
+                                    ) : (
+                                        <>
+                                            <CalculatorIcon className="w-4 h-4" />
+                                            Recalculan Edades (Refrescar)
+                                        </>
+                                    )}
+                                </button>
+                            </div>
+
+                            <div className="pt-4 border-t border-border">
+                                <button 
+                                    onClick={() => setShowDiagnosis(!showDiagnosis)}
+                                    className="w-full text-text-secondary hover:text-white text-sm flex items-center justify-center gap-2"
+                                >
+                                    <EyeIcon className="w-4 h-4" />
+                                    {showDiagnosis ? 'Ocultar Diagnóstico de Fechas' : 'Ver Diagnóstico de Fechas'}
+                                </button>
+                            </div>
+                        </div>
+                    )}
                 </div>
 
                 <div className="lg:col-span-2 bg-surface p-6 rounded-lg shadow-lg space-y-4">
+                    {/* Diagnosis Panel */}
+                    {selectedTab === 'adolescentes' && showDiagnosis && (
+                        <div className="mb-6 border-b border-border pb-6">
+                            <h2 className="text-xl font-semibold text-text-primary mb-2">Diagnóstico de Edades</h2>
+                            <p className="text-sm text-text-secondary mb-4">Esta tabla muestra cómo el sistema está interpretando las fechas de nacimiento actuales.</p>
+                            <div className="max-h-60 overflow-y-auto bg-background p-2 rounded-md">
+                                <table className="w-full text-xs text-left">
+                                    <thead>
+                                        <tr className="text-text-secondary border-b border-border">
+                                            <th className="p-2">Nombre</th>
+                                            <th className="p-2">Fecha (Base de Datos)</th>
+                                            <th className="p-2">Edad Calculada</th>
+                                            <th className="p-2">Estado</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {adolescentes.slice(0, 50).map(ado => {
+                                            const edad = calcularEdad(ado.fechaNacimiento);
+                                            const isError = edad === 0;
+                                            return (
+                                                <tr key={ado.id} className={isError ? 'text-red-400 bg-red-900/10' : 'text-text-secondary'}>
+                                                    <td className="p-2">{ado.nombre} {ado.apellido}</td>
+                                                    <td className="p-2 font-mono">{ado.fechaNacimiento}</td>
+                                                    <td className="p-2 font-bold">{edad}</td>
+                                                    <td className="p-2">{isError ? 'Error / Formato Inválido' : 'OK'}</td>
+                                                </tr>
+                                            );
+                                        })}
+                                    </tbody>
+                                </table>
+                                <p className="text-xs text-center mt-2 text-gray-500">Mostrando primeros 50 registros...</p>
+                            </div>
+                        </div>
+                    )}
+
                     <div className="border-2 border-dashed border-border rounded-lg p-8 text-center cursor-pointer hover:border-primary transition-colors" onClick={() => fileInputRef.current?.click()}>
                         <input ref={fileInputRef} type="file" accept=".csv, .txt" className="hidden" onChange={handleFileChange} />
                         <div className="flex flex-col items-center justify-center"><UploadCloudIcon className="w-12 h-12 text-text-secondary" /><p className="mt-2 text-text-secondary">{fileName ? `Archivo: ${fileName}` : 'Haz clic para seleccionar un archivo'}</p></div>
