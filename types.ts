@@ -20,9 +20,8 @@ export interface Rol {
 }
 
 export interface Usuario {
-  id: number;
+  id: string; // Changed from number to string for Supabase auth UUID
   email: string;
-  password?: string;
   nombre: string;
   rolId: number;
   avatarUrl?: string;
@@ -132,4 +131,4 @@ export interface CelebracionCumpleanos {
   ano: number;
 }
 
-export type Page = 'dashboard' | 'adolescentes' | 'encargados' | 'reuniones' | 'tutores' | 'eventos' | 'reportes' | 'usuarios' | 'roles' | 'asistencia' | 'limpiar-tablas' | 'cargar-tablas';
+export type Page = 'dashboard' | 'adolescentes' | 'encargados' | 'reuniones' | 'tutores' | 'eventos' | 'reportes' | 'usuarios' | 'roles' | 'asistencia' | 'limpiar-tablas' | 'cargar-tablas' | 'update-password';

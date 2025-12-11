@@ -1,14 +1,14 @@
 
-import React, { useState } from 'react';
+import React from 'react';
 import { useAuth } from '../../contexts/AuthContext';
-import { LogOutIcon, MenuIcon } from '../ui/Icons';
+import { MenuIcon } from '../ui/Icons';
 
 interface HeaderProps {
     toggleSidebar: () => void;
 }
 
 const Header: React.FC<HeaderProps> = ({ toggleSidebar }) => {
-  const { user, rol, logout } = useAuth();
+  const { user, rol } = useAuth();
 
   return (
     <header className="bg-surface border-b border-border shadow-sm p-4 flex justify-between items-center">
@@ -33,9 +33,6 @@ const Header: React.FC<HeaderProps> = ({ toggleSidebar }) => {
             src={user?.avatarUrl || `https://i.pravatar.cc/150?u=${user?.id}`} 
             alt="User Avatar" 
         />
-        <button onClick={logout} className="ml-4 text-text-secondary hover:text-primary transition-colors">
-            <LogOutIcon />
-        </button>
       </div>
     </header>
   );

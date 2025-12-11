@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo } from 'react';
 import { useData } from '../contexts/DataContext';
 import { useAuth } from '../contexts/AuthContext';
@@ -165,10 +166,10 @@ const Encargados: React.FC = () => {
                         <InputField label="Apellido" name="apellido" value={values.apellido} onChange={handleInputChange} required />
                         <InputField label="Cédula" name="cedula" value={values.cedula} onChange={handleInputChange} required />
                         <InputField label="Email" name="email" type="email" value={values.email || ''} onChange={handleInputChange} />
-                        <InputField label="Teléfono" name="telefono" value={values.telefono} onChange={handleInputChange} />
+                        <InputField label="Teléfono" name="telefono" value={values.telefono} onChange={handleInputChange} required />
                         <InputField label="Fecha de Nacimiento" name="fechaNacimiento" type="date" value={values.fechaNacimiento || ''} onChange={handleInputChange} />
-                        <InputField label="Barrio" name="barrio" value={values.barrio} onChange={handleInputChange} />
-                        <InputField label="Ciudad" name="ciudad" value={values.ciudad} onChange={handleInputChange} />
+                        <InputField label="Barrio" name="barrio" value={values.barrio} onChange={handleInputChange} required />
+                        <InputField label="Ciudad" name="ciudad" value={values.ciudad} onChange={handleInputChange} required />
                     </div>
                     <div className="flex justify-end space-x-2 pt-4">
                         <button type="button" onClick={closeModal} className="bg-gray-600 text-white px-4 py-2 rounded-lg hover:bg-gray-700">Cancelar</button>

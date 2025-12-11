@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo } from 'react';
 import { useData } from '../contexts/DataContext';
 import { useAuth } from '../contexts/AuthContext';
@@ -193,8 +194,8 @@ const Tutores: React.FC = () => {
                     <SelectField label="Parentesco" name="parentesco" value={values.parentesco} onChange={handleInputChange}>
                         {parentescoOptions.map(p => <option key={p} value={p}>{p}</option>)}
                     </SelectField>
-                    <InputField label="Barrio" name="barrio" value={values.barrio} onChange={handleInputChange} />
-                    <InputField label="Ciudad" name="ciudad" value={values.ciudad} onChange={handleInputChange} />
+                    <InputField label="Barrio" name="barrio" value={values.barrio} onChange={handleInputChange} required />
+                    <InputField label="Ciudad" name="ciudad" value={values.ciudad} onChange={handleInputChange} required />
                     
                     <div className="md:col-span-2 mt-4">
                          <h3 className="text-lg font-medium text-text-primary border-b border-border pb-2 mb-4">Vincular Adolescentes</h3>

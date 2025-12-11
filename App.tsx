@@ -1,8 +1,7 @@
 
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { DataProvider } from './contexts/DataContext';
-import LoginPage from './pages/LoginPage';
 import Dashboard from './pages/Dashboard';
 import Sidebar from './components/layout/Sidebar';
 import Header from './components/layout/Header';
@@ -17,13 +16,28 @@ import Roles from './pages/Roles';
 import Asistencia from './pages/Asistencia';
 import LimpiarTablas from './pages/LimpiarTablas';
 import CargarTablas from './pages/CargarTablas';
+import UpdatePassword from './pages/UpdatePassword';
 import { Page } from './types';
+import { supabase } from './services/supabase';
 
 const AppContent: React.FC = () => {
     const { user } = useAuth();
     const [currentPage, setCurrentPage] = useState<Page>('dashboard');
     const [selectedReunionId, setSelectedReunionId] = useState<number | null>(null);
     const [isSidebarOpen, setSidebarOpen] = useState(true);
+
+    useEffect(() => {
+        // Listen for password recovery event
+        const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
+            if (event === 'PASSWORD_RECOVERY') {
+                setCurrentPage('update-password');
+            }
+        });
+
+        return () => {
+            authListener.subscription.unsubscribe();
+        };
+    }, []);
 
     const navigateTo = useCallback((page: Page, params?: { reunionId?: number }) => {
         setCurrentPage(page);
@@ -33,6 +47,9 @@ const AppContent: React.FC = () => {
     }, []);
 
     const renderPage = () => {
+        if (currentPage === 'update-password') {
+            return <UpdatePassword navigateTo={navigateTo} />;
+        }
         if (currentPage === 'asistencia' && selectedReunionId) {
             return <Asistencia reunionId={selectedReunionId} navigateTo={navigateTo} />;
         }
@@ -64,8 +81,8 @@ const AppContent: React.FC = () => {
         }
     };
 
-    if (!user) {
-        return <LoginPage />;
+    if (currentPage === 'update-password') {
+        return renderPage();
     }
 
     return (

@@ -1,4 +1,6 @@
+
 import React, { createContext, useState, useContext, ReactNode, useEffect, useCallback } from 'react';
+import { useAuth } from './AuthContext';
 import { Adolescente, Encargado, Reunion, Tutor, Evento, Asistencia, TutorAdolescente, InscripcionEvento, PagoEvento, ParticipanteEvento, CelebracionCumpleanos, Usuario, Rol, TipoAsistencia, AsistenciaDetalle } from '../types';
 import { api } from '../services/api';
 
@@ -25,9 +27,10 @@ interface DataContextType {
   deleteAdolescente: (id: number) => Promise<void>;
   addAdolescentesBulk: (adolescentes: Omit<Adolescente, 'id'>[]) => Promise<void>;
 
-  addUser: (usuario: Omit<Usuario, 'id'>) => Promise<void>;
+  addUser: (usuario: Omit<Usuario, 'id'> & { id?: string; password?: string }) => Promise<void>;
   updateUser: (usuario: Usuario) => Promise<void>;
-  deleteUser: (id: number) => Promise<void>;
+  deleteUser: (id: string) => Promise<void>;
+  sendPasswordReset: (email: string) => Promise<void>;
 
   addEncargado: (encargado: Omit<Encargado, 'id'>) => Promise<void>;
   updateEncargado: (encargado: Encargado) => Promise<void>;
@@ -52,6 +55,9 @@ interface DataContextType {
   deleteRole: (id: number) => Promise<{ success: boolean; message?: string }>;
 
   // Eventos related
+  addEvento: (evento: Omit<Evento, 'id'>) => Promise<void>;
+  updateEvento: (evento: Evento) => Promise<void>;
+  deleteEvento: (id: number) => Promise<void>;
   addInscripcion: (eventoId: number, adolescenteId: number) => Promise<void>;
   updateInscripcion: (inscripcion: InscripcionEvento) => Promise<void>;
   deleteInscripcion: (inscripcionId: number) => Promise<void>;
@@ -70,6 +76,7 @@ interface DataContextType {
 const DataContext = createContext<DataContextType | undefined>(undefined);
 
 export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
+  const { user } = useAuth();
   const [adolescentes, setAdolescentes] = useState<Adolescente[]>([]);
   const [encargados, setEncargados] = useState<Encargado[]>([]);
   const [reuniones, setReuniones] = useState<Reunion[]>([]);
@@ -86,53 +93,95 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
 
   const fetchData = useCallback(async () => {
-    const [
-      adolescentesData,
-      encargadosData,
-      reunionesData,
-      tutoresData,
-      eventosData,
-      asistenciasData,
-      tutoresAdolescentesData,
-      inscripcionesData,
-      pagosData,
-      participantesData,
-      celebracionesData,
-      usuariosData,
-      rolesData,
-    ] = await Promise.all([
-      api.getAdolescentes(),
-      api.getEncargados(),
-      api.getReuniones(),
-      api.getTutores(),
-      api.getEventos(),
-      api.getAsistencias(),
-      api.getTutorAdolescente(),
-      api.getInscripciones(),
-      api.getPagos(),
-      api.getParticipantes(),
-      api.getCumpleanosCelebrados(),
-      api.getUsuarios(),
-      api.getRoles(),
-    ]);
-    setAdolescentes(adolescentesData);
-    setEncargados(encargadosData);
-    setReuniones(reunionesData);
-    setTutores(tutoresData);
-    setEventos(eventosData);
-    setAsistencias(asistenciasData);
-    setTutoresAdolescentes(tutoresAdolescentesData);
-    setInscripciones(inscripcionesData);
-    setPagos(pagosData);
-    setParticipantes(participantesData);
-    setCelebraciones(celebracionesData);
-    setUsuarios(usuariosData);
-    setRoles(rolesData);
+    try {
+        const results = await Promise.allSettled([
+          api.getAdolescentes(),
+          api.getEncargados(),
+          api.getReuniones(),
+          api.getTutores(),
+          api.getEventos(),
+          api.getAsistencias(),
+          api.getTutorAdolescente(),
+          api.getInscripciones(),
+          api.getPagos(),
+          api.getParticipantes(),
+          api.getCumpleanosCelebrados(),
+          api.getUsuarios(),
+          api.getRoles(),
+        ]);
+
+        const [
+          adolescentesRes,
+          encargadosRes,
+          reunionesRes,
+          tutoresRes,
+          eventosRes,
+          asistenciasRes,
+          tutoresAdolescentesRes,
+          inscripcionesRes,
+          pagosRes,
+          participantesRes,
+          celebracionesRes,
+          usuariosRes,
+          rolesRes,
+        ] = results;
+
+        // Helper to extract error message safely
+        const getErrorMessage = (reason: any) => {
+             if (reason instanceof Error) return reason.message;
+             if (typeof reason === 'string') return reason;
+             return JSON.stringify(reason);
+        };
+
+        if (adolescentesRes.status === 'fulfilled') setAdolescentes(adolescentesRes.value);
+        else console.error("Error fetching Adolescentes:", getErrorMessage(adolescentesRes.reason));
+
+        if (encargadosRes.status === 'fulfilled') setEncargados(encargadosRes.value);
+        else console.error("Error fetching Encargados:", getErrorMessage(encargadosRes.reason));
+
+        if (reunionesRes.status === 'fulfilled') setReuniones(reunionesRes.value);
+        else console.error("Error fetching Reuniones:", getErrorMessage(reunionesRes.reason));
+
+        if (tutoresRes.status === 'fulfilled') setTutores(tutoresRes.value);
+        else console.error("Error fetching Tutores:", getErrorMessage(tutoresRes.reason));
+
+        if (eventosRes.status === 'fulfilled') setEventos(eventosRes.value);
+        else console.error("Error fetching Eventos:", getErrorMessage(eventosRes.reason));
+
+        if (asistenciasRes.status === 'fulfilled') setAsistencias(asistenciasRes.value);
+        else console.error("Error fetching Asistencias:", getErrorMessage(asistenciasRes.reason));
+
+        if (tutoresAdolescentesRes.status === 'fulfilled') setTutoresAdolescentes(tutoresAdolescentesRes.value);
+        else console.error("Error fetching Tutor-Adolescente links:", getErrorMessage(tutoresAdolescentesRes.reason));
+
+        if (inscripcionesRes.status === 'fulfilled') setInscripciones(inscripcionesRes.value);
+        else console.error("Error fetching Inscripciones:", getErrorMessage(inscripcionesRes.reason));
+
+        if (pagosRes.status === 'fulfilled') setPagos(pagosRes.value);
+        else console.error("Error fetching Pagos:", getErrorMessage(pagosRes.reason));
+
+        if (participantesRes.status === 'fulfilled') setParticipantes(participantesRes.value);
+        else console.error("Error fetching Participantes:", getErrorMessage(participantesRes.reason));
+
+        if (celebracionesRes.status === 'fulfilled') setCelebraciones(celebracionesRes.value);
+        else console.error("Error fetching Celebraciones:", getErrorMessage(celebracionesRes.reason));
+
+        if (usuariosRes.status === 'fulfilled') setUsuarios(usuariosRes.value);
+        else console.error("Error fetching Usuarios:", getErrorMessage(usuariosRes.reason));
+
+        if (rolesRes.status === 'fulfilled') setRoles(rolesRes.value);
+        else console.error("Error fetching Roles:", getErrorMessage(rolesRes.reason));
+
+    } catch (error) {
+        console.error("Critical error in fetchData:", error);
+    }
   }, []);
 
   useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+    if (user) {
+        fetchData();
+    }
+  }, [fetchData, user]);
 
   const addAdolescente = async (adolescente: Omit<Adolescente, 'id'>) => {
     await api.createAdolescente(adolescente);
@@ -154,7 +203,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     await fetchData();
   };
 
-  const addUser = async (usuario: Omit<Usuario, 'id'>) => {
+  const addUser = async (usuario: Omit<Usuario, 'id'> & { id?: string; password?: string }) => {
     await api.createUsuario(usuario);
     await fetchData();
   };
@@ -164,10 +213,14 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     await fetchData();
   };
 
-  const deleteUser = async (id: number) => {
+  const deleteUser = async (id: string) => {
     await api.deleteUsuario(id);
     await fetchData();
   };
+  
+  const sendPasswordReset = async (email: string) => {
+    await api.resetPasswordForEmail(email);
+  }
 
   const addEncargado = async (encargado: Omit<Encargado, 'id'>) => {
     await api.createEncargado(encargado);
@@ -256,6 +309,21 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   };
 
   // Eventos methods
+  const addEvento = async (evento: Omit<Evento, 'id'>) => {
+    await api.createEvento(evento);
+    await fetchData();
+  };
+
+  const updateEvento = async (evento: Evento) => {
+    await api.updateEvento(evento);
+    await fetchData();
+  };
+
+  const deleteEvento = async (id: number) => {
+    await api.deleteEvento(id);
+    await fetchData();
+  };
+
   const addInscripcion = async (eventoId: number, adolescenteId: number) => {
     await api.createInscripcion({ eventoId, adolescenteId, fechaInscripcion: new Date().toISOString().split('T')[0], notas: '' });
     await fetchData();
@@ -307,11 +375,12 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       adolescentes, encargados, reuniones, tutores, eventos, asistencias, 
       tutoresAdolescentes, inscripciones, pagos, participantes, celebraciones, usuarios, roles, fetchData,
       addAdolescente, updateAdolescente, deleteAdolescente, addAdolescentesBulk,
-      addUser, updateUser, deleteUser,
+      addUser, updateUser, deleteUser, sendPasswordReset,
       addEncargado, updateEncargado, deleteEncargado, addEncargadosBulk,
       addReunion, updateReunion, saveAsistencias, addReunionesBulk, addAsistenciasBulk,
       addTutor, updateTutor, deleteTutor, addTutoresAndLinkBulk,
       addRole, updateRole, deleteRole,
+      addEvento, updateEvento, deleteEvento,
       addInscripcion, updateInscripcion, deleteInscripcion, addPago, deletePago, addParticipante, removeParticipante,
       addCelebracionCumpleanos,
       clearTable

@@ -71,7 +71,14 @@ const Reuniones: React.FC<ReunionesProps> = ({ navigateTo }) => {
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        const dataToSave = { ...values, encargadoId: Number(values.encargadoId) };
+        
+        const selectedEncargadoId = Number(values.encargadoId);
+        if (!selectedEncargadoId || selectedEncargadoId === 0) {
+            alert("Error: Debe seleccionar un encargado válido. Si no hay encargados, registre uno primero.");
+            return;
+        }
+
+        const dataToSave = { ...values, encargadoId: selectedEncargadoId };
         if (editingReunion) {
             await updateReunion({ ...dataToSave, id: editingReunion.id });
         } else {
@@ -242,6 +249,7 @@ const Reuniones: React.FC<ReunionesProps> = ({ navigateTo }) => {
                     <InputField label="Tema de la Reunión" name="tema" value={values.tema} onChange={handleInputChange} required />
                     <InputField label="Fecha" name="fecha" type="date" value={values.fecha} onChange={handleInputChange} required />
                     <SelectField label="Encargado" name="encargadoId" value={values.encargadoId} onChange={handleInputChange} required>
+                        {encargados.length === 0 && <option value="0">No hay encargados disponibles</option>}
                         {encargados.map(e => <option key={e.id} value={e.id}>{e.nombre} {e.apellido}</option>)}
                     </SelectField>
                     <SelectField label="Estado" name="estado" value={values.estado} onChange={handleInputChange}>

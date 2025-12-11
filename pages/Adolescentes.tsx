@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo } from 'react';
 import { useData } from '../contexts/DataContext';
 import { useAuth } from '../contexts/AuthContext';
@@ -6,6 +7,7 @@ import { calcularEdad, formatDate } from '../utils/helpers';
 import Modal from '../components/ui/Modal';
 import ConfirmationModal from '../components/ui/ConfirmationModal';
 import { useForm } from '../hooks/useForm';
+import { DownloadCloudIcon } from '../components/ui/Icons';
 
 const Adolescentes: React.FC = () => {
     const { adolescentes, addAdolescente, updateAdolescente, deleteAdolescente } = useData();
@@ -66,10 +68,10 @@ const Adolescentes: React.FC = () => {
 
         const isCedulaDuplicate = adolescentes.some(a => {
             if (editingAdolescente) {
-                // In edit mode, check against other adolescents
+                // In edit mode, check against other adolescentes
                 return a.cedula === values.cedula && a.id !== editingAdolescente.id;
             }
-            // In create mode, check against all adolescents
+            // In create mode, check against all adolescentes
             return a.cedula === values.cedula;
         });
 
@@ -110,15 +112,76 @@ const Adolescentes: React.FC = () => {
             );
     }, [adolescentes, searchTerm, estadoFilter]);
 
+    const handleExportCSV = () => {
+        if (filteredAdolescentes.length === 0) {
+            alert("No hay datos para exportar.");
+            return;
+        }
+
+        const headers = [
+            "ID", "Nombre", "Apellido", "Cedula", "Fecha de Nacimiento", "Edad",
+            "Barrio", "Ciudad", "Telefono", "Sexo", "Estado"
+        ];
+
+        const csvRows = [
+            headers.join(';'),
+            ...filteredAdolescentes.map(ado => {
+                const age = calcularEdad(ado.fechaNacimiento);
+                // Escape quotes and wrap fields with quotes to handle special characters
+                const sanitize = (field: string | number) => `"${String(field).replace(/"/g, '""')}"`;
+                const row = [
+                    ado.id,
+                    sanitize(ado.nombre),
+                    sanitize(ado.apellido),
+                    ado.cedula,
+                    ado.fechaNacimiento,
+                    age,
+                    sanitize(ado.barrio),
+                    sanitize(ado.ciudad),
+                    ado.telefono,
+                    ado.sexo,
+                    ado.estado
+                ];
+                return row.join(';');
+            })
+        ];
+
+        const csvString = csvRows.join('\n');
+        // Add BOM for UTF-8 Excel compatibility
+        const blob = new Blob([`\uFEFF${csvString}`], { type: 'text/csv;charset=utf-8;' }); 
+
+        const link = document.createElement('a');
+        if (link.download !== undefined) {
+            const url = URL.createObjectURL(blob);
+            link.setAttribute('href', url);
+            link.setAttribute('download', 'adolescentes.csv');
+            link.style.visibility = 'hidden';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+    };
+
+
     return (
         <div className="space-y-6">
-            <div className="flex justify-between items-center">
+            <div className="flex justify-between items-center flex-wrap gap-4">
                 <h1 className="text-3xl font-bold">Gestión de Adolescentes</h1>
-                {hasPermission('adolescentes', 'create') && (
-                    <button onClick={openModalForCreate} className="bg-primary text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition">
-                        Agregar Adolescente
+                <div className="flex items-center gap-2">
+                    <button 
+                        onClick={handleExportCSV} 
+                        className="bg-secondary text-white px-4 py-2 rounded-lg hover:bg-emerald-600 transition flex items-center gap-2"
+                        aria-label="Exportar a CSV"
+                    >
+                        <DownloadCloudIcon className="w-5 h-5" />
+                        <span>Exportar</span>
                     </button>
-                )}
+                    {hasPermission('adolescentes', 'create') && (
+                        <button onClick={openModalForCreate} className="bg-primary text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition">
+                            Agregar Adolescente
+                        </button>
+                    )}
+                </div>
             </div>
             
             <div className="flex flex-wrap gap-4 items-center">
@@ -199,9 +262,9 @@ const Adolescentes: React.FC = () => {
                         <InputField label="Apellido" name="apellido" value={values.apellido} onChange={handleInputChange} required />
                         <InputField label="Cédula" name="cedula" value={values.cedula} onChange={handleInputChange} required />
                         <InputField label="Fecha de Nacimiento" name="fechaNacimiento" type="date" value={values.fechaNacimiento} onChange={handleInputChange} required />
-                        <InputField label="Barrio" name="barrio" value={values.barrio} onChange={handleInputChange} />
-                        <InputField label="Ciudad" name="ciudad" value={values.ciudad} onChange={handleInputChange} />
-                        <InputField label="Teléfono" name="telefono" value={values.telefono} onChange={handleInputChange} />
+                        <InputField label="Barrio" name="barrio" value={values.barrio} onChange={handleInputChange} required />
+                        <InputField label="Ciudad" name="ciudad" value={values.ciudad} onChange={handleInputChange} required />
+                        <InputField label="Teléfono" name="telefono" value={values.telefono} onChange={handleInputChange} required />
                         <SelectField label="Sexo" name="sexo" value={values.sexo} onChange={handleInputChange}>
                             <option value="Masculino">Masculino</option>
                             <option value="Femenino">Femenino</option>

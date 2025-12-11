@@ -6,12 +6,13 @@ import { Usuario } from '../types';
 import Modal from '../components/ui/Modal';
 import ConfirmationModal from '../components/ui/ConfirmationModal';
 import { useForm } from '../hooks/useForm';
+import { KeyIcon } from '../components/ui/Icons';
 
 // Helper Components
 const InputField: React.FC<React.InputHTMLAttributes<HTMLInputElement> & { label: string }> = ({ label, ...props }) => (
     <div>
         <label htmlFor={props.name} className="block text-sm font-medium text-text-secondary">{label}</label>
-        <input {...props} id={props.name} className="mt-1 block w-full px-3 py-2 bg-background border border-border rounded-md shadow-sm focus:outline-none focus:ring-primary focus:border-primary sm:text-sm" />
+        <input {...props} id={props.name} className="mt-1 block w-full px-3 py-2 bg-background border border-border rounded-md shadow-sm focus:outline-none focus:ring-primary focus:border-primary sm:text-sm disabled:opacity-50 disabled:cursor-not-allowed" />
     </div>
 );
 
@@ -46,7 +47,7 @@ const RoleBadge: React.FC<{ roleName?: string }> = ({ roleName }) => {
 
 // Main Component
 const Usuarios: React.FC = () => {
-    const { usuarios, roles, addUser, updateUser, deleteUser } = useData();
+    const { usuarios, roles, addUser, updateUser, deleteUser, sendPasswordReset } = useData();
     const { hasPermission } = useAuth();
     
     const [isUserModalOpen, setIsUserModalOpen] = useState(false);
@@ -100,13 +101,21 @@ const Usuarios: React.FC = () => {
         }
 
         const userData = { ...values, rolId: Number(values.rolId) };
-        if (editingUser) {
-            await updateUser({ ...userData, id: editingUser.id });
-        } else {
-            if (!userData.password) { alert('La contraseña es obligatoria para nuevos usuarios.'); return; }
-            await addUser(userData);
+        
+        try {
+            if (editingUser) {
+                await updateUser({ ...userData, id: editingUser.id });
+            } else {
+                if (!userData.password) { alert('La contraseña es obligatoria para nuevos usuarios.'); return; }
+                // Make sure to pass the password explicitly
+                await addUser({ ...userData, password: values.password }); 
+            }
+            setIsUserModalOpen(false);
+        } catch (error: any) {
+            // Explicitly use .message if available to avoid [object Object]
+            const msg = error instanceof Error ? error.message : (typeof error === 'string' ? error : JSON.stringify(error));
+            alert(msg || "Ocurrió un error al guardar el usuario.");
         }
-        setIsUserModalOpen(false);
     };
 
     const handleDeleteUserClick = (user: Usuario) => {
@@ -116,11 +125,28 @@ const Usuarios: React.FC = () => {
 
     const handleConfirmUserDelete = async () => {
         if (userToDelete) {
-            await deleteUser(userToDelete.id);
-            setIsUserConfirmOpen(false);
-            setUserToDelete(null);
+            try {
+                await deleteUser(userToDelete.id);
+                setIsUserConfirmOpen(false);
+                setUserToDelete(null);
+            } catch (error: any) {
+                const msg = error instanceof Error ? error.message : (typeof error === 'string' ? error : JSON.stringify(error));
+                alert(msg || "Error al eliminar usuario.");
+            }
         }
     };
+
+    const handleSendResetEmail = async (email: string) => {
+        const confirmSend = window.confirm(`¿Enviar correo de restablecimiento de contraseña a ${email}?`);
+        if (confirmSend) {
+            try {
+                await sendPasswordReset(email);
+                alert(`Correo enviado a ${email}.`);
+            } catch (error: any) {
+                alert(`Error: ${error.message}`);
+            }
+        }
+    }
 
     return (
         <div className="space-y-6">
@@ -160,7 +186,18 @@ const Usuarios: React.FC = () => {
                                     <RoleBadge roleName={roles.find(r => r.id === user.rolId)?.nombre} />
                                 </td>
                                 <td className="py-3 px-4 whitespace-nowrap text-right space-x-2 text-sm">
-                                    {hasPermission('usuarios', 'update') && <button onClick={() => openModalForEditUser(user)} className="text-primary hover:text-indigo-400">Editar</button>}
+                                    {hasPermission('usuarios', 'update') && (
+                                        <>
+                                            <button 
+                                                onClick={() => handleSendResetEmail(user.email)} 
+                                                className="text-yellow-500 hover:text-yellow-400" 
+                                                title="Enviar correo de recuperación de contraseña"
+                                            >
+                                                <KeyIcon className="w-5 h-5 inline" />
+                                            </button>
+                                            <button onClick={() => openModalForEditUser(user)} className="text-primary hover:text-indigo-400">Editar</button>
+                                        </>
+                                    )}
                                     {hasPermission('usuarios', 'delete') && <button onClick={() => handleDeleteUserClick(user)} className="text-red-500 hover:text-red-400">Eliminar</button>}
                                 </td>
                             </tr>
@@ -171,9 +208,27 @@ const Usuarios: React.FC = () => {
             
             <Modal isOpen={isUserModalOpen} onClose={() => setIsUserModalOpen(false)} title={editingUser ? 'Editar Usuario' : 'Agregar Usuario'}>
                  <form onSubmit={handleSubmitUser} className="space-y-4">
+                    {editingUser && (
+                        <InputField label="ID de Usuario" name="id" value={editingUser.id} disabled />
+                    )}
                     <InputField label="Nombre Completo" name="nombre" value={values.nombre} onChange={handleInputChange} required />
                     <InputField label="Correo Electrónico" name="email" type="email" value={values.email} onChange={handleInputChange} required />
-                    <InputField label="Contraseña" name="password" type="password" value={values.password} onChange={handleInputChange} placeholder={editingUser ? 'Dejar en blanco para no cambiar' : ''} required={!editingUser} />
+                    
+                    {!editingUser ? (
+                        <InputField label="Contraseña" name="password" type="password" value={values.password} onChange={handleInputChange} required />
+                    ) : (
+                        <div className="bg-background/50 p-3 rounded-md border border-border">
+                            <p className="text-sm text-text-secondary mb-2">Para cambiar la contraseña, envíe un correo de recuperación.</p>
+                            <button 
+                                type="button"
+                                onClick={() => handleSendResetEmail(values.email)}
+                                className="text-sm bg-yellow-600/20 text-yellow-500 hover:bg-yellow-600/30 px-3 py-1 rounded flex items-center gap-2"
+                            >
+                                <KeyIcon className="w-4 h-4" /> Enviar correo de recuperación
+                            </button>
+                        </div>
+                    )}
+
                     <SelectField label="Rol" name="rolId" value={values.rolId} onChange={handleInputChange}>
                         {roles.map(r => <option key={r.id} value={r.id}>{r.nombre}</option>)}
                     </SelectField>

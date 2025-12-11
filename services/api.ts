@@ -1,427 +1,741 @@
+
+import { supabase } from './supabase';
 import { 
-  Usuario, Rol, Permisos, Adolescente, Encargado, Reunion, Tutor, Evento, Asistencia, 
-  TutorAdolescente, InscripcionEvento, PagoEvento, ParticipanteEvento, Sexo, 
-  EstadoAdolescente, EstadoReunion, GradoParentesco, TipoAsistencia, AsistenciaDetalle,
+  Usuario, Rol, Adolescente, Encargado, Reunion, Tutor, Evento, Asistencia, 
+  TutorAdolescente, InscripcionEvento, PagoEvento, ParticipanteEvento, TipoAsistencia, AsistenciaDetalle,
   CelebracionCumpleanos
 } from '../types';
 
-// --- MOCK DATABASE ---
-
-const defaultPermissions: Permisos = { read: false, create: false, update: false, delete: false };
-const readOnlyPermissions: Permisos = { ...defaultPermissions, read: true };
-const fullPermissions: Permisos = { read: true, create: true, update: true, delete: true };
-
-let db = {
-  roles: [
-    { id: 1, nombre: 'Administrador', permisos: { adolescentes: fullPermissions, encargados: fullPermissions, reuniones: fullPermissions, tutores: fullPermissions, eventos: fullPermissions, usuarios: fullPermissions } },
-    { id: 2, nombre: 'Encargado', permisos: { adolescentes: { ...fullPermissions, delete: false }, encargados: readOnlyPermissions, reuniones: fullPermissions, tutores: fullPermissions, eventos: fullPermissions, usuarios: { read: true, create: true, update: true, delete: false } } },
-    { id: 3, nombre: 'Staff', permisos: { adolescentes: readOnlyPermissions, encargados: readOnlyPermissions, reuniones: readOnlyPermissions, tutores: readOnlyPermissions, eventos: readOnlyPermissions, usuarios: defaultPermissions } },
-  ] as Rol[],
-  usuarios: [
-    { id: 1, email: 'admin@example.com', password: 'admin123', nombre: 'Admin User', rolId: 1, avatarUrl: 'https://i.pravatar.cc/150?u=1' },
-    { id: 2, email: 'encargado@example.com', password: 'encargado123', nombre: 'Juan Encargado', rolId: 2, avatarUrl: 'https://i.pravatar.cc/150?u=2' },
-    { id: 3, email: 'staff@example.com', password: 'staff123', nombre: 'Ana Staff', rolId: 3, avatarUrl: 'https://i.pravatar.cc/150?u=3' },
-  ] as Usuario[],
-  adolescentes: [
-    { id: 1, nombre: 'Carlos', apellido: 'Gomez', cedula: '5.123.456', fechaNacimiento: '2008-05-15', barrio: 'San Pablo', ciudad: 'Asunción', telefono: '0981-111-222', sexo: 'Masculino', estado: 'Activo' },
-    { id: 2, nombre: 'Lucía', apellido: 'Martínez', cedula: '5.234.567', fechaNacimiento: '2009-02-20', barrio: 'Sajonia', ciudad: 'Asunción', telefono: '0981-222-333', sexo: 'Femenino', estado: 'Activo' },
-    { id: 3, nombre: 'Pedro', apellido: 'Ramírez', cedula: '5.345.678', fechaNacimiento: '2007-11-30', barrio: 'Centro', ciudad: 'Lambaré', telefono: '0981-333-444', sexo: 'Masculino', estado: 'Activo' },
-    { id: 4, nombre: 'Sofía', apellido: 'Benítez', cedula: '5.456.789', fechaNacimiento: '2008-08-10', barrio: 'Villa Morra', ciudad: 'Asunción', telefono: '0981-444-555', sexo: 'Femenino', estado: 'Inactivo' },
-    { id: 5, nombre: 'Mateo', apellido: 'González', cedula: '5.567.890', fechaNacimiento: '2010-01-05', barrio: 'Trinidad', ciudad: 'Asunción', telefono: '0981-555-666', sexo: 'Masculino', estado: 'Activo' },
-    { id: 6, nombre: 'Valentina', apellido: 'Fernández', cedula: '6.123.456', fechaNacimiento: '2009-07-22', barrio: 'Las Carmelitas', ciudad: 'Asunción', telefono: '0971-111-222', sexo: 'Femenino', estado: 'Activo' },
-    { id: 7, nombre: 'Javier', apellido: 'Díaz', cedula: '6.234.567', fechaNacimiento: '2007-03-12', barrio: 'Barcequillo', ciudad: 'San Lorenzo', telefono: '0971-222-333', sexo: 'Masculino', estado: 'Anulado' },
-    { id: 8, nombre: 'Camila', apellido: 'Acosta', cedula: '6.345.678', fechaNacimiento: '2008-09-01', barrio: 'Centro', ciudad: 'Luque', telefono: '0971-333-444', sexo: 'Femenino', estado: 'Activo' },
-  ] as Adolescente[],
-  encargados: [
-    { id: 1, nombre: 'Ricardo', apellido: 'Paredes', cedula: '1.111.111', fechaNacimiento: '1990-01-10', barrio: 'Obrero', ciudad: 'Asunción', telefono: '0991-123-456', email: 'ricardo.p@example.com' },
-    { id: 2, nombre: 'Laura', apellido: 'Cáceres', cedula: '2.222.222', fechaNacimiento: '1992-06-25', barrio: 'Vista Alegre', ciudad: 'Asunción', telefono: '0991-234-567', email: 'laura.c@example.com' },
-    { id: 3, nombre: 'Miguel', apellido: 'Insfrán', cedula: '3.333.333', fechaNacimiento: '1988-12-05', barrio: 'Centro', ciudad: 'Fernando de la Mora', telefono: '0991-345-678', email: 'miguel.i@example.com' },
-  ] as Encargado[],
-  reuniones: [
-    { id: 1, fecha: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], tema: 'Identidad y Propósito', encargadoId: 1, estado: 'Finalizado' },
-    { id: 2, fecha: new Date().toISOString().split('T')[0], tema: 'Amistades que edifican', encargadoId: 2, estado: 'En Proceso' },
-    { id: 3, fecha: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], tema: 'Manejo de Redes Sociales', encargadoId: 1, estado: 'En Proceso' },
-  ] as Reunion[],
-  asistencias: [
-    { reunionId: 1, adolescenteId: 1, estado: 'Presente', detalle: 'Regular' },
-    { reunionId: 1, adolescenteId: 2, estado: 'Presente', detalle: 'Regular' },
-    { reunionId: 1, adolescenteId: 3, estado: 'Ausente' },
-    { reunionId: 1, adolescenteId: 5, estado: 'Presente', detalle: 'Primera Vez' },
-    { reunionId: 1, adolescenteId: 6, estado: 'Presente', detalle: 'Regular' },
-    { reunionId: 1, adolescenteId: 8, estado: 'Presente', detalle: 'Regular' },
-  ] as Asistencia[],
-  tutores: [
-    { id: 1, nombre: 'Mario', apellido: 'Gomez', cedula: '3.123.123', parentesco: 'Padre', barrio: 'San Pablo', ciudad: 'Asunción' },
-    { id: 2, nombre: 'Ana', apellido: 'Gomez', cedula: '3.321.321', parentesco: 'Madre', barrio: 'San Pablo', ciudad: 'Asunción' },
-    { id: 3, nombre: 'Luisa', apellido: 'Martínez', cedula: '4.567.567', parentesco: 'Madre', barrio: 'Sajonia', ciudad: 'Asunción' },
-    { id: 4, nombre: 'Alberto', apellido: 'Ramírez', cedula: '2.987.987', parentesco: 'Tío', barrio: 'Centro', ciudad: 'Lambaré' },
-  ] as Tutor[],
-  tutoresAdolescentes: [
-    { tutorId: 1, adolescenteId: 1 },
-    { tutorId: 2, adolescenteId: 1 },
-    { tutorId: 3, adolescenteId: 2 },
-    { tutorId: 4, adolescenteId: 3 },
-  ] as TutorAdolescente[],
-  eventos: [
-    { id: 1, tema: 'Campamento Anual 2024', lugar: 'Ypacaraí', fechaInicio: '2024-10-15', horaInicio: '08:00', fechaFin: '2024-10-18', horaFin: '16:00', tieneCosto: true, costoTotal: 5000000, costoPersona: 250000 },
-    { id: 2, tema: 'Taller de Liderazgo Juvenil', lugar: 'Salón Auditorio', fechaInicio: '2024-11-05', horaInicio: '14:00', fechaFin: '2024-11-05', horaFin: '18:00', tieneCosto: false },
-  ] as Evento[],
-  inscripciones: [
-    { id: 1, eventoId: 1, adolescenteId: 1, fechaInscripcion: '2024-09-01', notas: 'Alergia al maní.' },
-    { id: 2, eventoId: 1, adolescenteId: 2, fechaInscripcion: '2024-09-03', notas: 'Necesita transporte desde Lambaré.' },
-    { id: 3, eventoId: 1, adolescenteId: 5, fechaInscripcion: '2024-09-05' },
-    { id: 4, eventoId: 2, adolescenteId: 1, fechaInscripcion: '2024-10-20' },
-    { id: 5, eventoId: 2, adolescenteId: 3, fechaInscripcion: '2024-10-21' },
-  ] as InscripcionEvento[],
-  pagos: [
-    { id: 1, inscripcionId: 1, fecha: '2024-09-01', monto: 100000 },
-    { id: 2, inscripcionId: 1, fecha: '2024-09-15', monto: 150000 },
-    { id: 3, inscripcionId: 2, fecha: '2024-09-03', monto: 250000 },
-    { id: 4, inscripcionId: 3, fecha: '2024-09-05', monto: 150000 },
-  ] as PagoEvento[],
-  participantes: [
-    { eventoId: 1, adolescenteId: 1 },
-    { eventoId: 1, adolescenteId: 2 },
-  ] as ParticipanteEvento[],
-  celebracionesCumpleanos: [] as CelebracionCumpleanos[],
+// Helper to handle Supabase responses and throw proper Errors
+const handleSupabaseData = <T>(data: T | null, error: any, context: string): T => {
+    if (error) {
+        // Safe error serialization to prevent [object Object] in logs
+        const errorMsg = error.message || (typeof error === 'object' ? JSON.stringify(error) : String(error));
+        console.error(`Error in ${context}: ${errorMsg}`);
+        throw new Error(errorMsg);
+    }
+    return data as T;
 };
 
-// --- API FUNCTIONS ---
-
-const delay = (ms: number) => new Promise(res => setTimeout(res, ms));
-
 export const api = {
-  // Auth
-  login: async (email: string, pass: string): Promise<Usuario | null> => {
-    await delay(500);
-    const user = db.usuarios.find(u => u.email === email && u.password === pass);
-    return user ? { ...user } : null;
+  // --- Auth & User Profile ---
+  getUsuarioById: async (id: string): Promise<Usuario | null> => {
+    const { data, error } = await supabase.from('usuarios').select('*').eq('id', id).single();
+    if (error) return null; // Return null for auth check if user not found/error
+    return {
+        ...data,
+        rolId: data.rol_id,
+    };
   },
   getRolById: async (id: number): Promise<Rol | null> => {
-    await delay(100);
-    const rol = db.roles.find(r => r.id === id);
-    return rol ? { ...rol } : null;
+    const { data, error } = await supabase.from('roles').select('*').eq('id', id).single();
+    if (error) return null;
+    return data;
   },
 
-  // Data Getters
-  getAdolescentes: async (): Promise<Adolescente[]> => { await delay(200); return [...db.adolescentes]; },
-  getEncargados: async (): Promise<Encargado[]> => { await delay(200); return [...db.encargados]; },
-  getReuniones: async (): Promise<Reunion[]> => { await delay(200); return [...db.reuniones]; },
-  getTutores: async (): Promise<Tutor[]> => { await delay(200); return [...db.tutores]; },
-  getEventos: async (): Promise<Evento[]> => { await delay(200); return [...db.eventos]; },
-  getAsistencias: async (): Promise<Asistencia[]> => { await delay(200); return [...db.asistencias]; },
-  getTutorAdolescente: async (): Promise<TutorAdolescente[]> => { await delay(200); return [...db.tutoresAdolescentes]; },
-  getInscripciones: async (): Promise<InscripcionEvento[]> => { await delay(200); return [...db.inscripciones]; },
-  getPagos: async (): Promise<PagoEvento[]> => { await delay(200); return [...db.pagos]; },
-  getParticipantes: async (): Promise<ParticipanteEvento[]> => { await delay(200); return [...db.participantes]; },
-  getUsuarios: async (): Promise<Usuario[]> => { await delay(200); return [...db.usuarios]; },
-  getRoles: async (): Promise<Rol[]> => { await delay(200); return [...db.roles]; },
-  getCumpleanosCelebrados: async (): Promise<CelebracionCumpleanos[]> => { await delay(100); return [...db.celebracionesCumpleanos]; },
+  // Password Reset Methods
+  resetPasswordForEmail: async (email: string) => {
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: window.location.origin, // Redirects to root, App.tsx will intercept event
+    });
+    if (error) throw new Error(error.message);
+  },
+  
+  updateCurrentUserPassword: async (password: string) => {
+    const { error } = await supabase.auth.updateUser({ password });
+    if (error) throw new Error(error.message);
+  },
 
-  // Adolescentes CRUD
+  // --- Data Getters ---
+  getAdolescentes: async (): Promise<Adolescente[]> => {
+    const { data, error } = await supabase.from('adolescentes').select('*').order('nombre', { ascending: true });
+    const result = handleSupabaseData(data, error, 'getAdolescentes');
+    return (result || []).map((a: any) => ({
+        id: a.id,
+        nombre: a.nombre,
+        apellido: a.apellido,
+        cedula: a.cedula,
+        fechaNacimiento: a.fecha_nacimiento,
+        barrio: a.barrio,
+        ciudad: a.ciudad,
+        telefono: a.telefono,
+        sexo: a.sexo,
+        estado: a.estado
+    }));
+  },
+  getEncargados: async (): Promise<Encargado[]> => {
+    const { data, error } = await supabase.from('encargados').select('*').order('nombre', { ascending: true });
+    const result = handleSupabaseData(data, error, 'getEncargados');
+    return (result || []).map((e: any) => ({
+        id: e.id,
+        nombre: e.nombre,
+        apellido: e.apellido,
+        cedula: e.cedula,
+        fechaNacimiento: e.fecha_nacimiento,
+        barrio: e.barrio,
+        ciudad: e.ciudad,
+        telefono: e.telefono,
+        email: e.email
+    }));
+  },
+  getReuniones: async (): Promise<Reunion[]> => {
+    const { data, error } = await supabase.from('reuniones').select('*').order('fecha', { ascending: false });
+    const result = handleSupabaseData(data, error, 'getReuniones');
+    return (result || []).map((r: any) => ({
+        id: r.id,
+        fecha: r.fecha,
+        tema: r.tema,
+        encargadoId: r.encargado_id,
+        estado: r.estado
+    }));
+  },
+  getTutores: async (): Promise<Tutor[]> => {
+    const { data, error } = await supabase.from('tutores').select('*').order('nombre', { ascending: true });
+    const result = handleSupabaseData(data, error, 'getTutores');
+    return result || [];
+  },
+  getEventos: async (): Promise<Evento[]> => {
+    const { data, error } = await supabase.from('eventos').select('*').order('fecha_inicio', { ascending: false });
+    const result = handleSupabaseData(data, error, 'getEventos');
+    return (result || []).map((e: any) => ({
+        id: e.id,
+        tema: e.tema,
+        lugar: e.lugar,
+        fechaInicio: e.fecha_inicio,
+        horaInicio: e.hora_inicio,
+        fechaFin: e.fecha_fin,
+        horaFin: e.hora_fin,
+        tieneCosto: e.tiene_costo,
+        costoTotal: e.costo_total,
+        costoPersona: e.costo_persona
+    }));
+  },
+  getAsistencias: async (): Promise<Asistencia[]> => {
+    const { data, error } = await supabase.from('asistencias').select('*');
+    const result = handleSupabaseData(data, error, 'getAsistencias');
+    // Explicit mapping avoids leaking snake_case properties
+    return (result || []).map((a: any) => ({
+        reunionId: a.reunion_id,
+        adolescenteId: a.adolescente_id,
+        estado: a.estado,
+        detalle: a.detalle
+    }));
+  },
+  getTutorAdolescente: async (): Promise<TutorAdolescente[]> => {
+    const { data, error } = await supabase.from('tutor_adolescente').select('*');
+    const result = handleSupabaseData(data, error, 'getTutorAdolescente');
+    return (result || []).map((ta: any) => ({
+        tutorId: ta.tutor_id,
+        adolescenteId: ta.adolescente_id
+    }));
+  },
+  getInscripciones: async (): Promise<InscripcionEvento[]> => {
+    const { data, error } = await supabase.from('inscripciones_eventos').select('*');
+    const result = handleSupabaseData(data, error, 'getInscripciones');
+    return (result || []).map((i: any) => ({
+        id: i.id,
+        eventoId: i.evento_id,
+        adolescenteId: i.adolescente_id,
+        fechaInscripcion: i.fecha_inscripcion,
+        notas: i.notas
+    }));
+  },
+  getPagos: async (): Promise<PagoEvento[]> => {
+    const { data, error } = await supabase.from('pagos_eventos').select('*');
+    const result = handleSupabaseData(data, error, 'getPagos');
+    return (result || []).map((p: any) => ({
+        id: p.id,
+        inscripcionId: p.inscripcion_id,
+        fecha: p.fecha,
+        monto: p.monto
+    }));
+  },
+  getParticipantes: async (): Promise<ParticipanteEvento[]> => {
+    const { data, error } = await supabase.from('participantes_eventos').select('*');
+    const result = handleSupabaseData(data, error, 'getParticipantes');
+    return (result || []).map((p: any) => ({
+        eventoId: p.evento_id,
+        adolescenteId: p.adolescente_id
+    }));
+  },
+  getUsuarios: async (): Promise<Usuario[]> => {
+    const { data, error } = await supabase.from('usuarios').select('*');
+    const result = handleSupabaseData(data, error, 'getUsuarios');
+    return (result || []).map((u: any) => ({
+        ...u,
+        rolId: u.rol_id,
+        avatarUrl: u.avatar_url
+    }));
+  },
+  getRoles: async (): Promise<Rol[]> => {
+    const { data, error } = await supabase.from('roles').select('*').order('id', { ascending: true });
+    const result = handleSupabaseData(data, error, 'getRoles');
+    return result || [];
+  },
+  getCumpleanosCelebrados: async (): Promise<CelebracionCumpleanos[]> => {
+    const { data, error } = await supabase.from('celebraciones_cumpleanos').select('adolescente_id, ano');
+    const result = handleSupabaseData(data, error, 'getCumpleanosCelebrados');
+    return (result || []).map((c: any) => ({
+        adolescenteId: c.adolescente_id,
+        ano: c.ano
+    }));
+  },
+
+  // --- CRUD Operations ---
+
+  // Adolescentes
   createAdolescente: async (adolescente: Omit<Adolescente, 'id'>): Promise<Adolescente> => {
-    await delay(300);
-    const newId = Math.max(0, ...db.adolescentes.map(a => a.id)) + 1;
-    const newAdolescente = { ...adolescente, id: newId };
-    db.adolescentes.push(newAdolescente);
-    return newAdolescente;
+    const dbPayload = {
+        nombre: adolescente.nombre,
+        apellido: adolescente.apellido,
+        cedula: adolescente.cedula,
+        fecha_nacimiento: adolescente.fechaNacimiento,
+        barrio: adolescente.barrio,
+        ciudad: adolescente.ciudad,
+        telefono: adolescente.telefono,
+        sexo: adolescente.sexo,
+        estado: adolescente.estado
+    };
+    const { data, error } = await supabase.from('adolescentes').insert(dbPayload).select().single();
+    const result = handleSupabaseData(data, error, 'createAdolescente');
+    return { 
+        id: result.id,
+        nombre: result.nombre,
+        apellido: result.apellido,
+        cedula: result.cedula,
+        fechaNacimiento: result.fecha_nacimiento,
+        barrio: result.barrio,
+        ciudad: result.ciudad,
+        telefono: result.telefono,
+        sexo: result.sexo,
+        estado: result.estado
+    };
   },
   createAdolescentesBulk: async (adolescentes: Omit<Adolescente, 'id'>[]): Promise<void> => {
-    await delay(1000);
-    let lastId = Math.max(0, ...db.adolescentes.map(a => a.id));
-    const newAdolescentes = adolescentes.map(a => {
-        lastId++;
-        return { ...a, id: lastId };
-    });
-    db.adolescentes.push(...newAdolescentes);
+    const dbPayload = adolescentes.map(a => ({
+        nombre: a.nombre,
+        apellido: a.apellido,
+        cedula: a.cedula,
+        fecha_nacimiento: a.fechaNacimiento,
+        barrio: a.barrio,
+        ciudad: a.ciudad,
+        telefono: a.telefono,
+        sexo: a.sexo,
+        estado: a.estado
+    }));
+    const { error } = await supabase.from('adolescentes').insert(dbPayload);
+    if (error) {
+        const msg = error.message || JSON.stringify(error);
+        throw new Error(msg);
+    }
   },
   updateAdolescente: async (adolescente: Adolescente): Promise<Adolescente> => {
-    await delay(300);
-    db.adolescentes = db.adolescentes.map(a => a.id === adolescente.id ? adolescente : a);
-    return adolescente;
+    const dbPayload = {
+        nombre: adolescente.nombre,
+        apellido: adolescente.apellido,
+        cedula: adolescente.cedula,
+        fecha_nacimiento: adolescente.fechaNacimiento,
+        barrio: adolescente.barrio,
+        ciudad: adolescente.ciudad,
+        telefono: adolescente.telefono,
+        sexo: adolescente.sexo,
+        estado: adolescente.estado
+    };
+    const { data, error } = await supabase.from('adolescentes').update(dbPayload).eq('id', adolescente.id).select().single();
+    const result = handleSupabaseData(data, error, 'updateAdolescente');
+    return { 
+        id: result.id,
+        nombre: result.nombre,
+        apellido: result.apellido,
+        cedula: result.cedula,
+        fechaNacimiento: result.fecha_nacimiento,
+        barrio: result.barrio,
+        ciudad: result.ciudad,
+        telefono: result.telefono,
+        sexo: result.sexo,
+        estado: result.estado
+    };
   },
   deleteAdolescente: async (id: number): Promise<void> => {
-    await delay(300);
-    db.adolescentes = db.adolescentes.filter(a => a.id !== id);
+    const { error } = await supabase.from('adolescentes').delete().eq('id', id);
+    if (error) throw new Error(error.message || JSON.stringify(error));
   },
 
-  // Encargados CRUD
+  // Encargados
   createEncargado: async (encargado: Omit<Encargado, 'id'>): Promise<Encargado> => {
-    await delay(300);
-    const newId = Math.max(0, ...db.encargados.map(e => e.id)) + 1;
-    const newEncargado = { ...encargado, id: newId };
-    db.encargados.push(newEncargado);
-    return newEncargado;
+    const dbPayload = {
+        nombre: encargado.nombre,
+        apellido: encargado.apellido,
+        cedula: encargado.cedula,
+        fecha_nacimiento: encargado.fechaNacimiento || null,
+        barrio: encargado.barrio,
+        ciudad: encargado.ciudad,
+        telefono: encargado.telefono,
+        email: encargado.email || null
+    };
+    const { data, error } = await supabase.from('encargados').insert(dbPayload).select().single();
+    const result = handleSupabaseData(data, error, 'createEncargado');
+    return { 
+        id: result.id,
+        nombre: result.nombre,
+        apellido: result.apellido,
+        cedula: result.cedula,
+        fechaNacimiento: result.fecha_nacimiento,
+        barrio: result.barrio,
+        ciudad: result.ciudad,
+        telefono: result.telefono,
+        email: result.email
+    };
   },
   updateEncargado: async (encargado: Encargado): Promise<Encargado> => {
-    await delay(300);
-    db.encargados = db.encargados.map(e => e.id === encargado.id ? encargado : e);
-    return encargado;
+    const dbPayload = {
+        nombre: encargado.nombre,
+        apellido: encargado.apellido,
+        cedula: encargado.cedula,
+        fecha_nacimiento: encargado.fechaNacimiento || null,
+        barrio: encargado.barrio,
+        ciudad: encargado.ciudad,
+        telefono: encargado.telefono,
+        email: encargado.email || null
+    };
+    const { data, error } = await supabase.from('encargados').update(dbPayload).eq('id', encargado.id).select().single();
+    const result = handleSupabaseData(data, error, 'updateEncargado');
+    return { 
+        id: result.id,
+        nombre: result.nombre,
+        apellido: result.apellido,
+        cedula: result.cedula,
+        fechaNacimiento: result.fecha_nacimiento,
+        barrio: result.barrio,
+        ciudad: result.ciudad,
+        telefono: result.telefono,
+        email: result.email
+    };
   },
   deleteEncargado: async (id: number): Promise<void> => {
-    await delay(300);
-    db.encargados = db.encargados.filter(e => e.id !== id);
+    const { error } = await supabase.from('encargados').delete().eq('id', id);
+    if (error) throw new Error(error.message || JSON.stringify(error));
   },
   createEncargadosBulk: async (encargados: Omit<Encargado, 'id'>[]): Promise<void> => {
-    await delay(1000);
-    let lastId = Math.max(0, ...db.encargados.map(a => a.id));
-    const newEncargados = encargados.map(a => {
-        lastId++;
-        return { ...a, id: lastId };
-    });
-    db.encargados.push(...newEncargados);
+     const dbPayload = encargados.map(e => ({
+        nombre: e.nombre,
+        apellido: e.apellido,
+        cedula: e.cedula,
+        fecha_nacimiento: e.fechaNacimiento || null,
+        barrio: e.barrio,
+        ciudad: e.ciudad,
+        telefono: e.telefono,
+        email: e.email || null
+    }));
+    const { error } = await supabase.from('encargados').insert(dbPayload);
+    if (error) throw new Error(error.message || JSON.stringify(error));
   },
 
-  // Reuniones CRUD
+  // Reuniones
   createReunion: async (reunion: Omit<Reunion, 'id'>): Promise<Reunion> => {
-    await delay(300);
-    const newId = Math.max(...db.reuniones.map(r => r.id)) + 1;
-    const newReunion = { ...reunion, id: newId };
-    db.reuniones.push(newReunion);
-    return newReunion;
+    const dbPayload = {
+        fecha: reunion.fecha,
+        tema: reunion.tema,
+        encargado_id: reunion.encargadoId,
+        estado: reunion.estado
+    };
+    const { data, error } = await supabase.from('reuniones').insert(dbPayload).select().single();
+    const result = handleSupabaseData(data, error, 'createReunion');
+    return { 
+        id: result.id,
+        fecha: result.fecha,
+        tema: result.tema,
+        encargadoId: result.encargado_id,
+        estado: result.estado
+    };
   },
   updateReunion: async (reunion: Reunion): Promise<Reunion> => {
-    await delay(300);
-    db.reuniones = db.reuniones.map(r => r.id === reunion.id ? reunion : r);
-    return reunion;
+    const dbPayload = {
+        fecha: reunion.fecha,
+        tema: reunion.tema,
+        encargado_id: reunion.encargadoId,
+        estado: reunion.estado
+    };
+    const { data, error } = await supabase.from('reuniones').update(dbPayload).eq('id', reunion.id).select().single();
+    const result = handleSupabaseData(data, error, 'updateReunion');
+    return { 
+        id: result.id,
+        fecha: result.fecha,
+        tema: result.tema,
+        encargadoId: result.encargado_id,
+        estado: result.estado
+    };
   },
   createReunionesBulk: async (reuniones: (Omit<Reunion, 'id' | 'encargadoId'> & { encargadoCedula: string })[]): Promise<void> => {
-    await delay(1000);
-    let lastId = Math.max(0, ...db.reuniones.map(a => a.id));
-    const newReuniones: Reunion[] = [];
-    for (const r of reuniones) {
-        const encargado = db.encargados.find(e => e.cedula === r.encargadoCedula);
-        if (encargado) {
-            lastId++;
-            const { encargadoCedula, ...reunionData } = r;
-            newReuniones.push({ ...reunionData, id: lastId, encargadoId: encargado.id, estado: 'En Proceso' });
-        }
+    const { data: encargados } = await supabase.from('encargados').select('id, cedula');
+    
+    if (!encargados) throw new Error("No se pudieron cargar encargados para validación");
+
+    const dbPayload = reuniones.map(r => {
+        const encargado = encargados.find((e: any) => e.cedula === r.encargadoCedula);
+        if (!encargado) return null;
+        return {
+            fecha: r.fecha,
+            tema: r.tema,
+            estado: r.estado,
+            encargado_id: encargado.id
+        };
+    }).filter(Boolean);
+
+    if (dbPayload.length > 0) {
+        const { error } = await supabase.from('reuniones').insert(dbPayload);
+        if (error) throw new Error(error.message || JSON.stringify(error));
     }
-    db.reuniones.push(...newReuniones);
   },
 
   // Asistencia
   saveAsistencias: async (nuevasAsistencias: Asistencia[]): Promise<void> => {
-    await delay(500);
-    nuevasAsistencias.forEach(nueva => {
-        const index = db.asistencias.findIndex(a => a.reunionId === nueva.reunionId && a.adolescenteId === nueva.adolescenteId);
-        if (index > -1) {
-            db.asistencias[index] = nueva;
-        } else {
-            db.asistencias.push(nueva);
-        }
-    });
+    // Explicitly map strictly to DB columns for the upsert
+    const dbPayload = nuevasAsistencias.map(a => ({
+        reunion_id: a.reunionId,
+        adolescente_id: a.adolescenteId,
+        estado: a.estado,
+        detalle: a.detalle || null
+    }));
+    
+    // Uses the composite primary key (reunion_id, adolescente_id) for conflict resolution
+    const { error } = await supabase.from('asistencias').upsert(dbPayload, { onConflict: 'reunion_id,adolescente_id' });
+    if (error) throw new Error(error.message || JSON.stringify(error));
   },
-  saveAsistenciasBulk: async (asistencias: { reunionFecha: string; reunionTema: string; adolescenteCedula: string; estado: TipoAsistencia; detalle?: AsistenciaDetalle }[]): Promise<void> => {
-    await delay(1000);
-    for (const a of asistencias) {
-        const reunion = db.reuniones.find(r => r.fecha === a.reunionFecha && r.tema === a.reunionTema);
-        const adolescente = db.adolescentes.find(ado => ado.cedula === a.adolescenteCedula);
+   saveAsistenciasBulk: async (asistencias: { reunionFecha: string; reunionTema: string; adolescenteCedula: string; estado: TipoAsistencia; detalle?: AsistenciaDetalle }[]): Promise<void> => {
+    const { data: reuniones } = await supabase.from('reuniones').select('id, fecha, tema');
+    const { data: adolescentes } = await supabase.from('adolescentes').select('id, cedula');
 
+    if (!reuniones || !adolescentes) throw new Error("Error cargando referencias para importar asistencias");
+
+    const dbPayload = asistencias.map(a => {
+        const reunion = reuniones.find((r: any) => r.fecha === a.reunionFecha && r.tema === a.reunionTema);
+        const adolescente = adolescentes.find((ad: any) => ad.cedula === a.adolescenteCedula);
+        
         if (reunion && adolescente) {
-            const newAsistencia: Asistencia = {
-                reunionId: reunion.id,
-                adolescenteId: adolescente.id,
+            return {
+                reunion_id: reunion.id,
+                adolescente_id: adolescente.id,
                 estado: a.estado,
-                detalle: a.detalle
+                detalle: a.detalle || 'Regular'
             };
-            const index = db.asistencias.findIndex(existing => existing.reunionId === reunion.id && existing.adolescenteId === adolescente.id);
-            if (index > -1) {
-                db.asistencias[index] = newAsistencia;
-            } else {
-                db.asistencias.push(newAsistencia);
-            }
         }
+        return null;
+    }).filter(Boolean);
+
+    if (dbPayload.length > 0) {
+        const { error } = await supabase.from('asistencias').upsert(dbPayload, { onConflict: 'reunion_id,adolescente_id' });
+        if (error) throw new Error(error.message || JSON.stringify(error));
     }
   },
 
-  // Tutores CRUD
+
+  // Tutores
   createTutor: async (tutor: Omit<Tutor, 'id'>): Promise<Tutor> => {
-    await delay(300);
-    const newId = Math.max(0, ...db.tutores.map(t => t.id)) + 1;
-    const newTutor = { ...tutor, id: newId };
-    db.tutores.push(newTutor);
-    return newTutor;
+    const dbPayload = {
+        nombre: tutor.nombre,
+        apellido: tutor.apellido,
+        cedula: tutor.cedula,
+        parentesco: tutor.parentesco,
+        barrio: tutor.barrio,
+        ciudad: tutor.ciudad
+    };
+    const { data, error } = await supabase.from('tutores').insert(dbPayload).select().single();
+    const result = handleSupabaseData(data, error, 'createTutor');
+    return result;
   },
   updateTutor: async (tutor: Tutor): Promise<Tutor> => {
-    await delay(300);
-    db.tutores = db.tutores.map(t => t.id === tutor.id ? tutor : t);
-    return tutor;
+    const dbPayload = {
+        nombre: tutor.nombre,
+        apellido: tutor.apellido,
+        cedula: tutor.cedula,
+        parentesco: tutor.parentesco,
+        barrio: tutor.barrio,
+        ciudad: tutor.ciudad
+    };
+    const { data, error } = await supabase.from('tutores').update(dbPayload).eq('id', tutor.id).select().single();
+    const result = handleSupabaseData(data, error, 'updateTutor');
+    return result;
   },
   deleteTutor: async (id: number): Promise<void> => {
-    await delay(300);
-    db.tutores = db.tutores.filter(t => t.id !== id);
-    // Also remove links
-    db.tutoresAdolescentes = db.tutoresAdolescentes.filter(ta => ta.tutorId !== id);
+    const { error } = await supabase.from('tutores').delete().eq('id', id);
+    if (error) throw new Error(error.message || JSON.stringify(error));
   },
   setTutorAdolescenteLinks: async (tutorId: number, adolescenteIds: number[]): Promise<void> => {
-    await delay(200);
-    // Remove existing links for this tutor
-    db.tutoresAdolescentes = db.tutoresAdolescentes.filter(ta => ta.tutorId !== tutorId);
-    // Add new links
-    const newLinks: TutorAdolescente[] = adolescenteIds.map(adoId => ({
-      tutorId: tutorId,
-      adolescenteId: adoId
-    }));
-    db.tutoresAdolescentes.push(...newLinks);
+    const { error: deleteError } = await supabase.from('tutor_adolescente').delete().eq('tutor_id', tutorId);
+    if (deleteError) throw new Error(deleteError.message || JSON.stringify(deleteError));
+
+    if (adolescenteIds.length > 0) {
+        const payload = adolescenteIds.map(id => ({ tutor_id: tutorId, adolescente_id: id }));
+        const { error: insertError } = await supabase.from('tutor_adolescente').insert(payload);
+        if (insertError) throw new Error(insertError.message || JSON.stringify(insertError));
+    }
   },
   createTutoresAndLinkBulk: async (tutores: (Omit<Tutor, 'id'> & { adolescenteCedulas: string })[]): Promise<void> => {
-    await delay(1000);
-    let lastTutorId = Math.max(0, ...db.tutores.map(t => t.id));
+    const tutoresPayload = tutores.map(t => ({
+        nombre: t.nombre, apellido: t.apellido, cedula: t.cedula, parentesco: t.parentesco,
+        barrio: t.barrio, ciudad: t.ciudad
+    }));
+    
+    const { data: createdTutores, error: tutorError } = await supabase.from('tutores').insert(tutoresPayload).select();
+    if (tutorError) throw new Error(tutorError.message || JSON.stringify(tutorError));
+    if (!createdTutores) return;
 
-    for (const tutorData of tutores) {
-      lastTutorId++;
-      const { adolescenteCedulas, ...tutor } = tutorData;
-      const newTutor = { ...tutor, id: lastTutorId };
-      db.tutores.push(newTutor);
-      
-      const cedulas = adolescenteCedulas.split(',').map(c => c.trim());
-      const adolescenteIds = db.adolescentes
-        .filter(a => cedulas.includes(a.cedula))
-        .map(a => a.id);
-        
-      const newLinks: TutorAdolescente[] = adolescenteIds.map(adoId => ({
-        tutorId: newTutor.id,
-        adolescenteId: adoId
-      }));
-      db.tutoresAdolescentes.push(...newLinks);
+    const { data: adolescentes } = await supabase.from('adolescentes').select('id, cedula');
+    if (!adolescentes) return;
+
+    const linksPayload: any[] = [];
+    
+    createdTutores.forEach((newTutor: any) => {
+        const originalInput = tutores.find(t => t.cedula === newTutor.cedula);
+        if (originalInput && originalInput.adolescenteCedulas) {
+            const cedulas = originalInput.adolescenteCedulas.split(',').map(c => c.trim());
+            cedulas.forEach(c => {
+                const ado = adolescentes.find((a: any) => a.cedula === c);
+                if (ado) {
+                    linksPayload.push({ tutor_id: newTutor.id, adolescente_id: ado.id });
+                }
+            });
+        }
+    });
+
+    if (linksPayload.length > 0) {
+        const { error: linkError } = await supabase.from('tutor_adolescente').insert(linksPayload);
+        if (linkError) throw new Error(linkError.message || JSON.stringify(linkError));
     }
   },
   
-  // Usuarios CRUD
-  createUsuario: async (usuario: Omit<Usuario, 'id'>): Promise<Usuario> => {
-    await delay(300);
-    const newId = Math.max(0, ...db.usuarios.map(u => u.id)) + 1;
-    const newUsuario = { ...usuario, id: newId };
-    db.usuarios.push(newUsuario);
-    return newUsuario;
-  },
-  updateUsuario: async (usuario: Usuario): Promise<Usuario> => {
-    await delay(300);
-    db.usuarios = db.usuarios.map(u => {
-        if (u.id === usuario.id) {
-            // Don't overwrite password if it's not provided in the update
-            const newPassword = usuario.password ? usuario.password : u.password;
-            return { ...usuario, password: newPassword };
+  // Usuarios & Roles
+  createUsuario: async (usuario: Omit<Usuario, 'id' | 'password'> & { id?: string, password?: string }): Promise<Usuario> => {
+    // 1. Create the user in Supabase Auth (Sign Up)
+    if (!usuario.password) {
+        throw new Error("Se requiere una contraseña para crear un usuario nuevo.");
+    }
+
+    const { data: authData, error: authError } = await supabase.auth.signUp({
+        email: usuario.email,
+        password: usuario.password,
+        options: {
+            data: {
+                nombre: usuario.nombre
+            }
         }
-        return u;
     });
-    return usuario;
+
+    if (authError) {
+         const msg = authError.message || JSON.stringify(authError);
+         console.error("Auth creation failed:", msg);
+         throw new Error(`Error creando usuario en Auth: ${msg}`);
+    }
+    
+    // 2. Get the ID from the Auth response
+    const userId = authData.user?.id;
+    if (!userId) {
+         throw new Error("No se pudo obtener el ID del usuario creado en Auth.");
+    }
+
+    // 3. Insert into public.usuarios using the retrieved ID
+    const dbPayload = {
+        id: userId, 
+        nombre: usuario.nombre,
+        email: usuario.email,
+        rol_id: usuario.rolId,
+        avatar_url: usuario.avatarUrl
+    };
+
+    const { data, error } = await supabase.from('usuarios').insert(dbPayload).select().single();
+    
+    const result = handleSupabaseData(data, error, 'createUsuario');
+    return { ...result, rolId: result.rol_id, avatarUrl: result.avatar_url };
   },
-  deleteUsuario: async (id: number): Promise<void> => {
-    await delay(300);
-    db.usuarios = db.usuarios.filter(u => u.id !== id);
+  updateUsuario: async (usuario: Usuario & { password?: string }): Promise<Usuario> => {
+    const dbPayload = {
+        nombre: usuario.nombre,
+        email: usuario.email,
+        rol_id: usuario.rolId,
+        avatar_url: usuario.avatarUrl
+    };
+    const { data, error } = await supabase.from('usuarios').update(dbPayload).eq('id', usuario.id).select().single();
+    const result = handleSupabaseData(data, error, 'updateUsuario');
+    return { ...result, rolId: result.rol_id, avatarUrl: result.avatar_url };
+  },
+  deleteUsuario: async (id: string): Promise<void> => {
+    const { error } = await supabase.from('usuarios').delete().eq('id', id);
+    if (error) throw new Error(error.message || JSON.stringify(error));
   },
 
-  // Roles CRUD
   createRole: async (role: Omit<Rol, 'id'>): Promise<Rol> => {
-    await delay(300);
-    const newId = Math.max(0, ...db.roles.map(r => r.id)) + 1;
-    const newRole = { ...role, id: newId };
-    db.roles.push(newRole);
-    return newRole;
+    const { data, error } = await supabase.from('roles').insert(role).select().single();
+    const result = handleSupabaseData(data, error, 'createRole');
+    return result;
   },
   updateRole: async (role: Rol): Promise<Rol> => {
-    await delay(300);
-    db.roles = db.roles.map(r => r.id === role.id ? role : r);
-    return role;
+    const { data, error } = await supabase.from('roles').update(role).eq('id', role.id).select().single();
+    const result = handleSupabaseData(data, error, 'updateRole');
+    return result;
   },
   deleteRole: async (id: number): Promise<{ success: boolean; message?: string }> => {
-    await delay(300);
-    if (id <= 3) { // Prevent deleting base roles
-        return { success: false, message: 'No se pueden eliminar los roles base del sistema.' };
+    const { error } = await supabase.from('roles').delete().eq('id', id);
+    if (error) {
+        if (error.code === '23503') {
+             return { success: false, message: 'No se puede eliminar el rol porque está asignado a uno o más usuarios.' };
+        }
+        throw new Error(error.message || JSON.stringify(error));
     }
-    const isRoleInUse = db.usuarios.some(u => u.rolId === id);
-    if (isRoleInUse) {
-      return { success: false, message: 'No se puede eliminar el rol porque está asignado a uno o más usuarios.' };
-    }
-    const initialLength = db.roles.length;
-    db.roles = db.roles.filter(r => r.id !== id);
-    return { success: db.roles.length < initialLength };
+    return { success: true };
   },
 
-  // Eventos CRUD
+  // Eventos
+  createEvento: async (evento: Omit<Evento, 'id'>): Promise<Evento> => {
+    const dbPayload = {
+      tema: evento.tema,
+      lugar: evento.lugar,
+      fecha_inicio: evento.fechaInicio,
+      hora_inicio: evento.horaInicio,
+      fecha_fin: evento.fechaFin,
+      hora_fin: evento.horaFin,
+      tiene_costo: evento.tieneCosto,
+      costo_total: evento.costoTotal || null,
+      costo_persona: evento.costoPersona || null
+    };
+    const { data, error } = await supabase.from('eventos').insert(dbPayload).select().single();
+    const result = handleSupabaseData(data, error, 'createEvento');
+    return {
+        id: result.id,
+        tema: result.tema,
+        lugar: result.lugar,
+        fechaInicio: result.fecha_inicio,
+        horaInicio: result.hora_inicio,
+        fechaFin: result.fecha_fin,
+        horaFin: result.hora_fin,
+        tieneCosto: result.tiene_costo,
+        costoTotal: result.costo_total,
+        costoPersona: result.costo_persona
+    };
+  },
+  updateEvento: async (evento: Evento): Promise<Evento> => {
+    const dbPayload = {
+      tema: evento.tema,
+      lugar: evento.lugar,
+      fecha_inicio: evento.fechaInicio,
+      hora_inicio: evento.horaInicio,
+      fecha_fin: evento.fechaFin,
+      hora_fin: evento.horaFin,
+      tiene_costo: evento.tieneCosto,
+      costo_total: evento.costoTotal || null,
+      costo_persona: evento.costoPersona || null
+    };
+    const { data, error } = await supabase.from('eventos').update(dbPayload).eq('id', evento.id).select().single();
+    const result = handleSupabaseData(data, error, 'updateEvento');
+    return {
+        id: result.id,
+        tema: result.tema,
+        lugar: result.lugar,
+        fechaInicio: result.fecha_inicio,
+        horaInicio: result.hora_inicio,
+        fechaFin: result.fecha_fin,
+        horaFin: result.hora_fin,
+        tieneCosto: result.tiene_costo,
+        costoTotal: result.costo_total,
+        costoPersona: result.costo_persona
+    };
+  },
+  deleteEvento: async (id: number): Promise<void> => {
+    const { error } = await supabase.from('eventos').delete().eq('id', id);
+    if (error) throw new Error(error.message || JSON.stringify(error));
+  },
+
   createPago: async (pago: Omit<PagoEvento, 'id'>): Promise<PagoEvento> => {
-    await delay(300);
-    const newId = Math.max(0, ...db.pagos.map(p => p.id)) + 1;
-    const newPago = { ...pago, id: newId };
-    db.pagos.push(newPago);
-    return newPago;
+    const dbPayload = {
+        inscripcion_id: pago.inscripcionId,
+        monto: pago.monto,
+        fecha: pago.fecha
+    };
+    const { data, error } = await supabase.from('pagos_eventos').insert(dbPayload).select().single();
+    const result = handleSupabaseData(data, error, 'createPago');
+    return { 
+        id: result.id,
+        inscripcionId: result.inscripcion_id,
+        fecha: result.fecha,
+        monto: result.monto
+    };
   },
   deletePago: async (id: number): Promise<void> => {
-    await delay(300);
-    db.pagos = db.pagos.filter(p => p.id !== id);
+    const { error } = await supabase.from('pagos_eventos').delete().eq('id', id);
+    if (error) throw new Error(error.message || JSON.stringify(error));
   },
   createInscripcion: async (inscripcion: Omit<InscripcionEvento, 'id'>): Promise<InscripcionEvento> => {
-    await delay(300);
-    const newId = Math.max(0, ...db.inscripciones.map(i => i.id)) + 1;
-    const newInscripcion = { ...inscripcion, id: newId };
-    db.inscripciones.push(newInscripcion);
-    return newInscripcion;
+    const dbPayload = {
+        evento_id: inscripcion.eventoId,
+        adolescente_id: inscripcion.adolescenteId,
+        fecha_inscripcion: inscripcion.fechaInscripcion,
+        notas: inscripcion.notas
+    };
+    const { data, error } = await supabase.from('inscripciones_eventos').insert(dbPayload).select().single();
+    const result = handleSupabaseData(data, error, 'createInscripcion');
+    return { 
+        id: result.id,
+        eventoId: result.evento_id,
+        adolescenteId: result.adolescente_id,
+        fechaInscripcion: result.fecha_inscripcion,
+        notas: result.notas
+    };
   },
   updateInscripcion: async (inscripcion: InscripcionEvento): Promise<InscripcionEvento> => {
-    await delay(300);
-    db.inscripciones = db.inscripciones.map(i => i.id === inscripcion.id ? inscripcion : i);
-    return inscripcion;
+    const dbPayload = {
+        evento_id: inscripcion.eventoId,
+        adolescente_id: inscripcion.adolescenteId,
+        fecha_inscripcion: inscripcion.fechaInscripcion,
+        notas: inscripcion.notas
+    };
+    const { data, error } = await supabase.from('inscripciones_eventos').update(dbPayload).eq('id', inscripcion.id).select().single();
+    const result = handleSupabaseData(data, error, 'updateInscripcion');
+    return { 
+        id: result.id,
+        eventoId: result.evento_id,
+        adolescenteId: result.adolescente_id,
+        fechaInscripcion: result.fecha_inscripcion,
+        notas: result.notas
+    };
   },
   deleteInscripcion: async (id: number): Promise<void> => {
-    await delay(300);
-    // Also delete associated payments
-    db.pagos = db.pagos.filter(p => p.inscripcionId !== id);
-    db.inscripciones = db.inscripciones.filter(i => i.id !== id);
+    const { error } = await supabase.from('inscripciones_eventos').delete().eq('id', id);
+    if (error) throw new Error(error.message || JSON.stringify(error));
   },
   addParticipante: async (participante: ParticipanteEvento): Promise<ParticipanteEvento> => {
-    await delay(300);
-    if (!db.participantes.some(p => p.eventoId === participante.eventoId && p.adolescenteId === participante.adolescenteId)) {
-        db.participantes.push(participante);
-    }
-    return participante;
+    const dbPayload = {
+        evento_id: participante.eventoId,
+        adolescente_id: participante.adolescenteId
+    };
+    const { data, error } = await supabase.from('participantes_eventos').insert(dbPayload).select().single();
+    const result = handleSupabaseData(data, error, 'addParticipante');
+    return { eventoId: result.evento_id, adolescenteId: result.adolescente_id };
   },
   removeParticipante: async (eventoId: number, adolescenteId: number): Promise<void> => {
-    await delay(300);
-    db.participantes = db.participantes.filter(p => !(p.eventoId === eventoId && p.adolescenteId === adolescenteId));
+    const { error } = await supabase.from('participantes_eventos').delete().eq('evento_id', eventoId).eq('adolescente_id', adolescenteId);
+    if (error) throw new Error(error.message || JSON.stringify(error));
   },
   
   // Cumpleaños
   addCumpleanosCelebrado: async (celebracion: CelebracionCumpleanos): Promise<CelebracionCumpleanos> => {
-    await delay(200);
-    const exists = db.celebracionesCumpleanos.some(c => c.adolescenteId === celebracion.adolescenteId && c.ano === celebracion.ano);
-    if (!exists) {
-        db.celebracionesCumpleanos.push(celebracion);
-    }
-    return celebracion;
+    const dbPayload = {
+        adolescente_id: celebracion.adolescenteId,
+        ano: celebracion.ano
+    };
+    // Use upsert to handle potential duplicates on primary key (adolescente_id, ano) gracefully
+    const { data, error } = await supabase.from('celebraciones_cumpleanos').upsert(dbPayload, { onConflict: 'adolescente_id,ano' }).select().single();
+    const result = handleSupabaseData(data, error, 'addCumpleanosCelebrado');
+    return { adolescenteId: result.adolescente_id, ano: result.ano };
   },
   
   // Data Management
   clearTable: async (tableName: 'adolescentes' | 'encargados' | 'reuniones' | 'tutores' | 'eventos'): Promise<void> => {
-    await delay(500);
-    switch (tableName) {
-        case 'adolescentes':
-            db.adolescentes = [];
-            db.asistencias = [];
-            db.tutoresAdolescentes = [];
-            db.inscripciones = [];
-            db.pagos = [];
-            db.participantes = [];
-            db.celebracionesCumpleanos = [];
-            break;
-        case 'encargados':
-            db.encargados = [];
-            break;
-        case 'reuniones':
-            db.reuniones = [];
-            db.asistencias = [];
-            break;
-        case 'tutores':
-            db.tutores = [];
-            db.tutoresAdolescentes = [];
-            break;
-        case 'eventos':
-            db.eventos = [];
-            db.inscripciones = [];
-            db.pagos = [];
-            db.participantes = [];
-            break;
-    }
+    const { error } = await supabase.from(tableName).delete().neq('id', 0);
+    if (error) throw new Error(error.message || JSON.stringify(error));
+  },
+
+  // Profile Management
+  createUserProfile: async (profile: Usuario): Promise<Usuario> => {
+     return api.createUsuario(profile);
   },
 };

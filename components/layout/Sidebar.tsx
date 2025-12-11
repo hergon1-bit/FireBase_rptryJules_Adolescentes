@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
-import { HomeIcon, UsersIcon, UserCheckIcon, ClipboardListIcon, HeartHandshakeIcon, CalendarDaysIcon, BarChartIcon, SettingsIcon, LogOutIcon, ChevronDownIcon, ShieldIcon, TrashIcon, UploadCloudIcon } from '../ui/Icons';
+import { HomeIcon, UsersIcon, UserCheckIcon, ClipboardListIcon, HeartHandshakeIcon, CalendarDaysIcon, BarChartIcon, SettingsIcon, ChevronDownIcon, ShieldIcon, TrashIcon, UploadCloudIcon } from '../ui/Icons';
 import { Page } from '../../types';
 
 interface SidebarProps {
@@ -34,7 +34,7 @@ const NavItem: React.FC<{
 );
 
 const Sidebar: React.FC<SidebarProps> = ({ currentPage, navigateTo, isOpen, setOpen }) => {
-  const { logout, user, hasPermission } = useAuth();
+  const { user, hasPermission } = useAuth();
   
   const adminSubPages: Page[] = ['usuarios', 'roles', 'limpiar-tablas', 'cargar-tablas'];
   const [isAdminOpen, setIsAdminOpen] = useState(adminSubPages.includes(currentPage));
@@ -115,16 +115,6 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, navigateTo, isOpen, setO
               </li>
             )}
           </ul>
-          <div className="absolute bottom-0 left-0 w-full p-4">
-             <a
-                href="#"
-                onClick={(e) => { e.preventDefault(); logout(); }}
-                className="flex items-center p-2 text-base font-normal text-red-400 rounded-lg hover:bg-red-500 hover:text-white"
-            >
-                <LogOutIcon />
-                <span className="ml-3">Cerrar Sesión</span>
-            </a>
-          </div>
         </div>
       </aside>
        {isOpen && <div className="fixed inset-0 z-30 bg-black/50 sm:hidden" onClick={() => setOpen(false)}></div>}

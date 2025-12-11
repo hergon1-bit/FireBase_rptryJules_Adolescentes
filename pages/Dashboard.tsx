@@ -3,7 +3,7 @@ import React, { useMemo, useState } from 'react';
 import { useData } from '../contexts/DataContext';
 import { useAuth } from '../contexts/AuthContext';
 import { calcularEdad, formatDate, calcularProximoCumpleanos } from '../utils/helpers';
-import { UsersIcon, ClipboardListIcon, CalendarDaysIcon, HeartHandshakeIcon, CheckCircleIcon, RefreshIcon } from '../components/ui/Icons';
+import { UsersIcon, ClipboardListIcon, CalendarDaysIcon, HeartHandshakeIcon, CheckCircleIcon, RefreshIcon, UserCheckIcon } from '../components/ui/Icons';
 import { Adolescente, Reunion, Page } from '../types';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 
@@ -42,13 +42,16 @@ const Dashboard: React.FC<DashboardProps> = ({ navigateTo }) => {
         const today = new Date();
         today.setHours(0, 0, 0, 0);
 
+        // Set the end date to be the start of the 8th day to create a 7-day window.
+        // The check will be < this date, covering today + 6 more days.
         const sevenDaysLater = new Date(today);
         sevenDaysLater.setDate(today.getDate() + 7);
 
         const eventosProximos = eventos.filter(evento => {
             const [year, month, day] = evento.fechaInicio.split('-').map(Number);
             const eventDate = new Date(year, month - 1, day); 
-            return eventDate >= today && eventDate <= sevenDaysLater;
+            // Check for events from the start of today up to (but not including) the start of the 8th day.
+            return eventDate >= today && eventDate < sevenDaysLater;
         }).length;
 
         return {
@@ -280,9 +283,9 @@ const Dashboard: React.FC<DashboardProps> = ({ navigateTo }) => {
                                      <button
                                         onClick={() => addCelebracionCumpleanos(ado.id, new Date().getFullYear())}
                                         title="Marcar como celebrado"
-                                        className="text-gray-400 hover:text-green-400 transition-colors"
+                                        className="p-2 rounded-full text-green-400 hover:bg-green-500/20"
                                      >
-                                        <CheckCircleIcon className="w-5 h-5"/>
+                                         <CheckCircleIcon className="w-5 h-5" />
                                      </button>
                                 </div>
                             </div>
@@ -295,11 +298,5 @@ const Dashboard: React.FC<DashboardProps> = ({ navigateTo }) => {
         </div>
     );
 };
-
-const UserCheckIcon: React.FC<{ className?: string }> = ({ className = 'w-6 h-6' }) => (
-  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
-    <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><polyline points="16 11 18 13 22 9"></polyline>
-  </svg>
-);
 
 export default Dashboard;

@@ -1,53 +1,44 @@
-
-import React, { createContext, useState, useContext, ReactNode, useEffect, useCallback } from 'react';
+import React, { createContext, useState, useContext, ReactNode } from 'react';
 import { Usuario, Rol } from '../types';
-import { api } from '../services/api';
 
 interface AuthContextType {
   user: Usuario | null;
   rol: Rol | null;
-  login: (email: string, pass: string) => Promise<boolean>;
-  logout: () => void;
   hasPermission: (module: keyof Rol['permisos'], action: keyof Rol['permisos'][keyof Rol['permisos']]) => boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const [user, setUser] = useState<Usuario | null>(null);
-  const [rol, setRol] = useState<Rol | null>(null);
+  // Configured with the specific requested user ID acting as Admin
+  const defaultUser: Usuario = {
+      id: 'd52c4619-ad85-4941-9428-668cd6f9dee2',
+      email: 'hergon1@gmail.com',
+      nombre: 'Administrador',
+      rolId: 1, // Assuming ID 1 is Administrator in your DB
+      avatarUrl: 'https://ui-avatars.com/api/?name=Administrador&background=4f46e5&color=fff'
+  };
   
-  const initAuth = useCallback(async () => {
-    const storedUser = localStorage.getItem('user');
-    if (storedUser) {
-        const parsedUser: Usuario = JSON.parse(storedUser);
-        setUser(parsedUser);
-        const userRol = await api.getRolById(parsedUser.rolId);
-        setRol(userRol || null);
-    }
-  }, []);
-
-  useEffect(() => {
-    initAuth();
-  }, [initAuth]);
-
-  const login = async (email: string, pass: string): Promise<boolean> => {
-    const loggedInUser = await api.login(email, pass);
-    if (loggedInUser) {
-      setUser(loggedInUser);
-      const userRol = await api.getRolById(loggedInUser.rolId);
-      setRol(userRol || null);
-      localStorage.setItem('user', JSON.stringify(loggedInUser));
-      return true;
-    }
-    return false;
+  // Mock Permissions for admin (full access) to ensure UI works even if roles table fetch fails initially
+  const adminPermisos = {
+      read: true, create: true, update: true, delete: true
+  };
+  
+  const defaultRol: Rol = {
+      id: 1,
+      nombre: 'Administrador',
+      permisos: {
+          adolescentes: adminPermisos,
+          encargados: adminPermisos,
+          reuniones: adminPermisos,
+          tutores: adminPermisos,
+          eventos: adminPermisos,
+          usuarios: adminPermisos,
+      }
   };
 
-  const logout = () => {
-    setUser(null);
-    setRol(null);
-    localStorage.removeItem('user');
-  };
+  const [user] = useState<Usuario | null>(defaultUser);
+  const [rol] = useState<Rol | null>(defaultRol);
   
   const hasPermission = (module: keyof Rol['permisos'], action: keyof Rol['permisos'][keyof Rol['permisos']]): boolean => {
     if (!rol) return false;
@@ -55,7 +46,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   };
 
   return (
-    <AuthContext.Provider value={{ user, rol, login, logout, hasPermission }}>
+    <AuthContext.Provider value={{ user, rol, hasPermission }}>
       {children}
     </AuthContext.Provider>
   );
