@@ -366,6 +366,10 @@ export const api = {
         estado: result.estado
     };
   },
+  deleteReunion: async (id: number): Promise<void> => {
+    const { error } = await supabase.from('reuniones').delete().eq('id', id);
+    if (error) throw new Error(error.message || JSON.stringify(error));
+  },
   createReunionesBulk: async (reuniones: (Omit<Reunion, 'id' | 'encargadoId'> & { encargadoCedula: string })[]): Promise<void> => {
     const { data: encargados } = await supabase.from('encargados').select('id, cedula');
     

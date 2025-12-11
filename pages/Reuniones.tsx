@@ -13,13 +13,15 @@ interface ReunionesProps {
 }
 
 const Reuniones: React.FC<ReunionesProps> = ({ navigateTo }) => {
-    const { reuniones, encargados, asistencias, adolescentes, addReunion, updateReunion } = useData();
+    const { reuniones, encargados, asistencias, adolescentes, addReunion, updateReunion, deleteReunion } = useData();
     const { hasPermission } = useAuth();
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingReunion, setEditingReunion] = useState<Reunion | null>(null);
     const [dateFilter, setDateFilter] = useState({ start: '', end: '' });
     const [viewingAttendanceReunion, setViewingAttendanceReunion] = useState<Reunion | null>(null);
     const [isUnsavedConfirmOpen, setIsUnsavedConfirmOpen] = useState(false);
+    const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
+    const [reunionToDelete, setReunionToDelete] = useState<Reunion | null>(null);
 
     const initialFormState: Omit<Reunion, 'id'> = {
         fecha: new Date().toISOString().split('T')[0],
@@ -87,6 +89,19 @@ const Reuniones: React.FC<ReunionesProps> = ({ navigateTo }) => {
         forceCloseModal();
     };
     
+    const handleDeleteClick = (reunion: Reunion) => {
+        setReunionToDelete(reunion);
+        setIsDeleteConfirmOpen(true);
+    };
+
+    const handleConfirmDelete = async () => {
+        if (reunionToDelete) {
+            await deleteReunion(reunionToDelete.id);
+            setIsDeleteConfirmOpen(false);
+            setReunionToDelete(null);
+        }
+    };
+
     const getAsistenciaCount = (reunionId: number) => {
         const presentes = asistencias.filter(a => a.reunionId === reunionId && a.estado === 'Presente').length;
         const ausentes = asistencias.filter(a => a.reunionId === reunionId && a.estado === 'Ausente').length;
@@ -233,6 +248,15 @@ const Reuniones: React.FC<ReunionesProps> = ({ navigateTo }) => {
                                         Editar
                                     </button>
                                 }
+                                {reunion.estado === 'En Proceso' && hasPermission('reuniones', 'delete') && (
+                                    <button 
+                                        onClick={() => handleDeleteClick(reunion)} 
+                                        className="flex-1 bg-red-600/80 text-white px-3 py-1.5 rounded-md text-sm hover:bg-red-600 transition"
+                                        title="Eliminar Reunión"
+                                    >
+                                        Eliminar
+                                    </button>
+                                )}
                             </div>
                         </div>
                     );
@@ -298,6 +322,16 @@ const Reuniones: React.FC<ReunionesProps> = ({ navigateTo }) => {
                 message="Tienes cambios sin guardar. ¿Estás seguro de que quieres cerrar y descartar los cambios?"
                 confirmText="Descartar"
                 confirmButtonClassName="bg-yellow-500 text-background hover:bg-yellow-600"
+            />
+
+            <ConfirmationModal
+                isOpen={isDeleteConfirmOpen}
+                onClose={() => setIsDeleteConfirmOpen(false)}
+                onConfirm={handleConfirmDelete}
+                title="Eliminar Reunión"
+                message={<>¿Estás seguro de que deseas eliminar la reunión <strong>{reunionToDelete?.tema}</strong>? Esta acción no se puede deshacer.</>}
+                confirmText="Eliminar"
+                confirmButtonClassName="bg-red-600 text-white hover:bg-red-700"
             />
         </div>
     );

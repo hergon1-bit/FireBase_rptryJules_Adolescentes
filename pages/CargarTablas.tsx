@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo, useRef, useCallback } from 'react';
 import { useData } from '../contexts/DataContext';
 import { Adolescente, Encargado, Reunion, Tutor, Asistencia, TipoAsistencia, AsistenciaDetalle, GradoParentesco } from '../types';
@@ -96,8 +97,8 @@ const CargarTablas: React.FC = () => {
         const reunionesInFile = new Set<string>();
         return rows.map(rowStr => {
             const row = rowStr.split(';');
-            const [fecha, tema, encargadoCedula] = row.map(field => field?.trim());
-            const rawData = { fecha, tema, encargadoCedula };
+            const [fecha, tema, encargadoCedula, estado] = row.map(field => field?.trim());
+            const rawData = { fecha, tema, encargadoCedula, estado };
             const reunionKey = `${fecha}_${tema}`;
 
             if (!fecha || !tema || !encargadoCedula) return { data: rawData, isValid: false, error: 'Faltan campos obligatorios.' };
@@ -105,9 +106,19 @@ const CargarTablas: React.FC = () => {
             if (!existingCedulas.encargados.has(encargadoCedula)) return { data: rawData, isValid: false, error: `Encargado con CI '${encargadoCedula}' no existe.`};
             if (existingReuniones.has(reunionKey) || reunionesInFile.has(reunionKey)) return { data: rawData, isValid: false, error: `Reunión '${tema}' en fecha '${fecha}' duplicada.` };
 
+            // Estado validation
+            let finalEstado = 'En Proceso';
+            if (estado) {
+                if (estado === 'En Proceso' || estado === 'Finalizado') {
+                    finalEstado = estado;
+                } else {
+                     return { data: rawData, isValid: false, error: `Estado '${estado}' inválido. Use 'En Proceso' o 'Finalizado'.` };
+                }
+            }
+
             reunionesInFile.add(reunionKey);
             return {
-                data: { fecha, tema, encargadoCedula },
+                data: { fecha, tema, encargadoCedula, estado: finalEstado },
                 isValid: true
             };
         });
@@ -223,9 +234,9 @@ const CargarTablas: React.FC = () => {
             instructions: <ol className="list-decimal list-inside space-y-1">
                 <li>Nombre (Requerido)</li><li>Apellido (Requerido)</li><li>Cédula (Requerido, único)</li><li>Fecha Nacimiento (Requerido, AAAA-MM-DD)</li><li>Barrio</li><li>Ciudad</li><li>Teléfono</li><li>Sexo ('Masculino' o 'Femenino')</li><li>Estado ('Activo', 'Inactivo', o 'Anulado')</li>
             </ol>,
-            previewHeaders: ['Nombre', 'Cédula', 'Estado', 'Observación'],
+            previewHeaders: ['Nombre', 'Cédula', 'Estado', 'Validación', 'Observación'],
             renderRow: (row: ParsedRow, index: number) => <tr key={index} className={`border-t border-border ${!row.isValid ? 'bg-red-900/40' : ''}`}>
-                <td className="p-2">{row.data.nombre || 'N/A'} {row.data.apellido || ''}</td><td className="p-2">{row.data.cedula || 'N/A'}</td><td className={`p-2 font-semibold ${!row.isValid ? 'text-red-300' : 'text-green-300'}`}>{row.isValid ? "Válido" : "Error"}</td><td className="p-2 text-yellow-400">{row.error}</td>
+                <td className="p-2">{row.data.nombre || 'N/A'} {row.data.apellido || ''}</td><td className="p-2">{row.data.cedula || 'N/A'}</td><td className="p-2">{row.data.estado || 'Activo'}</td><td className={`p-2 font-semibold ${!row.isValid ? 'text-red-300' : 'text-green-300'}`}>{row.isValid ? "Válido" : "Error"}</td><td className="p-2 text-yellow-400">{row.error}</td>
             </tr>
         },
         encargados: {
@@ -233,7 +244,7 @@ const CargarTablas: React.FC = () => {
             instructions: <ol className="list-decimal list-inside space-y-1">
                 <li>Nombre (Requerido)</li><li>Apellido (Requerido)</li><li>Cédula (Requerido, único)</li><li>Fecha Nacimiento (Opcional, AAAA-MM-DD)</li><li>Barrio</li><li>Ciudad</li><li>Teléfono</li><li>Email</li>
             </ol>,
-            previewHeaders: ['Nombre', 'Cédula', 'Email', 'Estado', 'Observación'],
+            previewHeaders: ['Nombre', 'Cédula', 'Email', 'Validación', 'Observación'],
             renderRow: (row: ParsedRow, index: number) => <tr key={index} className={`border-t border-border ${!row.isValid ? 'bg-red-900/40' : ''}`}>
                 <td className="p-2">{row.data.nombre || 'N/A'} {row.data.apellido || ''}</td><td className="p-2">{row.data.cedula || 'N/A'}</td><td className="p-2">{row.data.email || 'N/A'}</td><td className={`p-2 font-semibold ${!row.isValid ? 'text-red-300' : 'text-green-300'}`}>{row.isValid ? "Válido" : "Error"}</td><td className="p-2 text-yellow-400">{row.error}</td>
             </tr>
@@ -241,11 +252,11 @@ const CargarTablas: React.FC = () => {
         reuniones: {
             title: 'Reuniones',
             instructions: <ol className="list-decimal list-inside space-y-1">
-                <li>Fecha (Requerido, AAAA-MM-DD)</li><li>Tema (Requerido)</li><li>Cédula del Encargado (Requerido, debe existir)</li>
+                <li>Fecha (Requerido, AAAA-MM-DD)</li><li>Tema (Requerido)</li><li>Cédula del Encargado (Requerido, debe existir)</li><li>Estado (Opcional: 'En Proceso' o 'Finalizado'. Por defecto: 'En Proceso')</li>
             </ol>,
-            previewHeaders: ['Tema', 'Fecha', 'CI Encargado', 'Estado', 'Observación'],
+            previewHeaders: ['Tema', 'Fecha', 'CI Encargado', 'Estado', 'Validación', 'Observación'],
             renderRow: (row: ParsedRow, index: number) => <tr key={index} className={`border-t border-border ${!row.isValid ? 'bg-red-900/40' : ''}`}>
-                <td className="p-2">{row.data.tema || 'N/A'}</td><td className="p-2">{row.data.fecha || 'N/A'}</td><td className="p-2">{row.data.encargadoCedula || 'N/A'}</td><td className={`p-2 font-semibold ${!row.isValid ? 'text-red-300' : 'text-green-300'}`}>{row.isValid ? "Válido" : "Error"}</td><td className="p-2 text-yellow-400">{row.error}</td>
+                <td className="p-2">{row.data.tema || 'N/A'}</td><td className="p-2">{row.data.fecha || 'N/A'}</td><td className="p-2">{row.data.encargadoCedula || 'N/A'}</td><td className="p-2">{row.data.estado || 'En Proceso'}</td><td className={`p-2 font-semibold ${!row.isValid ? 'text-red-300' : 'text-green-300'}`}>{row.isValid ? "Válido" : "Error"}</td><td className="p-2 text-yellow-400">{row.error}</td>
             </tr>
         },
         tutores: {
@@ -253,7 +264,7 @@ const CargarTablas: React.FC = () => {
             instructions: <ol className="list-decimal list-inside space-y-1">
                 <li>Nombre (Requerido)</li><li>Apellido (Requerido)</li><li>Cédula (Requerido, único)</li><li>Parentesco (Requerido)</li><li>Barrio</li><li>Ciudad</li><li>Cédulas de Adolescentes (Requerido, separadas por coma)</li>
             </ol>,
-            previewHeaders: ['Tutor', 'Cédula', 'Adolescentes Vinculados', 'Estado', 'Observación'],
+            previewHeaders: ['Tutor', 'Cédula', 'Adolescentes Vinculados', 'Validación', 'Observación'],
             renderRow: (row: ParsedRow, index: number) => <tr key={index} className={`border-t border-border ${!row.isValid ? 'bg-red-900/40' : ''}`}>
                 <td className="p-2">{row.data.nombre || 'N/A'} {row.data.apellido || ''}</td><td className="p-2">{row.data.cedula || 'N/A'}</td><td className="p-2">{row.data.adolescenteCedulas || 'N/A'}</td><td className={`p-2 font-semibold ${!row.isValid ? 'text-red-300' : 'text-green-300'}`}>{row.isValid ? "Válido" : "Error"}</td><td className="p-2 text-yellow-400">{row.error}</td>
             </tr>
@@ -263,9 +274,9 @@ const CargarTablas: React.FC = () => {
             instructions: <ol className="list-decimal list-inside space-y-1">
                 <li>Fecha de Reunión (Requerido, AAAA-MM-DD)</li><li>Tema de Reunión (Requerido)</li><li>Cédula del Adolescente (Requerido)</li><li>Estado ('Presente' o 'Ausente')</li><li>Detalle ('Primera Vez' o 'Regresa')</li>
             </ol>,
-            previewHeaders: ['Reunión', 'Adolescente', 'Estado', 'Observación'],
+            previewHeaders: ['Reunión', 'Adolescente', 'Estado', 'Validación', 'Observación'],
             renderRow: (row: ParsedRow, index: number) => <tr key={index} className={`border-t border-border ${!row.isValid ? 'bg-red-900/40' : ''}`}>
-                <td className="p-2">{row.data.reunionFecha || ''} - {row.data.reunionTema || 'N/A'}</td><td className="p-2">{row.data.adolescenteCedula || 'N/A'}</td><td className={`p-2 font-semibold ${!row.isValid ? 'text-red-300' : 'text-green-300'}`}>{row.isValid ? "Válido" : "Error"}</td><td className="p-2 text-yellow-400">{row.error}</td>
+                <td className="p-2">{row.data.reunionFecha || ''} - {row.data.reunionTema || 'N/A'}</td><td className="p-2">{row.data.adolescenteCedula || 'N/A'}</td><td className="p-2">{row.data.estado || 'N/A'}</td><td className={`p-2 font-semibold ${!row.isValid ? 'text-red-300' : 'text-green-300'}`}>{row.isValid ? "Válido" : "Error"}</td><td className="p-2 text-yellow-400">{row.error}</td>
             </tr>
         }
     };

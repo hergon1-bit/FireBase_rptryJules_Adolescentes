@@ -39,6 +39,7 @@ interface DataContextType {
 
   addReunion: (reunion: Omit<Reunion, 'id'>) => Promise<void>;
   updateReunion: (reunion: Reunion) => Promise<void>;
+  deleteReunion: (id: number) => Promise<void>;
   addReunionesBulk: (reuniones: (Omit<Reunion, 'id' | 'encargadoId'> & { encargadoCedula: string })[]) => Promise<void>;
   
   saveAsistencias: (asistencias: Asistencia[]) => Promise<void>;
@@ -252,6 +253,11 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     await fetchData();
   };
 
+  const deleteReunion = async (id: number) => {
+    await api.deleteReunion(id);
+    await fetchData();
+  };
+
   const addReunionesBulk = async (reuniones: (Omit<Reunion, 'id' | 'encargadoId'> & { encargadoCedula: string })[]) => {
     await api.createReunionesBulk(reuniones);
     await fetchData();
@@ -377,7 +383,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       addAdolescente, updateAdolescente, deleteAdolescente, addAdolescentesBulk,
       addUser, updateUser, deleteUser, sendPasswordReset,
       addEncargado, updateEncargado, deleteEncargado, addEncargadosBulk,
-      addReunion, updateReunion, saveAsistencias, addReunionesBulk, addAsistenciasBulk,
+      addReunion, updateReunion, deleteReunion, saveAsistencias, addReunionesBulk, addAsistenciasBulk,
       addTutor, updateTutor, deleteTutor, addTutoresAndLinkBulk,
       addRole, updateRole, deleteRole,
       addEvento, updateEvento, deleteEvento,
