@@ -1,15 +1,33 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useData } from '../contexts/DataContext';
 import { formatDate, formatCurrency } from '../utils/helpers';
 import { Adolescente } from '../types';
+import { RefreshIcon } from '../components/ui/Icons';
 
-type ReportType = 'cumpleanos' | 'asistenciaReunion' | 'ausencias' | 'activos' | 'tutores' | 'pagosEvento';
+type ReportType = 'cumpleanos' | 'asistenciaReunion' | 'resumenAsistencia' | 'ausencias' | 'activos' | 'tutores' | 'pagosEvento';
 
 const Reportes: React.FC = () => {
-    const { adolescentes, reuniones, asistencias, tutores, tutoresAdolescentes, eventos, inscripciones, pagos, participantes } = useData();
+    const { adolescentes, reuniones, asistencias, tutores, tutoresAdolescentes, eventos, inscripciones, pagos, participantes, fetchData } = useData();
     const [activeReport, setActiveReport] = useState<ReportType>('cumpleanos');
     const [selectedReunionId, setSelectedReunionId] = useState<number | null>(null);
     const [dateRange, setDateRange] = useState({ start: '', end: '' });
+    const [isRefreshing, setIsRefreshing] = useState(false);
+
+    // Actualizar datos al entrar a reportes para asegurar consistencia con la DB
+    useEffect(() => {
+        const loadFreshData = async () => {
+            setIsRefreshing(true);
+            await fetchData();
+            setIsRefreshing(false);
+        };
+        loadFreshData();
+    }, [fetchData]);
+
+    const handleRefresh = async () => {
+        setIsRefreshing(true);
+        await fetchData();
+        setIsRefreshing(false);
+    }
 
     const reportData = useMemo(() => {
         switch (activeReport) {
@@ -23,6 +41,35 @@ const Reportes: React.FC = () => {
                     .filter(a => a.reunionId === selectedReunionId && a.estado === 'Presente')
                     .map(a => a.adolescenteId);
                 return adolescentes.filter(a => asistentesIds.includes(a.id));
+
+            case 'resumenAsistencia':
+                // Filtramos las reuniones según el rango de fecha
+                const filteredReuniones = reuniones.filter(r => {
+                     if (!dateRange.start && !dateRange.end) return true;
+                     const reunionDate = new Date(r.fecha);
+                     const start = dateRange.start ? new Date(dateRange.start) : new Date('1900-01-01');
+                     const end = dateRange.end ? new Date(dateRange.end) : new Date('2100-01-01');
+                     return reunionDate >= start && reunionDate <= end;
+                });
+
+                // Generar resumen consolidado basado estrictamente en la tabla de asistencias
+                return filteredReuniones.map(r => {
+                    const asisPorReunion = asistencias.filter(a => a.reunionId === r.id);
+                    const presentes = asisPorReunion.filter(a => a.estado === 'Presente').length;
+                    const ausentes = asisPorReunion.filter(a => a.estado === 'Ausente').length;
+                    const totalRegistrados = presentes + ausentes;
+                    const porcentaje = totalRegistrados > 0 ? ((presentes / totalRegistrados) * 100).toFixed(1) : '0.0';
+                    
+                    return {
+                        id: r.id,
+                        fecha: r.fecha,
+                        tema: r.tema,
+                        presentes,
+                        ausentes,
+                        totalRegistrados,
+                        porcentaje
+                    };
+                }).sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime());
 
             case 'ausencias':
                 if (!dateRange.start || !dateRange.end) return [];
@@ -105,16 +152,52 @@ const Reportes: React.FC = () => {
              case 'asistenciaReunion':
                 return (
                      <div>
-                        <select onChange={(e) => setSelectedReunionId(Number(e.target.value))} className="bg-background border border-border p-2 rounded-md mb-4">
-                            <option>Seleccione una reunión</option>
-                            {reuniones.map(r => <option key={r.id} value={r.id}>{r.tema} - {formatDate(r.fecha)}</option>)}
-                        </select>
-                        <ReportTable headers={['Nombre', 'Apellido', 'Cédula']}>
-                            {(reportData as Adolescente[]).map(a => (
-                                <tr key={a.id}>
-                                    <td className="p-2">{a.nombre}</td>
-                                    <td className="p-2">{a.apellido}</td>
-                                    <td className="p-2">{a.cedula}</td>
+                        <div className="mb-4">
+                            <label className="block text-sm font-medium text-text-secondary mb-1">Seleccionar Reunión para ver lista detallada:</label>
+                            <select onChange={(e) => setSelectedReunionId(Number(e.target.value))} className="bg-background border border-border p-2 rounded-md w-full max-w-md">
+                                <option value="">-- Seleccione una reunión --</option>
+                                {reuniones.map(r => <option key={r.id} value={r.id}>{r.tema} - {formatDate(r.fecha)}</option>)}
+                            </select>
+                        </div>
+                        {selectedReunionId && (
+                            <ReportTable headers={['Nombre', 'Apellido', 'Cédula']}>
+                                {(reportData as Adolescente[]).map(a => (
+                                    <tr key={a.id}>
+                                        <td className="p-2">{a.nombre}</td>
+                                        <td className="p-2">{a.apellido}</td>
+                                        <td className="p-2">{a.cedula}</td>
+                                    </tr>
+                                ))}
+                                {(reportData as Adolescente[]).length === 0 && (
+                                    <tr><td colSpan={3} className="p-4 text-center text-text-secondary">No hay asistentes registrados para esta reunión.</td></tr>
+                                )}
+                            </ReportTable>
+                        )}
+                    </div>
+                );
+            case 'resumenAsistencia':
+                return (
+                    <div>
+                        <div className="flex gap-4 mb-4 items-center">
+                            <p className="text-sm font-medium text-text-secondary">Filtrar por fecha:</p>
+                            <input type="date" value={dateRange.start} onChange={e => setDateRange(prev => ({...prev, start: e.target.value}))} className="bg-background border border-border p-2 rounded-md"/>
+                            <input type="date" value={dateRange.end} onChange={e => setDateRange(prev => ({...prev, end: e.target.value}))} className="bg-background border border-border p-2 rounded-md"/>
+                        </div>
+                        <ReportTable headers={['Fecha', 'Tema', 'Presentes', 'Ausentes', '% Asistencia']}>
+                            {(reportData as any[]).map(row => (
+                                <tr key={row.id}>
+                                    <td className="p-2">{formatDate(row.fecha)}</td>
+                                    <td className="p-2">{row.tema}</td>
+                                    <td className="p-2 text-center text-green-400 font-bold">{row.presentes}</td>
+                                    <td className="p-2 text-center text-red-400 font-bold">{row.ausentes}</td>
+                                    <td className="p-2 text-center">
+                                        <div className="flex items-center justify-center gap-2">
+                                            <div className="w-16 bg-gray-700 rounded-full h-2">
+                                                <div className="bg-primary h-2 rounded-full" style={{ width: `${row.porcentaje}%` }}></div>
+                                            </div>
+                                            <span className="text-xs">{row.porcentaje}%</span>
+                                        </div>
+                                    </td>
                                 </tr>
                             ))}
                         </ReportTable>
@@ -187,10 +270,22 @@ const Reportes: React.FC = () => {
 
     return (
         <div className="space-y-6">
-            <h1 className="text-3xl font-bold">Reportes</h1>
+            <div className="flex justify-between items-center">
+                <h1 className="text-3xl font-bold">Reportes</h1>
+                <button 
+                    onClick={handleRefresh} 
+                    disabled={isRefreshing}
+                    className="flex items-center gap-2 bg-surface hover:bg-gray-700 text-text-secondary px-3 py-2 rounded-lg transition-colors"
+                >
+                    <RefreshIcon className={`w-5 h-5 ${isRefreshing ? 'animate-spin' : ''}`} />
+                    <span>{isRefreshing ? 'Sincronizando...' : 'Refrescar Datos'}</span>
+                </button>
+            </div>
+            
             <div className="flex flex-wrap gap-2">
+                <TabButton name="Resumen de Asistencia" id="resumenAsistencia" active={activeReport} setActive={setActiveReport} />
                 <TabButton name="Cumpleaños del Mes" id="cumpleanos" active={activeReport} setActive={setActiveReport} />
-                <TabButton name="Asistencia por Reunión" id="asistenciaReunion" active={activeReport} setActive={setActiveReport} />
+                <TabButton name="Lista de Asistentes" id="asistenciaReunion" active={activeReport} setActive={setActiveReport} />
                 <TabButton name="Ausencias por Período" id="ausencias" active={activeReport} setActive={setActiveReport} />
                 <TabButton name="Adolescentes Activos" id="activos" active={activeReport} setActive={setActiveReport} />
                 <TabButton name="Adolescentes y Tutores" id="tutores" active={activeReport} setActive={setActiveReport} />
@@ -215,7 +310,7 @@ const ReportTable: React.FC<{headers: string[], children: React.ReactNode}> = ({
         <table className="w-full text-sm text-left text-text-secondary">
             <thead className="text-xs text-text-primary uppercase bg-background">
                 <tr>
-                    {headers.map(h => <th key={h} scope="col" className={`px-2 py-3 ${h.startsWith('N°') || h.startsWith('Total') ? 'text-center' : 'text-left'}`}>{h}</th>)}
+                    {headers.map(h => <th key={h} scope="col" className={`px-2 py-3 ${h.startsWith('N°') || h.startsWith('Total') || h.startsWith('Presentes') || h.startsWith('Ausentes') || h.startsWith('%') ? 'text-center' : 'text-left'}`}>{h}</th>)}
                 </tr>
             </thead>
             <tbody className="divide-y divide-border">

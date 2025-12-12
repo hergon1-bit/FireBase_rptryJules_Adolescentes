@@ -1,5 +1,4 @@
-
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { useData } from '../contexts/DataContext';
 import { useAuth } from '../contexts/AuthContext';
 import { calcularEdad, formatDate, calcularProximoCumpleanos } from '../utils/helpers';
@@ -30,6 +29,17 @@ const Dashboard: React.FC<DashboardProps> = ({ navigateTo }) => {
     const { user } = useAuth();
     const [isLoading, setIsLoading] = useState(false);
 
+    // Efecto para forzar la lectura de base de datos al entrar al Dashboard
+    // Esto asegura que si vienes de "Cargar Tablas", los datos estén frescos.
+    useEffect(() => {
+        const loadFreshData = async () => {
+            setIsLoading(true);
+            await fetchData();
+            setIsLoading(false);
+        };
+        loadFreshData();
+    }, [fetchData]);
+
     const handleRefresh = async () => {
         setIsLoading(true);
         await fetchData();
@@ -37,7 +47,8 @@ const Dashboard: React.FC<DashboardProps> = ({ navigateTo }) => {
     };
     
     const stats = useMemo(() => {
-        const adolescentesActivosData = adolescentes.filter(a => a.estado === 'Activo');
+        // Robust filtering: case insensitive
+        const adolescentesActivosData = adolescentes.filter(a => a.estado?.toLowerCase() === 'activo');
         
         const today = new Date();
         today.setHours(0, 0, 0, 0);
@@ -46,9 +57,16 @@ const Dashboard: React.FC<DashboardProps> = ({ navigateTo }) => {
         sevenDaysLater.setDate(today.getDate() + 7);
 
         const eventosProximos = eventos.filter(evento => {
-            const [year, month, day] = evento.fechaInicio.split('-').map(Number);
-            const eventDate = new Date(year, month - 1, day); 
-            return eventDate >= today && eventDate < sevenDaysLater;
+            if (!evento.fechaInicio) return false;
+            try {
+                const dateParts = evento.fechaInicio.split(/[-/]/);
+                if (dateParts.length !== 3) return false;
+                const d = new Date(evento.fechaInicio);
+                if (isNaN(d.getTime())) return false;
+                return d >= today && d < sevenDaysLater;
+            } catch {
+                return false;
+            }
         }).length;
 
         return {
@@ -62,7 +80,10 @@ const Dashboard: React.FC<DashboardProps> = ({ navigateTo }) => {
     }, [adolescentes, reuniones, encargados, tutores, eventos]);
     
     const proximasReuniones = useMemo(() => reuniones
-        .filter(r => new Date(r.fecha) >= new Date() && r.estado === 'En Proceso')
+        .filter(r => {
+             const d = new Date(r.fecha);
+             return !isNaN(d.getTime()) && d >= new Date() && r.estado === 'En Proceso';
+        })
         .sort((a, b) => new Date(a.fecha).getTime() - new Date(b.fecha).getTime())
         .slice(0, 3), [reuniones]);
 
@@ -73,24 +94,18 @@ const Dashboard: React.FC<DashboardProps> = ({ navigateTo }) => {
         const currentYear = hoy.getFullYear();
         const currentMonth = hoy.getMonth();
 
-        // 1. Adolescentes Logic
         const cumpleanerosAdolescentes = stats.adolescentesActivosData.filter(a => {
             if (!a.fechaNacimiento) return false;
-            const [, month, day] = a.fechaNacimiento.split('-').map(Number);
-            const cumpleEsteAno = new Date(currentYear, month - 1, day);
-            
-            // Check if already celebrated
-            const yaCelebrado = celebraciones.some(c => c.adolescenteId === a.id && c.ano === currentYear);
-            
-            return (month - 1) === currentMonth && cumpleEsteAno >= hoy && !yaCelebrado;
+            const age = calcularEdad(a.fechaNacimiento);
+            if (age === 0) return false;
+            const nextBday = calcularProximoCumpleanos(a.fechaNacimiento);
+            return nextBday.getMonth() === currentMonth;
         }).map(a => ({ ...a, tipo: 'Adolescente' as const }));
 
-        // 2. Encargados Logic
         const cumpleanerosEncargados = encargados.filter(e => {
             if (!e.fechaNacimiento) return false;
-            const [, month, day] = e.fechaNacimiento.split('-').map(Number);
-            const cumpleEsteAno = new Date(currentYear, month - 1, day);
-            return (month - 1) === currentMonth && cumpleEsteAno >= hoy;
+            const nextBday = calcularProximoCumpleanos(e.fechaNacimiento);
+            return nextBday.getMonth() === currentMonth;
         }).map(e => ({ 
             ...e, 
             fechaNacimiento: e.fechaNacimiento!, 
@@ -99,92 +114,117 @@ const Dashboard: React.FC<DashboardProps> = ({ navigateTo }) => {
             tipo: 'Encargado' as const 
         }));
 
-        return [...cumpleanerosAdolescentes, ...cumpleanerosEncargados].sort((a, b) => {
-            const dayA = parseInt(a.fechaNacimiento.split('-')[2]);
-            const dayB = parseInt(b.fechaNacimiento.split('-')[2]);
-            return dayA - dayB;
+        const finalAdolescentes = cumpleanerosAdolescentes.filter(a => 
+            !celebraciones.some(c => c.adolescenteId === a.id && c.ano === currentYear)
+        );
+
+        return [...finalAdolescentes, ...cumpleanerosEncargados].sort((a, b) => {
+             const dateA = calcularProximoCumpleanos(a.fechaNacimiento);
+             const dateB = calcularProximoCumpleanos(b.fechaNacimiento);
+             return dateA.getDate() - dateB.getDate();
         });
 
     }, [stats.adolescentesActivosData, encargados, celebraciones]);
 
-    // --- Chart Data ---
-    const meetingsPerMonth = useMemo(() => {
-        const monthNames = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
-        const counts = new Map<string, number>();
-        const today = new Date();
-        const todayUTC = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()));
-    
-        const monthKeys: string[] = [];
-        for (let i = 5; i >= 0; i--) {
-            const d = new Date(todayUTC);
-            d.setUTCMonth(todayUTC.getUTCMonth() - i, 1);
-            const key = `${monthNames[d.getUTCMonth()]} ${d.getUTCFullYear().toString().slice(2)}`;
-            monthKeys.push(key);
-            counts.set(key, 0);
-        }
-        
-        const sixMonthsAgoUTC = new Date(todayUTC);
-        sixMonthsAgoUTC.setUTCMonth(sixMonthsAgoUTC.getUTCMonth() - 5, 1);
-        
-        reuniones.forEach(r => {
-            const [y, m, d] = r.fecha.split('-').map(Number);
-            const meetingDate = new Date(Date.UTC(y, m - 1, d));
-    
-            if (meetingDate >= sixMonthsAgoUTC && meetingDate <= todayUTC) {
-                const key = `${monthNames[meetingDate.getUTCMonth()]} ${meetingDate.getUTCFullYear().toString().slice(2)}`;
-                if (counts.has(key)) {
-                    counts.set(key, counts.get(key)! + 1);
-                }
-            }
+    // --- Chart Data (Attendance Trend) ---
+    const attendanceTrend = useMemo(() => {
+        // Ordenar reuniones por fecha ascendente para el gráfico, manejando fechas inválidas
+        const sortedReuniones = [...reuniones].sort((a, b) => {
+             const dateA = new Date(a.fecha).getTime();
+             const dateB = new Date(b.fecha).getTime();
+             return (isNaN(dateA) ? 0 : dateA) - (isNaN(dateB) ? 0 : dateB);
         });
+        
+        // Tomar las últimas 10
+        const last10 = sortedReuniones.slice(-10);
+
+        return last10.map(r => {
+            // Robust comparison: coerce IDs to strings or numbers to handle potential mismatch
+            const presentes = asistencias.filter(a => Number(a.reunionId) === Number(r.id) && a.estado === 'Presente').length;
+            const ausentes = asistencias.filter(a => Number(a.reunionId) === Number(r.id) && a.estado === 'Ausente').length;
+            
+            return {
+                name: r.tema.length > 10 ? r.tema.substring(0, 10) + '...' : r.tema, // Short name for X-Axis
+                fullTema: r.tema,
+                fecha: formatDate(r.fecha),
+                Presentes: presentes,
+                Ausentes: ausentes
+            };
+        });
+    }, [reuniones, asistencias]);
     
-        return monthKeys.map(name => ({ name, 'Reuniones': counts.get(name) || 0 }));
-    }, [reuniones]);
-    
+    // Age Distribution Logic
     const ageDistribution = useMemo(() => {
-        const groups = { '12-13': 0, '14-15': 0, '16-17': 0, '18+': 0, };
-        // Use all adolescentes instead of just active ones to ensure data is shown if status is missing
+        const groups: Record<string, number> = { 
+            '0-11': 0, 
+            '12-13': 0, 
+            '14-15': 0, 
+            '16-17': 0, 
+            '18+': 0 
+        };
+        
         adolescentes.forEach(a => {
+            // Usamos calcularEdad que ya es robusto
             const age = calcularEdad(a.fechaNacimiento);
-            if (age > 0) { // Only count valid ages
-                if (age <= 13) groups['12-13']++;
-                else if (age <= 15) groups['14-15']++;
-                else if (age <= 17) groups['16-17']++;
-                else groups['18+']++;
-            }
+            
+            if (age < 12) groups['0-11']++;
+            else if (age <= 13) groups['12-13']++;
+            else if (age <= 15) groups['14-15']++;
+            else if (age <= 17) groups['16-17']++;
+            else groups['18+']++;
         });
-        return Object.entries(groups).map(([name, value]) => ({ name, 'Adolescentes': value }));
+        
+        return Object.entries(groups).map(([name, value]) => ({ name, 'Cantidad': value }));
     }, [adolescentes]);
 
+    // Lógica mejorada: Buscar la última reunión que tenga registros de asistencia asociados
     const lastMeetingAttendance = useMemo(() => {
-        const lastFinishedMeeting = reuniones
-            .filter(r => r.estado === 'Finalizado')
-            .sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime())[0];
-
-        if (!lastFinishedMeeting) return { data: [], title: 'No hay reuniones finalizadas' };
-
-        const activeAdolescentIds = new Set(stats.adolescentesActivosData.map(a => a.id));
-
-        const meetingAsistencias = asistencias.filter(a => a.reunionId === lastFinishedMeeting.id);
+        // Ordenar reuniones de más reciente a más antigua
+        const sortedMeetings = [...reuniones].sort((a, b) => {
+             const dateA = new Date(a.fecha).getTime();
+             const dateB = new Date(b.fecha).getTime();
+             return (isNaN(dateB) ? 0 : dateB) - (isNaN(dateA) ? 0 : dateA);
+        });
         
-        const presentes = meetingAsistencias.filter(a => 
-            a.estado === 'Presente' && activeAdolescentIds.has(a.adolescenteId)
-        ).length;
-        
-        const totalActivos = activeAdolescentIds.size;
-        const ausentes = totalActivos - presentes;
+        // Encontrar la primera reunión (la más reciente) que tenga al menos un registro de asistencia
+        // Esto evita mostrar el gráfico vacío si la última reunión creada aun no tiene lista tomada
+        const lastMeetingWithData = sortedMeetings.find(r => {
+            return asistencias.some(a => Number(a.reunionId) === Number(r.id));
+        });
 
-        if (totalActivos === 0) {
-            return { data: [], title: `Asistencia: ${lastFinishedMeeting.tema}` };
+        const targetMeeting = lastMeetingWithData || sortedMeetings[0];
+
+        if (!targetMeeting) return { data: [], title: 'No hay reuniones registradas' };
+
+        // Robust filter
+        const meetingAsistencias = asistencias.filter(a => Number(a.reunionId) === Number(targetMeeting.id));
+        
+        // Contamos explícitamente cuántas filas tienen estado Presente y cuántas Ausente
+        const presentes = meetingAsistencias.filter(a => a.estado === 'Presente').length;
+        const ausentes = meetingAsistencias.filter(a => a.estado === 'Ausente').length;
+        
+        if (presentes === 0 && ausentes === 0) {
+            return { data: [], title: `Asistencia: ${targetMeeting.tema} (Sin datos)` };
         }
 
         return {
             data: [ { name: 'Presentes', value: presentes }, { name: 'Ausentes', value: ausentes }, ],
-            title: `Asistencia (Activos): ${lastFinishedMeeting.tema}`
+            title: `Asistencia: ${targetMeeting.tema} (${formatDate(targetMeeting.fecha)})`
         };
-    }, [reuniones, asistencias, stats.adolescentesActivosData]);
+    }, [reuniones, asistencias]);
 
     const PIE_COLORS = ['#10b981', '#ef4444'];
+
+    if (isLoading && reuniones.length === 0) {
+        return (
+            <div className="flex h-screen items-center justify-center">
+                 <div className="flex flex-col items-center gap-4">
+                    <RefreshIcon className="w-10 h-10 animate-spin text-primary" />
+                    <p className="text-text-secondary">Sincronizando con base de datos...</p>
+                 </div>
+            </div>
+        );
+    }
 
     return (
         <div className="space-y-8">
@@ -194,10 +234,11 @@ const Dashboard: React.FC<DashboardProps> = ({ navigateTo }) => {
                     onClick={handleRefresh} 
                     disabled={isLoading}
                     className="p-2 rounded-full text-text-secondary hover:bg-surface hover:text-text-primary transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                    title="Refrescar datos"
+                    title="Sincronizar ahora"
                 >
                     <RefreshIcon className={`w-5 h-5 ${isLoading ? 'animate-spin' : ''}`} />
                 </button>
+                {isLoading && <span className="text-sm text-secondary animate-pulse">Actualizando...</span>}
             </div>
             
             <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-6">
@@ -209,30 +250,55 @@ const Dashboard: React.FC<DashboardProps> = ({ navigateTo }) => {
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                <div className="lg:col-span-2 bg-surface p-6 rounded-lg shadow-lg">
-                    <h2 className="text-xl font-semibold text-text-primary mb-4">Reuniones por Mes (Últimos 6 meses)</h2>
-                    <ResponsiveContainer width="100%" height={300}>
-                        <BarChart data={meetingsPerMonth} margin={{ top: 5, right: 20, left: -10, bottom: 5 }}>
-                            <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-                            <XAxis dataKey="name" stroke="#d1d5db" fontSize={12} />
-                            <YAxis stroke="#d1d5db" />
-                            <Tooltip contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151' }} cursor={{ fill: 'rgba(79, 70, 229, 0.1)' }}/>
-                            <Legend />
-                            <Bar dataKey="Reuniones" fill="#4f46e5" />
-                        </BarChart>
-                    </ResponsiveContainer>
+                <div className="lg:col-span-2 bg-surface p-6 rounded-lg shadow-lg flex flex-col">
+                    <h2 className="text-xl font-semibold text-text-primary mb-4">Tendencia de Asistencia (Últimas 10 Reuniones)</h2>
+                    <div className="w-full h-[300px] flex-1">
+                        <ResponsiveContainer width="100%" height="100%">
+                            <BarChart data={attendanceTrend} margin={{ top: 5, right: 20, left: -10, bottom: 5 }}>
+                                <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+                                <XAxis dataKey="name" stroke="#d1d5db" fontSize={12} interval={0} angle={-15} textAnchor="end" height={50} />
+                                <YAxis stroke="#d1d5db" allowDecimals={false} />
+                                <Tooltip 
+                                    contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151', color: '#fff' }} 
+                                    cursor={{ fill: 'rgba(79, 70, 229, 0.1)' }}
+                                    labelFormatter={(label, payload) => {
+                                        if (payload && payload.length > 0) {
+                                            const item = payload[0].payload;
+                                            return `${item.fullTema} (${item.fecha})`;
+                                        }
+                                        return label;
+                                    }}
+                                />
+                                <Legend />
+                                <Bar dataKey="Presentes" fill="#10b981" />
+                                <Bar dataKey="Ausentes" fill="#ef4444" />
+                            </BarChart>
+                        </ResponsiveContainer>
+                    </div>
                 </div>
-                <div className="lg:col-span-1 bg-surface p-6 rounded-lg shadow-lg">
+                
+                <div className="lg:col-span-1 bg-surface p-6 rounded-lg shadow-lg flex flex-col">
                     <h2 className="text-xl font-semibold text-text-primary mb-4">Distribución por Edades</h2>
-                     <ResponsiveContainer width="100%" height={300}>
-                        <BarChart data={ageDistribution} layout="vertical" margin={{ top: 5, right: 20, left: 20, bottom: 5 }}>
-                            <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-                            <XAxis type="number" stroke="#d1d5db" />
-                            <YAxis type="category" dataKey="name" stroke="#d1d5db" width={50} fontSize={12} />
-                            <Tooltip contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151' }} cursor={{ fill: 'rgba(16, 185, 129, 0.1)' }}/>
-                            <Bar dataKey="Adolescentes" fill="#10b981" />
-                        </BarChart>
-                    </ResponsiveContainer>
+                    {adolescentes.length > 0 ? (
+                    <div className="w-full h-[300px] flex-1">
+                        <ResponsiveContainer width="100%" height="100%">
+                            <BarChart data={ageDistribution} layout="vertical" margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
+                                <CartesianGrid strokeDasharray="3 3" stroke="#374151" horizontal={false} />
+                                <XAxis type="number" stroke="#d1d5db" allowDecimals={false} />
+                                <YAxis type="category" dataKey="name" stroke="#d1d5db" width={50} fontSize={12} />
+                                <Tooltip 
+                                    contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151', color: '#fff' }} 
+                                    cursor={{ fill: 'rgba(16, 185, 129, 0.1)' }}
+                                />
+                                <Bar dataKey="Cantidad" name="Adolescentes" fill="#10b981" barSize={24} radius={[0, 4, 4, 0]} />
+                            </BarChart>
+                        </ResponsiveContainer>
+                    </div>
+                    ) : (
+                        <div className="flex-1 flex items-center justify-center text-text-secondary text-center p-4">
+                            No hay adolescentes registrados para calcular edades.
+                        </div>
+                    )}
                 </div>
             </div>
 
@@ -269,22 +335,26 @@ const Dashboard: React.FC<DashboardProps> = ({ navigateTo }) => {
                                     cx="50%"
                                     cy="50%"
                                     labelLine={false}
-                                    outerRadius={100}
+                                    outerRadius={80}
                                     fill="#8884d8"
                                     dataKey="value"
-                                    label={({ name, percent, value }) => value > 0 ? `${name} ${(percent * 100).toFixed(0)}%` : ''}
+                                    label={({ name, percent, value }) => value > 0 ? `${(percent * 100).toFixed(0)}%` : ''}
                                 >
                                     {lastMeetingAttendance.data.map((entry, index) => (
                                         <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />
                                     ))}
                                 </Pie>
-                                <Tooltip contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151' }}/>
+                                <Tooltip contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151', color: '#fff' }}/>
                                 <Legend />
                             </PieChart>
                         </ResponsiveContainer>
                     ) : (
                         <div className="flex items-center justify-center h-full">
-                           <p className="text-text-secondary text-center">No hay datos de asistencia para esta reunión.</p>
+                           <p className="text-text-secondary text-center px-4">
+                               {asistencias.length === 0 
+                               ? "No hay datos de asistencia en el sistema." 
+                               : "No hay asistencia registrada para esta reunión."}
+                           </p>
                         </div>
                     )}
                 </div>
@@ -295,7 +365,7 @@ const Dashboard: React.FC<DashboardProps> = ({ navigateTo }) => {
                         {proximosCumpleaneros.length > 0 ? proximosCumpleaneros.map(persona => (
                             <div key={`${persona.tipo}-${persona.id}`} className="bg-background p-3 rounded-md flex items-center justify-between">
                                 <div className="flex items-center space-x-3">
-                                    <img src={`https://i.pravatar.cc/150?u=${persona.id}-${persona.tipo}`} alt="avatar" className="w-10 h-10 rounded-full" />
+                                    <img src={`https://ui-avatars.com/api/?name=${persona.nombre}+${persona.apellido}&background=random`} alt="avatar" className="w-10 h-10 rounded-full" />
                                     <div>
                                         <div className="flex items-center gap-2">
                                             <p className="font-semibold text-text-primary">{persona.nombre} {persona.apellido}</p>

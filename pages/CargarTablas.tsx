@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo, useRef, useCallback } from 'react';
 import { useData } from '../contexts/DataContext';
 import { Adolescente, Encargado, Reunion, Tutor, Asistencia, TipoAsistencia, AsistenciaDetalle, GradoParentesco } from '../types';
@@ -8,18 +7,18 @@ import { calcularEdad } from '../utils/helpers';
 
 type EntityType = 'adolescentes' | 'encargados' | 'reuniones' | 'tutores' | 'asistencias';
 
-type ParsedRow = {
+interface ParsedRow {
     data: any;
     isValid: boolean;
     error?: string;
-};
+}
 
 const CargarTablas: React.FC = () => {
     const { 
         adolescentes, encargados, reuniones, tutores,
         addAdolescentesBulk, addEncargadosBulk, addReunionesBulk, 
-        addTutoresAndLinkBulk, addAsistenciasBulk,
-        fetchData // Needed to refresh after manual fix
+        addTutoresAndLinkBulk, saveAsistencias,
+        fetchData 
     } = useData();
 
     const [selectedTab, setSelectedTab] = useState<EntityType>('adolescentes');
@@ -28,7 +27,14 @@ const CargarTablas: React.FC = () => {
     const [statusMessage, setStatusMessage] = useState('Por favor, selecciona un archivo para comenzar.');
     const [isFixingDates, setIsFixingDates] = useState(false);
     const [isRecalculating, setIsRecalculating] = useState(false);
+    
+    // Diagnosis state
     const [showDiagnosis, setShowDiagnosis] = useState(false);
+    const [showOnlyErrors, setShowOnlyErrors] = useState(true);
+
+    // Import Preview state
+    const [filterImportErrors, setFilterImportErrors] = useState(false);
+    
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     const existingCedulas = useMemo(() => ({
@@ -41,10 +47,10 @@ const CargarTablas: React.FC = () => {
         new Set(reuniones.map(r => `${r.fecha}_${r.tema}`))
     , [reuniones]);
 
-
     const resetState = () => {
         setParsedData([]);
         setFileName(null);
+        setFilterImportErrors(false);
         if (fileInputRef.current) fileInputRef.current.value = "";
     };
 
@@ -54,21 +60,13 @@ const CargarTablas: React.FC = () => {
         setStatusMessage('Por favor, selecciona un archivo para comenzar.');
     };
 
-    // Helper to normalize dates to strict YYYY-MM-DD (Supabase format)
     const normalizeDateStr = (dateStr: string): string | null => {
         if (!dateStr) return null;
         dateStr = dateStr.trim();
-        
-        // 1. Already in strict YYYY-MM-DD format? Keep it.
         if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return dateStr;
-
-        // 2. Handle YYYY/MM/DD (Common excel export) -> Convert to YYYY-MM-DD
         if (/^\d{4}\/\d{2}\/\d{2}$/.test(dateStr)) {
             return dateStr.replace(/\//g, '-');
         }
-
-        // 3. Handle DD/MM/YYYY or DD-MM-YYYY -> Convert to YYYY-MM-DD
-        // The regex captures (Day), (Month), (Year 4 digits)
         const match = dateStr.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/);
         if (match) {
             const day = match[1].padStart(2, '0');
@@ -76,19 +74,15 @@ const CargarTablas: React.FC = () => {
             const year = match[3];
             return `${year}-${month}-${day}`;
         }
-        
         return null;
     };
 
-    // --- Validation and Parsing ---
     const parseAdolescentes = useCallback((rows: string[]): ParsedRow[] => {
         const cedulasInFile = new Set<string>();
         return rows.map(rowStr => {
             const row = rowStr.split(';');
             const [nombre, apellido, cedula, rawFechaNacimiento, barrio, ciudad, telefono, sexo, estado] = row.map(field => field?.trim());
-            
-            const fechaNacimiento = normalizeDateStr(rawFechaNacimiento) || rawFechaNacimiento; // Try to fix date immediately
-
+            const fechaNacimiento = normalizeDateStr(rawFechaNacimiento) || rawFechaNacimiento;
             const rawData = { nombre, apellido, cedula, fechaNacimiento, barrio, ciudad, telefono, sexo, estado };
 
             if (!nombre || !apellido || !cedula || !fechaNacimiento) return { data: rawData, isValid: false, error: 'Faltan campos obligatorios.' };
@@ -113,9 +107,7 @@ const CargarTablas: React.FC = () => {
         return rows.map(rowStr => {
             const row = rowStr.split(';');
             const [nombre, apellido, cedula, rawFechaNacimiento, barrio, ciudad, telefono, email] = row.map(field => field?.trim());
-            
             const fechaNacimiento = rawFechaNacimiento ? (normalizeDateStr(rawFechaNacimiento) || rawFechaNacimiento) : undefined;
-
             const rawData = { nombre, apellido, cedula, fechaNacimiento, barrio, ciudad, telefono, email };
 
             if (!nombre || !apellido || !cedula) return { data: rawData, isValid: false, error: 'Faltan campos obligatorios (Nombre, Apellido, Cédula).' };
@@ -135,9 +127,7 @@ const CargarTablas: React.FC = () => {
         return rows.map(rowStr => {
             const row = rowStr.split(';');
             const [rawFecha, tema, encargadoCedula, estado] = row.map(field => field?.trim());
-            
             const fecha = normalizeDateStr(rawFecha) || rawFecha;
-
             const rawData = { fecha, tema, encargadoCedula, estado };
             const reunionKey = `${fecha}_${tema}`;
 
@@ -146,7 +136,6 @@ const CargarTablas: React.FC = () => {
             if (!existingCedulas.encargados.has(encargadoCedula)) return { data: rawData, isValid: false, error: `Encargado con CI '${encargadoCedula}' no existe.`};
             if (existingReuniones.has(reunionKey) || reunionesInFile.has(reunionKey)) return { data: rawData, isValid: false, error: `Reunión '${tema}' en fecha '${fecha}' duplicada.` };
 
-            // Estado validation
             let finalEstado = 'En Proceso';
             if (estado) {
                 if (estado === 'En Proceso' || estado === 'Finalizado') {
@@ -189,59 +178,80 @@ const CargarTablas: React.FC = () => {
 
     const parseAsistencias = useCallback((rows: string[]): ParsedRow[] => {
         const asistenciasInFile = new Set<string>();
+        const validDetalles = ['Regular', 'Primera Vez', 'Regresa'];
+
+        // Helper maps for ID lookup
+        const adolescentesMap = new Map(adolescentes.map(a => [a.cedula, a]));
+        const reunionesMap = new Map(reuniones.map(r => [r.id, r]));
+
         return rows.map(rowStr => {
             const row = rowStr.split(';');
-            const [rawReunionFecha, reunionTema, adolescenteCedula, estado, detalle] = row.map(field => field?.trim());
+            const [rawReunionId, adolescenteCedula, estado, detalle] = row.map(field => field?.trim());
             
-            const reunionFecha = normalizeDateStr(rawReunionFecha) || rawReunionFecha;
+            const rawData = { reunionId: rawReunionId, adolescenteCedula, estado, detalle };
 
-            const rawData = { reunionFecha, reunionTema, adolescenteCedula, estado, detalle };
-            const reunionKey = `${reunionFecha}_${reunionTema}`;
-            const asistenciaKey = `${reunionKey}_${adolescenteCedula}`;
+            if (!rawReunionId || !adolescenteCedula || !estado) {
+                 return { data: rawData, isValid: false, error: 'Faltan campos obligatorios.' };
+            }
 
-            if (!reunionFecha || !reunionTema || !adolescenteCedula || !estado) return { data: rawData, isValid: false, error: 'Faltan campos obligatorios.' };
-            if (!existingReuniones.has(reunionKey)) return { data: rawData, isValid: false, error: `Reunión no encontrada.`};
-            if (!existingCedulas.adolescentes.has(adolescenteCedula)) return { data: rawData, isValid: false, error: `Adolescente con CI '${adolescenteCedula}' no existe.`};
-            if (estado !== 'Presente' && estado !== 'Ausente') return { data: rawData, isValid: false, error: `Estado '${estado}' inválido.`};
-            if (asistenciasInFile.has(asistenciaKey)) return { data: rawData, isValid: false, error: `Asistencia duplicada.` };
+            const reunionIdInt = parseInt(rawReunionId, 10);
+            if (isNaN(reunionIdInt)) {
+                return { data: rawData, isValid: false, error: `ID de Reunión '${rawReunionId}' inválido (debe ser un número).` };
+            }
+
+            const reunion = reunionesMap.get(reunionIdInt);
+            if (!reunion) {
+                return { data: rawData, isValid: false, error: `Reunión ID '${rawReunionId}' no encontrada.` };
+            }
+
+            const adolescente = adolescentesMap.get(adolescenteCedula);
+            if (!adolescente) {
+                return { data: rawData, isValid: false, error: `Adolescente con CI '${adolescenteCedula}' no encontrado.` };
+            }
+            
+            if (estado !== 'Presente' && estado !== 'Ausente') {
+                return { data: rawData, isValid: false, error: `Estado '${estado}' inválido. Use 'Presente' o 'Ausente'.`};
+            }
+            
+            if (detalle && !validDetalles.includes(detalle)) {
+                return { data: rawData, isValid: false, error: `Detalle '${detalle}' inválido. Opciones: ${validDetalles.join(', ')}.` };
+            }
+
+            const asistenciaKey = `${reunion.id}_${adolescente.id}`;
+            if (asistenciasInFile.has(asistenciaKey)) return { data: rawData, isValid: false, error: `Asistencia duplicada en el archivo.` };
 
             asistenciasInFile.add(asistenciaKey);
             return {
-                data: { reunionFecha, reunionTema, adolescenteCedula, estado: estado as TipoAsistencia, detalle: detalle as AsistenciaDetalle },
+                data: { 
+                    reunionId: reunion.id,
+                    adolescenteId: adolescente.id,
+                    estado: estado as TipoAsistencia, 
+                    detalle: (detalle || 'Regular') as AsistenciaDetalle 
+                },
                 isValid: true
             };
         });
-    }, [existingReuniones, existingCedulas.adolescentes]);
+    }, [reuniones, adolescentes]);
 
-    // --- Fix Date Logic ---
     const handleNormalizeDates = async () => {
         setIsFixingDates(true);
         setStatusMessage("Analizando fechas en la base de datos...");
-        
         let fixedCount = 0;
         try {
             const promises = adolescentes.map(async (ado) => {
                 const originalDate = ado.fechaNacimiento;
                 if (!originalDate) return;
-
-                // STRICT CHECK: The date MUST be YYYY-MM-DD
                 const isStrictlyValid = /^\d{4}-\d{2}-\d{2}$/.test(originalDate);
-                
                 if (!isStrictlyValid) {
-                    // Try to normalize from formats like DD/MM/YYYY or YYYY/MM/DD
                     const normalized = normalizeDateStr(originalDate);
-                    
-                    // Only update if we successfully normalized it and it's different
                     if (normalized && normalized !== originalDate) {
-                        // Use direct API call to avoid triggering context refresh on every item
                         await api.updateAdolescente({ ...ado, fechaNacimiento: normalized });
                         fixedCount++;
                     }
                 }
             });
-
             await Promise.all(promises);
-            await fetchData(); // Refresh context once at the end to recalc ages in Dashboard
+            await fetchData();
             setStatusMessage(`Proceso completado. Se corrigieron ${fixedCount} fechas al formato AAAA-MM-DD.`);
         } catch (error) {
             console.error(error);
@@ -255,7 +265,7 @@ const CargarTablas: React.FC = () => {
         setIsRecalculating(true);
         setStatusMessage("Sincronizando datos y recalculando edades...");
         try {
-            await fetchData(); // This fetches fresh data from DB, triggering re-renders where age is calc'd
+            await fetchData();
             setStatusMessage("Datos sincronizados. Las edades se han recalculado en el Dashboard.");
         } catch (e) {
             console.error(e);
@@ -264,7 +274,6 @@ const CargarTablas: React.FC = () => {
             setIsRecalculating(false);
         }
     };
-
 
     const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
         const file = event.target.files?.[0];
@@ -313,7 +322,7 @@ const CargarTablas: React.FC = () => {
                 case 'encargados': await addEncargadosBulk(validData); break;
                 case 'reuniones': await addReunionesBulk(validData); break;
                 case 'tutores': await addTutoresAndLinkBulk(validData); break;
-                case 'asistencias': await addAsistenciasBulk(validData); break;
+                case 'asistencias': await saveAsistencias(validData); break;
             }
             setStatusMessage(`¡${validData.length} registros importados con éxito!`);
             resetState();
@@ -322,8 +331,19 @@ const CargarTablas: React.FC = () => {
             console.error(error);
         }
     };
-    
-    // --- Dynamic Content ---
+
+    const diagnosisList = useMemo(() => {
+        return adolescentes.map(ado => {
+            const edad = calcularEdad(ado.fechaNacimiento);
+            const isError = edad === 0;
+            return { ...ado, edad, isError };
+        });
+    }, [adolescentes]);
+
+    const displayDiagnosis = showOnlyErrors 
+        ? diagnosisList.filter(d => d.isError) 
+        : diagnosisList.slice(0, 50);
+
     const TABS_CONFIG = {
         adolescentes: {
             title: 'Adolescentes',
@@ -367,13 +387,39 @@ const CargarTablas: React.FC = () => {
         },
         asistencias: {
             title: 'Asistencias a Reuniones',
-            instructions: <ol className="list-decimal list-inside space-y-1">
-                <li>Fecha de Reunión (Requerido, AAAA-MM-DD)</li><li>Tema de Reunión (Requerido)</li><li>Cédula del Adolescente (Requerido)</li><li>Estado ('Presente' o 'Ausente')</li><li>Detalle ('Primera Vez' o 'Regresa')</li>
-            </ol>,
-            previewHeaders: ['Reunión', 'Adolescente', 'Estado', 'Validación', 'Observación'],
-            renderRow: (row: ParsedRow, index: number) => <tr key={index} className={`border-t border-border ${!row.isValid ? 'bg-red-900/40' : ''}`}>
-                <td className="p-2">{row.data.reunionFecha || ''} - {row.data.reunionTema || 'N/A'}</td><td className="p-2">{row.data.adolescenteCedula || 'N/A'}</td><td className="p-2">{row.data.estado || 'N/A'}</td><td className={`p-2 font-semibold ${!row.isValid ? 'text-red-300' : 'text-green-300'}`}>{row.isValid ? "Válido" : "Error"}</td><td className="p-2 text-yellow-400">{row.error}</td>
-            </tr>
+            instructions: (
+                <div>
+                    <p className="mb-2 text-sm font-semibold">El archivo debe tener exactamente las 4 columnas citadas abajo:</p>
+                    <ol className="list-decimal list-inside space-y-1">
+                        <li>reunion_id (Entero, Clave foránea)</li>
+                        <li>adolescente_id (Entero, Clave foránea)</li>
+                        <li>estado (Texto: 'Presente' o 'Ausente')</li>
+                        <li>detalle (Texto: 'Regular', 'Primera Vez', etc.)</li>
+                    </ol>
+                    <p className="mt-2 text-xs text-text-secondary italic">
+                        <strong>Importante:</strong> Para la columna <em>adolescente_id</em>, debe ingresar la <strong>Cédula</strong> del adolescente para que el sistema lo identifique.
+                    </p>
+                </div>
+            ),
+            previewHeaders: ['ID Reunión', 'Adolescente CI', 'Estado', 'Detalle', 'Validación', 'Observación'],
+            renderRow: (row: ParsedRow, index: number) => {
+                 const ado = adolescentes.find(a => a.id === row.data.adolescenteId);
+                 const reu = reuniones.find(r => r.id === row.data.reunionId);
+                 
+                 const adoDisplay = ado ? `${ado.nombre} ${ado.apellido} (${ado.cedula})` : (row.data.adolescenteCedula || row.data.adolescenteId || 'N/A');
+                 const reuDisplay = reu ? `${reu.tema} (ID:${reu.id})` : (row.data.reunionId || 'N/A');
+
+                 return (
+                    <tr key={index} className={`border-t border-border ${!row.isValid ? 'bg-red-900/40' : ''}`}>
+                        <td className="p-2">{reuDisplay}</td>
+                        <td className="p-2">{adoDisplay}</td>
+                        <td className="p-2">{row.data.estado || 'N/A'}</td>
+                        <td className="p-2">{row.data.detalle || 'Regular'}</td>
+                        <td className={`p-2 font-semibold ${!row.isValid ? 'text-red-300' : 'text-green-300'}`}>{row.isValid ? "Válido" : "Error"}</td>
+                        <td className="p-2 text-yellow-400">{row.error}</td>
+                    </tr>
+                 );
+            }
         }
     };
 
@@ -400,7 +446,6 @@ const CargarTablas: React.FC = () => {
                         <div className="text-xs text-gray-400 bg-background p-3 rounded-md overflow-x-auto">{currentTabConfig.instructions}</div>
                     </div>
 
-                    {/* New Utility Section for Dates */}
                     {selectedTab === 'adolescentes' && (
                         <div className="bg-surface p-6 rounded-lg shadow-lg border border-border space-y-4">
                             <div>
@@ -468,37 +513,61 @@ const CargarTablas: React.FC = () => {
                 </div>
 
                 <div className="lg:col-span-2 bg-surface p-6 rounded-lg shadow-lg space-y-4">
-                    {/* Diagnosis Panel */}
                     {selectedTab === 'adolescentes' && showDiagnosis && (
                         <div className="mb-6 border-b border-border pb-6">
-                            <h2 className="text-xl font-semibold text-text-primary mb-2">Diagnóstico de Edades</h2>
+                            <div className="flex justify-between items-center mb-2">
+                                <h2 className="text-xl font-semibold text-text-primary">Diagnóstico de Edades</h2>
+                                <label className="flex items-center space-x-2 text-sm text-text-secondary cursor-pointer hover:text-white">
+                                    <input 
+                                        type="checkbox" 
+                                        checked={showOnlyErrors} 
+                                        onChange={(e) => setShowOnlyErrors(e.target.checked)}
+                                        className="h-4 w-4 text-primary rounded border-gray-600 focus:ring-primary bg-background"
+                                    />
+                                    <span>Ver solo errores</span>
+                                </label>
+                            </div>
                             <p className="text-sm text-text-secondary mb-4">Esta tabla muestra cómo el sistema está interpretando las fechas de nacimiento actuales.</p>
+                            
                             <div className="max-h-60 overflow-y-auto bg-background p-2 rounded-md">
-                                <table className="w-full text-xs text-left">
-                                    <thead>
-                                        <tr className="text-text-secondary border-b border-border">
-                                            <th className="p-2">Nombre</th>
-                                            <th className="p-2">Fecha (Base de Datos)</th>
-                                            <th className="p-2">Edad Calculada</th>
-                                            <th className="p-2">Estado</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {adolescentes.slice(0, 50).map(ado => {
-                                            const edad = calcularEdad(ado.fechaNacimiento);
-                                            const isError = edad === 0;
-                                            return (
-                                                <tr key={ado.id} className={isError ? 'text-red-400 bg-red-900/10' : 'text-text-secondary'}>
+                                {displayDiagnosis.length > 0 ? (
+                                    <table className="w-full text-xs text-left">
+                                        <thead>
+                                            <tr className="text-text-secondary border-b border-border">
+                                                <th className="p-2">Nombre</th>
+                                                <th className="p-2">Fecha (Base de Datos)</th>
+                                                <th className="p-2">Edad Calc.</th>
+                                                <th className="p-2">Estado</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {displayDiagnosis.map(ado => (
+                                                <tr key={ado.id} className={ado.isError ? 'text-red-400 bg-red-900/10' : 'text-text-secondary'}>
                                                     <td className="p-2">{ado.nombre} {ado.apellido}</td>
                                                     <td className="p-2 font-mono">{ado.fechaNacimiento}</td>
-                                                    <td className="p-2 font-bold">{edad}</td>
-                                                    <td className="p-2">{isError ? 'Error / Formato Inválido' : 'OK'}</td>
+                                                    <td className="p-2 font-bold">{ado.edad}</td>
+                                                    <td className="p-2">{ado.isError ? 'Error / Formato Inválido' : 'OK'}</td>
                                                 </tr>
-                                            );
-                                        })}
-                                    </tbody>
-                                </table>
-                                <p className="text-xs text-center mt-2 text-gray-500">Mostrando primeros 50 registros...</p>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                ) : (
+                                    <div className="p-8 text-center">
+                                        {showOnlyErrors ? (
+                                            <div className="text-green-400 flex flex-col items-center">
+                                                <CheckCircleIcon className="w-10 h-10 mb-2" />
+                                                <p className="font-semibold text-lg">¡Excelente!</p>
+                                                <p className="text-sm">No se encontraron registros con fechas inválidas o edades en 0.</p>
+                                            </div>
+                                        ) : (
+                                             <p className="text-text-secondary">No hay datos disponibles.</p>
+                                        )}
+                                    </div>
+                                )}
+                                
+                                {!showOnlyErrors && displayDiagnosis.length > 0 && (
+                                    <p className="text-xs text-center mt-2 text-gray-500">Mostrando muestra de 50 registros...</p>
+                                )}
                             </div>
                         </div>
                     )}
@@ -510,13 +579,34 @@ const CargarTablas: React.FC = () => {
                     <p className="text-sm text-text-secondary h-5 text-center">{statusMessage}</p>
                     {parsedData.length > 0 && (
                         <div className="space-y-4 pt-4 border-t border-border">
-                            <h2 className="text-xl font-semibold text-text-primary">Revisión de Datos</h2>
-                            <div className="max-h-80 overflow-y-auto bg-background p-2 rounded-md"><table className="w-full text-xs">
-                                <thead><tr className="text-left text-text-secondary">
-                                    {currentTabConfig.previewHeaders.map(h => <th key={h} className="p-2">{h}</th>)}
-                                </tr></thead>
-                                <tbody>{parsedData.map(currentTabConfig.renderRow)}</tbody>
-                            </table></div>
+                            <div className="flex justify-between items-center">
+                                <h2 className="text-xl font-semibold text-text-primary">Revisión de Datos</h2>
+                                <label className="flex items-center space-x-2 text-sm text-text-secondary cursor-pointer hover:text-white">
+                                    <input 
+                                        type="checkbox" 
+                                        checked={filterImportErrors} 
+                                        onChange={(e) => setFilterImportErrors(e.target.checked)}
+                                        className="h-4 w-4 text-primary rounded border-gray-600 focus:ring-primary bg-background"
+                                    />
+                                    <span>Ver solo filas con error</span>
+                                </label>
+                            </div>
+                            
+                            <div className="max-h-80 overflow-y-auto bg-background p-2 rounded-md">
+                                <table className="w-full text-xs">
+                                    <thead>
+                                        <tr className="text-left text-text-secondary">
+                                            {currentTabConfig.previewHeaders.map(h => <th key={h} className="p-2">{h}</th>)}
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {parsedData
+                                            .filter(row => !filterImportErrors || !row.isValid)
+                                            .map(currentTabConfig.renderRow)
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
                             <button onClick={handleImport} disabled={validRowsCount === 0} className="w-full bg-primary text-white py-2 px-4 rounded-md hover:bg-indigo-700 disabled:bg-gray-500 disabled:cursor-not-allowed transition-colors">
                                 {`Importar ${validRowsCount} Registros Válidos`}
                             </button>
