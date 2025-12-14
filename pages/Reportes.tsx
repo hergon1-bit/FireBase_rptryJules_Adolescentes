@@ -1,13 +1,13 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useData } from '../contexts/DataContext';
 import { formatDate, formatCurrency } from '../utils/helpers';
-import { Adolescente } from '../types';
+import { Adolescente, AsistenciaDetalle } from '../types';
 import { RefreshIcon } from '../components/ui/Icons';
 
 type ReportType = 'cumpleanos' | 'asistenciaReunion' | 'resumenAsistencia' | 'ausencias' | 'activos' | 'tutores' | 'pagosEvento';
 
 const Reportes: React.FC = () => {
-    const { adolescentes, reuniones, asistencias, tutores, tutoresAdolescentes, eventos, inscripciones, pagos, participantes, fetchData } = useData();
+    const { adolescentes, reuniones, asistencias, encargados, tutores, tutoresAdolescentes, eventos, inscripciones, pagos, participantes, fetchData } = useData();
     const [activeReport, setActiveReport] = useState<ReportType>('cumpleanos');
     const [selectedReunionId, setSelectedReunionId] = useState<number | null>(null);
     const [dateRange, setDateRange] = useState({ start: '', end: '' });
@@ -37,12 +37,20 @@ const Reportes: React.FC = () => {
             
             case 'asistenciaReunion':
                 if (!selectedReunionId) return [];
-                const asistentesIds = asistencias
-                    .filter(a => a.reunionId === selectedReunionId && a.estado === 'Presente')
-                    .map(a => a.adolescenteId);
-                return adolescentes.filter(a => asistentesIds.includes(a.id));
+                // Virtual Join: Asistencias -> Adolescentes with Detail
+                const asistentesData = asistencias
+                    .filter(a => Number(a.reunionId) === Number(selectedReunionId) && a.estado === 'Presente')
+                    .map(a => {
+                        const adolescente = adolescentes.find(ado => ado.id === a.adolescenteId);
+                        return adolescente ? { ...adolescente, asistenciaDetalle: a.detalle } : null;
+                    })
+                    .filter(Boolean); // Remove nulls
+                return asistentesData as (Adolescente & { asistenciaDetalle?: AsistenciaDetalle })[];
 
             case 'resumenAsistencia':
+                // Calcular total de activos para usar como base del 100%
+                const totalAdolescentesActivos = adolescentes.filter(a => a.estado === 'Activo').length;
+
                 // Filtramos las reuniones según el rango de fecha
                 const filteredReuniones = reuniones.filter(r => {
                      if (!dateRange.start && !dateRange.end) return true;
@@ -52,21 +60,31 @@ const Reportes: React.FC = () => {
                      return reunionDate >= start && reunionDate <= end;
                 });
 
-                // Generar resumen consolidado basado estrictamente en la tabla de asistencias
+                // Generar resumen consolidado
                 return filteredReuniones.map(r => {
-                    const asisPorReunion = asistencias.filter(a => a.reunionId === r.id);
+                    const asisPorReunion = asistencias.filter(a => Number(a.reunionId) === Number(r.id));
                     const presentes = asisPorReunion.filter(a => a.estado === 'Presente').length;
-                    const ausentes = asisPorReunion.filter(a => a.estado === 'Ausente').length;
-                    const totalRegistrados = presentes + ausentes;
-                    const porcentaje = totalRegistrados > 0 ? ((presentes / totalRegistrados) * 100).toFixed(1) : '0.0';
+                    
+                    // Lógica ajustada: Usamos el total de activos como base si es mayor que los registros en DB.
+                    // Esto corrige casos donde no se guardaron explícitamente los 'Ausentes' en la BD.
+                    const dbTotalRegistros = asisPorReunion.length;
+                    const totalBase = Math.max(dbTotalRegistros, totalAdolescentesActivos);
+                    
+                    // Calculamos ausentes basándonos en la base total real
+                    const ausentes = totalBase - presentes;
+                    
+                    const porcentaje = totalBase > 0 ? ((presentes / totalBase) * 100).toFixed(1) : '0.0';
+                    
+                    const encargado = encargados.find(e => e.id === r.encargadoId);
                     
                     return {
                         id: r.id,
                         fecha: r.fecha,
                         tema: r.tema,
+                        encargadoNombre: encargado ? `${encargado.nombre} ${encargado.apellido}` : 'N/A',
                         presentes,
                         ausentes,
-                        totalRegistrados,
+                        totalRegistrados: totalBase,
                         porcentaje
                     };
                 }).sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime());
@@ -75,14 +93,14 @@ const Reportes: React.FC = () => {
                 if (!dateRange.start || !dateRange.end) return [];
                 const startDate = new Date(dateRange.start);
                 const endDate = new Date(dateRange.end);
-                const reunionesEnRango = reuniones.filter(r => {
+                const reunionesEnRangoIds = reuniones.filter(r => {
                     const fechaReunion = new Date(r.fecha);
                     return fechaReunion >= startDate && fechaReunion <= endDate;
-                }).map(r => r.id);
+                }).map(r => Number(r.id));
                 
                 const adolescentesPresentes = new Set(
                     asistencias
-                        .filter(a => reunionesEnRango.includes(a.reunionId) && a.estado === 'Presente')
+                        .filter(a => reunionesEnRangoIds.includes(Number(a.reunionId)) && a.estado === 'Presente')
                         .map(a => a.adolescenteId)
                 );
                 return adolescentes.filter(a => a.estado === 'Activo' && !adolescentesPresentes.has(a.id));
@@ -133,7 +151,7 @@ const Reportes: React.FC = () => {
             default:
                 return [];
         }
-    }, [activeReport, adolescentes, reuniones, asistencias, tutores, tutoresAdolescentes, eventos, inscripciones, pagos, participantes, selectedReunionId, dateRange]);
+    }, [activeReport, adolescentes, reuniones, asistencias, encargados, tutores, tutoresAdolescentes, eventos, inscripciones, pagos, participantes, selectedReunionId, dateRange]);
 
     const renderReportContent = () => {
         switch (activeReport) {
@@ -160,16 +178,25 @@ const Reportes: React.FC = () => {
                             </select>
                         </div>
                         {selectedReunionId && (
-                            <ReportTable headers={['Nombre', 'Apellido', 'Cédula']}>
-                                {(reportData as Adolescente[]).map(a => (
+                            <ReportTable headers={['Nombre', 'Apellido', 'Cédula', 'Detalle']}>
+                                {(reportData as (Adolescente & { asistenciaDetalle?: string })[]).map(a => (
                                     <tr key={a.id}>
                                         <td className="p-2">{a.nombre}</td>
                                         <td className="p-2">{a.apellido}</td>
                                         <td className="p-2">{a.cedula}</td>
+                                        <td className="p-2">
+                                            <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                                                a.asistenciaDetalle === 'Primera Vez' ? 'bg-blue-500/20 text-blue-300' :
+                                                a.asistenciaDetalle === 'Regresa' ? 'bg-yellow-500/20 text-yellow-300' :
+                                                'bg-gray-700 text-gray-300'
+                                            }`}>
+                                                {a.asistenciaDetalle || 'Regular'}
+                                            </span>
+                                        </td>
                                     </tr>
                                 ))}
-                                {(reportData as Adolescente[]).length === 0 && (
-                                    <tr><td colSpan={3} className="p-4 text-center text-text-secondary">No hay asistentes registrados para esta reunión.</td></tr>
+                                {(reportData as any[]).length === 0 && (
+                                    <tr><td colSpan={4} className="p-4 text-center text-text-secondary">No hay asistentes registrados para esta reunión.</td></tr>
                                 )}
                             </ReportTable>
                         )}
@@ -183,11 +210,12 @@ const Reportes: React.FC = () => {
                             <input type="date" value={dateRange.start} onChange={e => setDateRange(prev => ({...prev, start: e.target.value}))} className="bg-background border border-border p-2 rounded-md"/>
                             <input type="date" value={dateRange.end} onChange={e => setDateRange(prev => ({...prev, end: e.target.value}))} className="bg-background border border-border p-2 rounded-md"/>
                         </div>
-                        <ReportTable headers={['Fecha', 'Tema', 'Presentes', 'Ausentes', '% Asistencia']}>
+                        <ReportTable headers={['Fecha', 'Tema', 'Encargado', 'Presentes', 'Ausentes', '% Asistencia']}>
                             {(reportData as any[]).map(row => (
                                 <tr key={row.id}>
                                     <td className="p-2">{formatDate(row.fecha)}</td>
-                                    <td className="p-2">{row.tema}</td>
+                                    <td className="p-2 font-medium text-white">{row.tema}</td>
+                                    <td className="p-2 text-text-secondary text-sm">{row.encargadoNombre}</td>
                                     <td className="p-2 text-center text-green-400 font-bold">{row.presentes}</td>
                                     <td className="p-2 text-center text-red-400 font-bold">{row.ausentes}</td>
                                     <td className="p-2 text-center">

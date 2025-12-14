@@ -1,12 +1,13 @@
-
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useData } from '../contexts/DataContext';
 import { useAuth } from '../contexts/AuthContext';
-import { Reunion, Adolescente, AsistenciaDetalle, Page } from '../types';
+import { Reunion, Adolescente, AsistenciaDetalle, Page, Asistencia } from '../types';
 import { formatDate } from '../utils/helpers';
 import Modal from '../components/ui/Modal';
 import ConfirmationModal from '../components/ui/ConfirmationModal';
 import { useForm } from '../hooks/useForm';
+import { RefreshIcon } from '../components/ui/Icons';
+import { api } from '../services/api';
 
 interface ReunionesProps {
   navigateTo: (page: Page, params?: { reunionId: number }) => void;
@@ -19,6 +20,11 @@ const Reuniones: React.FC<ReunionesProps> = ({ navigateTo }) => {
     const [editingReunion, setEditingReunion] = useState<Reunion | null>(null);
     const [dateFilter, setDateFilter] = useState({ start: '', end: '' });
     const [viewingAttendanceReunion, setViewingAttendanceReunion] = useState<Reunion | null>(null);
+    
+    // State for direct attendance fetching (reliable view)
+    const [viewingAttendanceData, setViewingAttendanceData] = useState<Asistencia[]>([]);
+    const [isLoadingAttendance, setIsLoadingAttendance] = useState(false);
+
     const [isUnsavedConfirmOpen, setIsUnsavedConfirmOpen] = useState(false);
     const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
     const [reunionToDelete, setReunionToDelete] = useState<Reunion | null>(null);
@@ -31,6 +37,29 @@ const Reuniones: React.FC<ReunionesProps> = ({ navigateTo }) => {
     };
 
     const { values, handleInputChange, setValues, resetForm } = useForm(initialFormState);
+
+    // Fetch specific attendance when viewing a reunion
+    useEffect(() => {
+        const fetchSpecificAttendance = async () => {
+            if (viewingAttendanceReunion) {
+                setIsLoadingAttendance(true);
+                try {
+                    const data = await api.getAsistenciasByReunion(viewingAttendanceReunion.id);
+                    setViewingAttendanceData(data);
+                } catch (error) {
+                    console.error("Error fetching specific attendance:", error);
+                    // Fallback to global context if error (though unlikely with this design)
+                    setViewingAttendanceData(asistencias.filter(a => Number(a.reunionId) === Number(viewingAttendanceReunion.id)));
+                } finally {
+                    setIsLoadingAttendance(false);
+                }
+            } else {
+                setViewingAttendanceData([]);
+            }
+        };
+
+        fetchSpecificAttendance();
+    }, [viewingAttendanceReunion]); // Dependencies: only when the selected reunion changes
 
     const openModalForCreate = () => {
         setEditingReunion(null);
@@ -103,8 +132,12 @@ const Reuniones: React.FC<ReunionesProps> = ({ navigateTo }) => {
     };
 
     const getAsistenciaCount = (reunionId: number) => {
-        const presentes = asistencias.filter(a => a.reunionId === reunionId && a.estado === 'Presente').length;
-        const ausentes = asistencias.filter(a => a.reunionId === reunionId && a.estado === 'Ausente').length;
+        // Ensure strictly numeric comparison against global state (useful for overview)
+        const targetId = Number(reunionId);
+        const reunionAsistencias = asistencias.filter(a => Number(a.reunionId) === targetId);
+        
+        const presentes = reunionAsistencias.filter(a => a.estado === 'Presente').length;
+        const ausentes = reunionAsistencias.filter(a => a.estado === 'Ausente').length;
         return { presentes, ausentes };
     }
     
@@ -147,28 +180,31 @@ const Reuniones: React.FC<ReunionesProps> = ({ navigateTo }) => {
             .sort((a,b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime());
     }, [reuniones, dateFilter]);
 
-    const attendanceForSelectedReunion = useMemo(() => {
+    // Use LOCAL fetched data for the modal to ensure accuracy
+    const attendanceDetails = useMemo(() => {
         if (!viewingAttendanceReunion) return { presentes: [], ausentes: [] };
         
-        const reunionAsistencias = asistencias.filter(a => a.reunionId === viewingAttendanceReunion.id);
+        // Use the specifically fetched data instead of the global 'asistencias'
+        const reunionAsistencias = viewingAttendanceData;
 
-        // FIX: Replaced .map().filter() with .flatMap() to simplify the code and resolve a TypeScript type predicate error.
+        // Map 'Presente' records to Adolescent objects
         const presentesData = reunionAsistencias
             .filter(a => a.estado === 'Presente')
             .flatMap((a): (Adolescente & { detalle?: AsistenciaDetalle })[] => {
-                const ado = adolescentes.find(ado => ado.id === a.adolescenteId);
+                const ado = adolescentes.find(ado => Number(ado.id) === Number(a.adolescenteId));
                 return ado ? [{ ...ado, detalle: a.detalle }] : [];
             });
 
+        // Map 'Ausente' records to Adolescent objects
         const ausentesData = reunionAsistencias
             .filter(a => a.estado === 'Ausente')
             .flatMap(a => {
-                const ado = adolescentes.find(ado => ado.id === a.adolescenteId);
+                const ado = adolescentes.find(ado => Number(ado.id) === Number(a.adolescenteId));
                 return ado ? [ado] : [];
             });
 
         return { presentes: presentesData, ausentes: ausentesData };
-    }, [viewingAttendanceReunion, asistencias, adolescentes]);
+    }, [viewingAttendanceReunion, viewingAttendanceData, adolescentes]);
 
 
     return (
@@ -220,8 +256,11 @@ const Reuniones: React.FC<ReunionesProps> = ({ navigateTo }) => {
                         <div key={reunion.id} className="bg-surface p-5 rounded-lg shadow-lg flex flex-col justify-between">
                             <div>
                                 <div className="flex justify-between items-start">
-                                    <h2 className="text-lg font-bold text-text-primary mb-2">{reunion.tema}</h2>
-                                    <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
+                                    <div>
+                                        <span className="text-xs text-primary font-bold uppercase tracking-wider mb-1 block">Nro. {reunion.id}</span>
+                                        <h2 className="text-lg font-bold text-text-primary mb-2 leading-tight">{reunion.tema}</h2>
+                                    </div>
+                                    <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full shrink-0 ${
                                         reunion.estado === 'En Proceso' ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-800'
                                     }`}>{reunion.estado}</span>
                                 </div>
@@ -288,27 +327,34 @@ const Reuniones: React.FC<ReunionesProps> = ({ navigateTo }) => {
             </Modal>
 
             <Modal isOpen={!!viewingAttendanceReunion} onClose={() => setViewingAttendanceReunion(null)} title={`Asistencia para: ${viewingAttendanceReunion?.tema}`}>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div>
-                        <h3 className="text-lg font-semibold text-green-400 mb-2">Presentes ({attendanceForSelectedReunion.presentes.length})</h3>
-                        <ul className="space-y-2 text-sm text-text-secondary max-h-80 overflow-y-auto pr-2">
-                            {attendanceForSelectedReunion.presentes.map(ado => (
-                                <li key={ado.id} className="bg-background p-2 rounded-md flex justify-between items-center">
-                                    <span>{ado.nombre} {ado.apellido}</span>
-                                    {ado.detalle && ado.detalle !== 'Regular' && <span className="text-xs bg-primary/50 text-white px-1.5 py-0.5 rounded-full">{ado.detalle}</span>}
-                                </li>
-                            ))}
-                            {attendanceForSelectedReunion.presentes.length === 0 && <p className="p-2">No hubo asistentes.</p>}
-                        </ul>
+                {isLoadingAttendance ? (
+                    <div className="flex justify-center items-center py-12">
+                         <RefreshIcon className="w-8 h-8 animate-spin text-primary" />
+                         <span className="ml-2 text-text-secondary">Cargando datos actualizados...</span>
                     </div>
-                    <div>
-                        <h3 className="text-lg font-semibold text-red-400 mb-2">Ausentes ({attendanceForSelectedReunion.ausentes.length})</h3>
-                         <ul className="space-y-2 text-sm text-text-secondary max-h-80 overflow-y-auto pr-2">
-                            {attendanceForSelectedReunion.ausentes.map(ado => <li key={ado.id} className="bg-background p-2 rounded-md">{ado.nombre} {ado.apellido}</li>)}
-                            {attendanceForSelectedReunion.ausentes.length === 0 && <p className="p-2">No hubo ausentes.</p>}
-                        </ul>
+                ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div>
+                            <h3 className="text-lg font-semibold text-green-400 mb-2">Presentes ({attendanceDetails.presentes.length})</h3>
+                            <ul className="space-y-2 text-sm text-text-secondary max-h-80 overflow-y-auto pr-2">
+                                {attendanceDetails.presentes.map(ado => (
+                                    <li key={ado.id} className="bg-background p-2 rounded-md flex justify-between items-center">
+                                        <span>{ado.nombre} {ado.apellido}</span>
+                                        {ado.detalle && ado.detalle !== 'Regular' && <span className="text-xs bg-primary/50 text-white px-1.5 py-0.5 rounded-full">{ado.detalle}</span>}
+                                    </li>
+                                ))}
+                                {attendanceDetails.presentes.length === 0 && <p className="p-2">No hubo asistentes.</p>}
+                            </ul>
+                        </div>
+                        <div>
+                            <h3 className="text-lg font-semibold text-red-400 mb-2">Ausentes ({attendanceDetails.ausentes.length})</h3>
+                             <ul className="space-y-2 text-sm text-text-secondary max-h-80 overflow-y-auto pr-2">
+                                {attendanceDetails.ausentes.map(ado => <li key={ado.id} className="bg-background p-2 rounded-md">{ado.nombre} {ado.apellido}</li>)}
+                                {attendanceDetails.ausentes.length === 0 && <p className="p-2">No hubo ausentes.</p>}
+                            </ul>
+                        </div>
                     </div>
-                </div>
+                )}
             </Modal>
             
             <ConfirmationModal

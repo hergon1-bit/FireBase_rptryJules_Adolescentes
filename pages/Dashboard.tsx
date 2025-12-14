@@ -3,8 +3,7 @@ import { useData } from '../contexts/DataContext';
 import { useAuth } from '../contexts/AuthContext';
 import { calcularEdad, formatDate, calcularProximoCumpleanos } from '../utils/helpers';
 import { UsersIcon, ClipboardListIcon, CalendarDaysIcon, HeartHandshakeIcon, CheckCircleIcon, RefreshIcon, UserCheckIcon } from '../components/ui/Icons';
-import { Adolescente, Reunion, Page } from '../types';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
+import { Page } from '../types';
 
 
 interface DashboardProps {
@@ -25,7 +24,7 @@ const StatCard: React.FC<{ icon: React.ReactNode; title: string; value: string |
 );
 
 const Dashboard: React.FC<DashboardProps> = ({ navigateTo }) => {
-    const { adolescentes, reuniones, encargados, tutores, eventos, asistencias, celebraciones, addCelebracionCumpleanos, fetchData } = useData();
+    const { adolescentes, reuniones, encargados, tutores, eventos, celebraciones, addCelebracionCumpleanos, fetchData } = useData();
     const { user } = useAuth();
     const [isLoading, setIsLoading] = useState(false);
 
@@ -114,106 +113,23 @@ const Dashboard: React.FC<DashboardProps> = ({ navigateTo }) => {
             tipo: 'Encargado' as const 
         }));
 
+        // Filtrar adolescentes ya celebrados
         const finalAdolescentes = cumpleanerosAdolescentes.filter(a => 
             !celebraciones.some(c => c.adolescenteId === a.id && c.ano === currentYear)
         );
 
-        return [...finalAdolescentes, ...cumpleanerosEncargados].sort((a, b) => {
+        // Filtrar encargados ya celebrados
+        const finalEncargados = cumpleanerosEncargados.filter(e => 
+            !celebraciones.some(c => c.adolescenteId === e.id && c.ano === currentYear)
+        );
+
+        return [...finalAdolescentes, ...finalEncargados].sort((a, b) => {
              const dateA = calcularProximoCumpleanos(a.fechaNacimiento);
              const dateB = calcularProximoCumpleanos(b.fechaNacimiento);
              return dateA.getDate() - dateB.getDate();
         });
 
     }, [stats.adolescentesActivosData, encargados, celebraciones]);
-
-    // --- Chart Data (Attendance Trend) ---
-    const attendanceTrend = useMemo(() => {
-        // Ordenar reuniones por fecha ascendente para el gráfico, manejando fechas inválidas
-        const sortedReuniones = [...reuniones].sort((a, b) => {
-             const dateA = new Date(a.fecha).getTime();
-             const dateB = new Date(b.fecha).getTime();
-             return (isNaN(dateA) ? 0 : dateA) - (isNaN(dateB) ? 0 : dateB);
-        });
-        
-        // Tomar las últimas 10
-        const last10 = sortedReuniones.slice(-10);
-
-        return last10.map(r => {
-            // Robust comparison: coerce IDs to strings or numbers to handle potential mismatch
-            const presentes = asistencias.filter(a => Number(a.reunionId) === Number(r.id) && a.estado === 'Presente').length;
-            const ausentes = asistencias.filter(a => Number(a.reunionId) === Number(r.id) && a.estado === 'Ausente').length;
-            
-            return {
-                name: r.tema.length > 10 ? r.tema.substring(0, 10) + '...' : r.tema, // Short name for X-Axis
-                fullTema: r.tema,
-                fecha: formatDate(r.fecha),
-                Presentes: presentes,
-                Ausentes: ausentes
-            };
-        });
-    }, [reuniones, asistencias]);
-    
-    // Age Distribution Logic
-    const ageDistribution = useMemo(() => {
-        const groups: Record<string, number> = { 
-            '0-11': 0, 
-            '12-13': 0, 
-            '14-15': 0, 
-            '16-17': 0, 
-            '18+': 0 
-        };
-        
-        adolescentes.forEach(a => {
-            // Usamos calcularEdad que ya es robusto
-            const age = calcularEdad(a.fechaNacimiento);
-            
-            if (age < 12) groups['0-11']++;
-            else if (age <= 13) groups['12-13']++;
-            else if (age <= 15) groups['14-15']++;
-            else if (age <= 17) groups['16-17']++;
-            else groups['18+']++;
-        });
-        
-        return Object.entries(groups).map(([name, value]) => ({ name, 'Cantidad': value }));
-    }, [adolescentes]);
-
-    // Lógica mejorada: Buscar la última reunión que tenga registros de asistencia asociados
-    const lastMeetingAttendance = useMemo(() => {
-        // Ordenar reuniones de más reciente a más antigua
-        const sortedMeetings = [...reuniones].sort((a, b) => {
-             const dateA = new Date(a.fecha).getTime();
-             const dateB = new Date(b.fecha).getTime();
-             return (isNaN(dateB) ? 0 : dateB) - (isNaN(dateA) ? 0 : dateA);
-        });
-        
-        // Encontrar la primera reunión (la más reciente) que tenga al menos un registro de asistencia
-        // Esto evita mostrar el gráfico vacío si la última reunión creada aun no tiene lista tomada
-        const lastMeetingWithData = sortedMeetings.find(r => {
-            return asistencias.some(a => Number(a.reunionId) === Number(r.id));
-        });
-
-        const targetMeeting = lastMeetingWithData || sortedMeetings[0];
-
-        if (!targetMeeting) return { data: [], title: 'No hay reuniones registradas' };
-
-        // Robust filter
-        const meetingAsistencias = asistencias.filter(a => Number(a.reunionId) === Number(targetMeeting.id));
-        
-        // Contamos explícitamente cuántas filas tienen estado Presente y cuántas Ausente
-        const presentes = meetingAsistencias.filter(a => a.estado === 'Presente').length;
-        const ausentes = meetingAsistencias.filter(a => a.estado === 'Ausente').length;
-        
-        if (presentes === 0 && ausentes === 0) {
-            return { data: [], title: `Asistencia: ${targetMeeting.tema} (Sin datos)` };
-        }
-
-        return {
-            data: [ { name: 'Presentes', value: presentes }, { name: 'Ausentes', value: ausentes }, ],
-            title: `Asistencia: ${targetMeeting.tema} (${formatDate(targetMeeting.fecha)})`
-        };
-    }, [reuniones, asistencias]);
-
-    const PIE_COLORS = ['#10b981', '#ef4444'];
 
     if (isLoading && reuniones.length === 0) {
         return (
@@ -249,60 +165,7 @@ const Dashboard: React.FC<DashboardProps> = ({ navigateTo }) => {
                 <StatCard icon={<HeartHandshakeIcon className="text-white"/>} title="Tutores Registrados" value={stats.tutores} color="bg-yellow-500" />
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                <div className="lg:col-span-2 bg-surface p-6 rounded-lg shadow-lg flex flex-col">
-                    <h2 className="text-xl font-semibold text-text-primary mb-4">Tendencia de Asistencia (Últimas 10 Reuniones)</h2>
-                    <div className="w-full h-[300px] flex-1">
-                        <ResponsiveContainer width="100%" height="100%">
-                            <BarChart data={attendanceTrend} margin={{ top: 5, right: 20, left: -10, bottom: 5 }}>
-                                <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-                                <XAxis dataKey="name" stroke="#d1d5db" fontSize={12} interval={0} angle={-15} textAnchor="end" height={50} />
-                                <YAxis stroke="#d1d5db" allowDecimals={false} />
-                                <Tooltip 
-                                    contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151', color: '#fff' }} 
-                                    cursor={{ fill: 'rgba(79, 70, 229, 0.1)' }}
-                                    labelFormatter={(label, payload) => {
-                                        if (payload && payload.length > 0) {
-                                            const item = payload[0].payload;
-                                            return `${item.fullTema} (${item.fecha})`;
-                                        }
-                                        return label;
-                                    }}
-                                />
-                                <Legend />
-                                <Bar dataKey="Presentes" fill="#10b981" />
-                                <Bar dataKey="Ausentes" fill="#ef4444" />
-                            </BarChart>
-                        </ResponsiveContainer>
-                    </div>
-                </div>
-                
-                <div className="lg:col-span-1 bg-surface p-6 rounded-lg shadow-lg flex flex-col">
-                    <h2 className="text-xl font-semibold text-text-primary mb-4">Distribución por Edades</h2>
-                    {adolescentes.length > 0 ? (
-                    <div className="w-full h-[300px] flex-1">
-                        <ResponsiveContainer width="100%" height="100%">
-                            <BarChart data={ageDistribution} layout="vertical" margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
-                                <CartesianGrid strokeDasharray="3 3" stroke="#374151" horizontal={false} />
-                                <XAxis type="number" stroke="#d1d5db" allowDecimals={false} />
-                                <YAxis type="category" dataKey="name" stroke="#d1d5db" width={50} fontSize={12} />
-                                <Tooltip 
-                                    contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151', color: '#fff' }} 
-                                    cursor={{ fill: 'rgba(16, 185, 129, 0.1)' }}
-                                />
-                                <Bar dataKey="Cantidad" name="Adolescentes" fill="#10b981" barSize={24} radius={[0, 4, 4, 0]} />
-                            </BarChart>
-                        </ResponsiveContainer>
-                    </div>
-                    ) : (
-                        <div className="flex-1 flex items-center justify-center text-text-secondary text-center p-4">
-                            No hay adolescentes registrados para calcular edades.
-                        </div>
-                    )}
-                </div>
-            </div>
-
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                 <div className="lg:col-span-1 bg-surface p-6 rounded-lg shadow-lg">
                     <h2 className="text-xl font-semibold text-text-primary mb-4">Próximas Reuniones</h2>
                     <div className="space-y-4">
@@ -325,40 +188,6 @@ const Dashboard: React.FC<DashboardProps> = ({ navigateTo }) => {
                     </div>
                 </div>
 
-                 <div className="lg:col-span-1 bg-surface p-6 rounded-lg shadow-lg">
-                    <h2 className="text-xl font-semibold text-text-primary mb-4 truncate" title={lastMeetingAttendance.title}>{lastMeetingAttendance.title}</h2>
-                    {lastMeetingAttendance.data.length > 0 && (lastMeetingAttendance.data[0].value > 0 || lastMeetingAttendance.data[1].value > 0) ? (
-                        <ResponsiveContainer width="100%" height={260}>
-                            <PieChart>
-                                <Pie
-                                    data={lastMeetingAttendance.data}
-                                    cx="50%"
-                                    cy="50%"
-                                    labelLine={false}
-                                    outerRadius={80}
-                                    fill="#8884d8"
-                                    dataKey="value"
-                                    label={({ name, percent, value }) => value > 0 ? `${(percent * 100).toFixed(0)}%` : ''}
-                                >
-                                    {lastMeetingAttendance.data.map((entry, index) => (
-                                        <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />
-                                    ))}
-                                </Pie>
-                                <Tooltip contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151', color: '#fff' }}/>
-                                <Legend />
-                            </PieChart>
-                        </ResponsiveContainer>
-                    ) : (
-                        <div className="flex items-center justify-center h-full">
-                           <p className="text-text-secondary text-center px-4">
-                               {asistencias.length === 0 
-                               ? "No hay datos de asistencia en el sistema." 
-                               : "No hay asistencia registrada para esta reunión."}
-                           </p>
-                        </div>
-                    )}
-                </div>
-
                 <div className="lg:col-span-1 bg-surface p-6 rounded-lg shadow-lg">
                     <h2 className="text-xl font-semibold text-text-primary mb-4">Próximos Cumpleaños del Mes</h2>
                      <div className="space-y-3 max-h-64 overflow-y-auto">
@@ -376,15 +205,13 @@ const Dashboard: React.FC<DashboardProps> = ({ navigateTo }) => {
                                 </div>
                                 <div className="text-right flex items-center space-x-4">
                                      <p className="font-bold text-secondary">{new Date(calcularProximoCumpleanos(persona.fechaNacimiento)).toLocaleDateString('es-ES', { day: 'numeric', month: 'long' })}</p>
-                                     {persona.tipo === 'Adolescente' && (
-                                         <button
-                                            onClick={() => addCelebracionCumpleanos(persona.id, new Date().getFullYear())}
-                                            title="Marcar como celebrado"
-                                            className="p-2 rounded-full text-green-400 hover:bg-green-500/20"
-                                         >
-                                             <CheckCircleIcon className="w-5 h-5" />
-                                         </button>
-                                     )}
+                                     <button
+                                        onClick={() => addCelebracionCumpleanos(persona.id, new Date().getFullYear())}
+                                        title="Marcar como celebrado"
+                                        className="p-2 rounded-full text-green-400 hover:bg-green-500/20"
+                                     >
+                                         <CheckCircleIcon className="w-5 h-5" />
+                                     </button>
                                 </div>
                             </div>
                         )) : (

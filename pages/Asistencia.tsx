@@ -1,8 +1,9 @@
-
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useData } from '../contexts/DataContext';
 import { Asistencia, AsistenciaDetalle, TipoAsistencia, Page } from '../types';
 import { formatDate } from '../utils/helpers';
+import { RefreshIcon, CheckCircleIcon } from '../components/ui/Icons';
+import { api } from '../services/api';
 
 interface AsistenciaProps {
   reunionId: number;
@@ -10,20 +11,49 @@ interface AsistenciaProps {
 }
 
 const Asistencia: React.FC<AsistenciaProps> = ({ reunionId, navigateTo }) => {
-    const { reuniones, adolescentes, asistencias: initialAsistencias, saveAsistencias, updateReunion } = useData();
+    const { reuniones, adolescentes, asistencias: initialAsistencias, updateReunion, fetchData } = useData();
     const [asistenciaLocal, setAsistenciaLocal] = useState<Map<number, Asistencia>>(new Map());
     const [isLoading, setIsLoading] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
+    const [showOnlyPresent, setShowOnlyPresent] = useState(false);
+    const [saveStatus, setSaveStatus] = useState<'idle' | 'success' | 'error'>('idle');
+    const [isInitialized, setIsInitialized] = useState(false);
 
     const reunion = reuniones.find(r => r.id === reunionId);
 
-    const adolescentesActivos = adolescentes.filter(a => a.estado === 'Activo');
+    // Force refresh data on mount to ensure we are editing the latest records
+    useEffect(() => {
+        const loadFreshData = async () => {
+            setIsLoading(true);
+            await fetchData();
+            setIsLoading(false);
+        };
+        loadFreshData();
+    }, [fetchData]);
 
-    const filteredAdolescentes = adolescentesActivos.filter(a =>
-        `${a.nombre} ${a.apellido}`.toLowerCase().includes(searchTerm.toLowerCase())
-    );
+    // Use useMemo to prevent creating a new array reference on every render
+    const adolescentesActivos = useMemo(() => 
+        adolescentes.filter(a => a.estado === 'Activo'), 
+    [adolescentes]);
+
+    // Filter logic updated to include "Show Only Present" toggle
+    const filteredAdolescentes = useMemo(() => 
+        adolescentesActivos.filter(a => {
+            const matchesSearch = `${a.nombre} ${a.apellido}`.toLowerCase().includes(searchTerm.toLowerCase());
+            
+            if (!showOnlyPresent) {
+                return matchesSearch;
+            }
+
+            // Check current local status if filter is active
+            const currentStatus = asistenciaLocal.get(a.id)?.estado;
+            return matchesSearch && currentStatus === 'Presente';
+        }),
+    [adolescentesActivos, searchTerm, showOnlyPresent, asistenciaLocal]);
 
     const initializeAsistencias = useCallback(() => {
+        if (adolescentesActivos.length === 0) return;
+
         const newMap = new Map<number, Asistencia>();
         adolescentesActivos.forEach(ado => {
             const existingAsistencia = initialAsistencias.find(a => a.reunionId === reunionId && a.adolescenteId === ado.id);
@@ -39,10 +69,12 @@ const Asistencia: React.FC<AsistenciaProps> = ({ reunionId, navigateTo }) => {
             }
         });
         setAsistenciaLocal(newMap);
+        setIsInitialized(true);
     }, [reunionId, adolescentesActivos, initialAsistencias]);
 
+    // Initialize local state when data is available
     useEffect(() => {
-        initializeAsistencias();
+       initializeAsistencias();
     }, [initializeAsistencias]);
     
     const handleAsistenciaChange = (adolescenteId: number, estado: TipoAsistencia) => {
@@ -60,6 +92,7 @@ const Asistencia: React.FC<AsistenciaProps> = ({ reunionId, navigateTo }) => {
             newMap.set(adolescenteId, updatedAsistencia);
             return newMap;
         });
+        setSaveStatus('idle'); // Reset status on change
     };
 
     const handleDetalleChange = (adolescenteId: number, detalle: AsistenciaDetalle) => {
@@ -72,25 +105,42 @@ const Asistencia: React.FC<AsistenciaProps> = ({ reunionId, navigateTo }) => {
             }
             return prevMap;
         });
+        setSaveStatus('idle'); // Reset status on change
     };
     
     const handleGuardar = async (finalizar: boolean) => {
         setIsLoading(true);
-        // FIX: Replaced `Array.from` with spread syntax to correctly convert the Map iterator to an array.
-        const asistenciasArray = [...asistenciaLocal.values()];
-        await saveAsistencias(asistenciasArray);
-        if (finalizar && reunion) {
-            await updateReunion({ ...reunion, estado: 'Finalizado' });
+        setSaveStatus('idle');
+        try {
+            // Convert Map values to array for saving
+            const asistenciasArray = [...asistenciaLocal.values()];
+            
+            // CRITICAL FIX: Use api directly instead of context method.
+            // This avoids triggering a global fetch which might overwrite local changes with stale data.
+            await api.saveAsistencias(asistenciasArray);
+            
+            if (finalizar && reunion) {
+                await updateReunion({ ...reunion, estado: 'Finalizado' });
+                navigateTo('reuniones');
+            } else {
+                setSaveStatus('success');
+                // Auto hide success message after 3 seconds
+                setTimeout(() => setSaveStatus('idle'), 3000);
+            }
+        } catch (error) {
+            console.error(error);
+            setSaveStatus('error');
+            alert("Ocurrió un error al guardar los datos.");
+        } finally {
+            setIsLoading(false);
         }
-        setIsLoading(false);
-        navigateTo('reuniones');
     };
 
     if (!reunion) {
         return <div className="text-center text-text-secondary">Reunión no encontrada.</div>;
     }
 
-    // FIX: Replaced `Array.from` with spread syntax to correctly convert the Map iterator for filtering.
+    // Recalculate counts based on local state
     const presentes = [...asistenciaLocal.values()].filter(a => a.estado === 'Presente').length;
     const ausentes = adolescentesActivos.length - presentes;
 
@@ -98,19 +148,46 @@ const Asistencia: React.FC<AsistenciaProps> = ({ reunionId, navigateTo }) => {
         <div className="space-y-6">
             <div>
                 <button onClick={() => navigateTo('reuniones')} className="text-primary hover:underline mb-4">&larr; Volver a Reuniones</button>
-                <h1 className="text-3xl font-bold">Toma de Asistencia</h1>
-                <p className="text-xl text-text-secondary">{reunion.tema} - {formatDate(reunion.fecha)}</p>
+                <div className="flex justify-between items-center">
+                    <div>
+                        <div className="flex items-center gap-3 mb-1">
+                            <h1 className="text-3xl font-bold">Toma de Asistencia</h1>
+                            <span className="px-3 py-1 bg-primary/20 text-primary border border-primary/30 rounded-full text-sm font-bold">
+                                Nro. {reunion.id}
+                            </span>
+                        </div>
+                        <p className="text-xl text-text-secondary">{reunion.tema} - {formatDate(reunion.fecha)}</p>
+                    </div>
+                    {saveStatus === 'success' && (
+                        <div className="flex items-center text-green-400 bg-green-400/10 px-4 py-2 rounded-lg animate-fade-in-out">
+                            <CheckCircleIcon className="w-6 h-6 mr-2" />
+                            <span className="font-semibold">Datos actualizados correctamente</span>
+                        </div>
+                    )}
+                </div>
             </div>
 
-            <div className="flex flex-col md:flex-row justify-between items-center gap-4 p-4 bg-surface rounded-lg">
-                <input
-                    type="text"
-                    placeholder="Buscar adolescente..."
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    className="w-full md:w-1/3 px-4 py-2 bg-background border border-border rounded-md"
-                />
-                <div className="flex space-x-6 text-center">
+            <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center gap-4 p-4 bg-surface rounded-lg">
+                <div className="flex flex-col md:flex-row gap-4 w-full xl:w-auto flex-1">
+                    <input
+                        type="text"
+                        placeholder="Buscar adolescente..."
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        className="w-full md:w-80 px-4 py-2 bg-background border border-border rounded-md focus:ring-primary focus:border-primary"
+                    />
+                    <label className="flex items-center space-x-2 text-text-secondary cursor-pointer bg-background border border-border px-3 py-2 rounded-md hover:bg-surface/80 select-none">
+                        <input 
+                            type="checkbox" 
+                            checked={showOnlyPresent} 
+                            onChange={(e) => setShowOnlyPresent(e.target.checked)}
+                            className="h-4 w-4 text-primary rounded border-gray-600 focus:ring-primary bg-background"
+                        />
+                        <span>Ver solo Presentes</span>
+                    </label>
+                </div>
+
+                <div className="flex space-x-6 text-center w-full xl:w-auto justify-around xl:justify-end">
                     <div>
                         <p className="text-2xl font-bold text-green-400">{presentes}</p>
                         <p className="text-sm text-text-secondary">Presentes</p>
@@ -129,7 +206,7 @@ const Asistencia: React.FC<AsistenciaProps> = ({ reunionId, navigateTo }) => {
             <div className="bg-surface shadow-lg rounded-lg overflow-hidden">
                 <div className="overflow-y-auto max-h-[60vh]">
                     <table className="min-w-full divide-y divide-border">
-                        <thead className="bg-background sticky top-0">
+                        <thead className="bg-background sticky top-0 z-10">
                             <tr>
                                 <th className="px-6 py-3 text-left text-xs font-medium text-text-secondary uppercase">Adolescente</th>
                                 <th className="px-6 py-3 text-center text-xs font-medium text-text-secondary uppercase">Estado</th>
@@ -142,7 +219,7 @@ const Asistencia: React.FC<AsistenciaProps> = ({ reunionId, navigateTo }) => {
                                 if (!asistencia) return null;
 
                                 return (
-                                <tr key={ado.id} className={asistencia.estado === 'Presente' ? 'bg-green-900/20' : ''}>
+                                <tr key={ado.id} className={asistencia.estado === 'Presente' ? 'bg-green-900/10' : ''}>
                                     <td className="px-6 py-4 whitespace-nowrap font-medium text-text-primary">{ado.nombre} {ado.apellido}</td>
                                     <td className="px-6 py-4 whitespace-nowrap">
                                         <div className="flex justify-center space-x-2">
@@ -150,11 +227,11 @@ const Asistencia: React.FC<AsistenciaProps> = ({ reunionId, navigateTo }) => {
                                             <button onClick={() => handleAsistenciaChange(ado.id, 'Ausente')} className={`px-3 py-1 text-sm rounded-full transition ${asistencia.estado === 'Ausente' ? 'bg-red-500 text-white' : 'bg-surface hover:bg-red-500/20'}`}>Ausente</button>
                                         </div>
                                     </td>
-                                    <td className="px-6 py-4 whitespace-nowrap">
+                                    <td className="px-6 py-4 whitespace-nowrap text-center">
                                         <select 
                                             value={asistencia.detalle} 
                                             onChange={(e) => handleDetalleChange(ado.id, e.target.value as AsistenciaDetalle)} 
-                                            className="bg-background border border-border rounded-md px-2 py-1 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                                            className="bg-background border border-border rounded-md px-2 py-1 text-sm disabled:opacity-50 disabled:cursor-not-allowed focus:ring-primary focus:border-primary"
                                             disabled={asistencia.estado === 'Ausente'}
                                         >
                                             <option value="Regular">Regular</option>
@@ -164,28 +241,38 @@ const Asistencia: React.FC<AsistenciaProps> = ({ reunionId, navigateTo }) => {
                                     </td>
                                 </tr>
                             )})}
+                            {filteredAdolescentes.length === 0 && (
+                                <tr>
+                                    <td colSpan={3} className="px-6 py-8 text-center text-text-secondary">
+                                        {showOnlyPresent 
+                                            ? "No hay adolescentes marcados como 'Presente' que coincidan con la búsqueda." 
+                                            : "No se encontraron adolescentes."}
+                                    </td>
+                                </tr>
+                            )}
                         </tbody>
                     </table>
                 </div>
             </div>
             
-            <div className="flex justify-end space-x-4">
+            <div className="flex justify-end space-x-4 pb-4">
                  <button 
                     onClick={() => handleGuardar(false)} 
                     disabled={isLoading}
-                    className="bg-gray-600 text-white px-6 py-2 rounded-lg hover:bg-gray-700 disabled:opacity-50"
+                    className="flex items-center bg-gray-600 text-white px-6 py-2 rounded-lg hover:bg-gray-700 disabled:opacity-50 transition-colors"
                 >
+                    {isLoading ? <RefreshIcon className="w-5 h-5 animate-spin mr-2" /> : null}
                     {isLoading ? 'Guardando...' : 'Guardar Parcial'}
                 </button>
                 <button 
                     onClick={() => handleGuardar(true)} 
                     disabled={isLoading}
-                    className="bg-primary text-white px-6 py-2 rounded-lg hover:bg-indigo-700 disabled:opacity-50"
+                    className="flex items-center bg-primary text-white px-6 py-2 rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition-colors"
                 >
+                    {isLoading ? <RefreshIcon className="w-5 h-5 animate-spin mr-2" /> : null}
                     {isLoading ? 'Finalizando...' : 'Guardar y Finalizar Reunión'}
                 </button>
             </div>
-
         </div>
     );
 };
