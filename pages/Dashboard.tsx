@@ -11,8 +11,11 @@ interface DashboardProps {
 }
 
 
-const StatCard: React.FC<{ icon: React.ReactNode; title: string; value: string | number; color: string }> = ({ icon, title, value, color }) => (
-    <div className="bg-surface p-6 rounded-lg shadow-lg flex items-center space-x-4">
+const StatCard: React.FC<{ icon: React.ReactNode; title: string; value: string | number; color: string; onClick?: () => void }> = ({ icon, title, value, color, onClick }) => (
+    <div 
+        className={`bg-surface p-6 rounded-lg shadow-lg flex items-center space-x-4 ${onClick ? 'cursor-pointer hover:bg-gray-700 transition-colors' : ''}`}
+        onClick={onClick}
+    >
         <div className={`p-3 rounded-full ${color}`}>
             {icon}
         </div>
@@ -219,11 +222,41 @@ const Dashboard: React.FC<DashboardProps> = ({ navigateTo }) => {
             </div>
             
             <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-6">
-                <StatCard icon={<UsersIcon className="text-white"/>} title="Adolescentes Activos" value={stats.adolescentesActivos} color="bg-blue-500" />
-                <StatCard icon={<ClipboardListIcon className="text-white"/>} title="Reuniones Totales" value={stats.reunionesTotales} color="bg-green-500" />
-                <StatCard icon={<CalendarDaysIcon className="text-white"/>} title="Eventos Próximos (7d)" value={stats.eventosProximos} color="bg-orange-500" />
-                <StatCard icon={<UserCheckIcon className="text-white"/>} title="Encargados" value={stats.encargados} color="bg-purple-500" />
-                <StatCard icon={<HeartHandshakeIcon className="text-white"/>} title="Tutores Registrados" value={stats.tutores} color="bg-yellow-500" />
+                <StatCard 
+                    icon={<UsersIcon className="text-white"/>} 
+                    title="Adolescentes Activos" 
+                    value={stats.adolescentesActivos} 
+                    color="bg-blue-500" 
+                    onClick={() => navigateTo('adolescentes')}
+                />
+                <StatCard 
+                    icon={<ClipboardListIcon className="text-white"/>} 
+                    title="Reuniones Totales" 
+                    value={stats.reunionesTotales} 
+                    color="bg-green-500" 
+                    onClick={() => navigateTo('reuniones')}
+                />
+                <StatCard 
+                    icon={<CalendarDaysIcon className="text-white"/>} 
+                    title="Eventos Próximos (7d)" 
+                    value={stats.eventosProximos} 
+                    color="bg-orange-500" 
+                    onClick={() => navigateTo('eventos')}
+                />
+                <StatCard 
+                    icon={<UserCheckIcon className="text-white"/>} 
+                    title="Encargados" 
+                    value={stats.encargados} 
+                    color="bg-purple-500" 
+                    onClick={() => navigateTo('encargados')}
+                />
+                <StatCard 
+                    icon={<HeartHandshakeIcon className="text-white"/>} 
+                    title="Tutores Registrados" 
+                    value={stats.tutores} 
+                    color="bg-yellow-500" 
+                    onClick={() => navigateTo('tutores')}
+                />
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
