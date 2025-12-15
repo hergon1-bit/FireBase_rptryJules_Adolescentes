@@ -6,7 +6,7 @@ import { formatDate } from '../utils/helpers';
 import Modal from '../components/ui/Modal';
 import ConfirmationModal from '../components/ui/ConfirmationModal';
 import { useForm } from '../hooks/useForm';
-import { RefreshIcon } from '../components/ui/Icons';
+import { RefreshIcon, UsersIcon } from '../components/ui/Icons';
 import { api } from '../services/api';
 
 interface ReunionesProps {
@@ -14,7 +14,7 @@ interface ReunionesProps {
 }
 
 const Reuniones: React.FC<ReunionesProps> = ({ navigateTo }) => {
-    const { reuniones, encargados, asistencias, adolescentes, resumenReuniones, addReunion, updateReunion, deleteReunion, fetchData } = useData();
+    const { reuniones, encargados, asistencias, adolescentes, addReunion, updateReunion, deleteReunion, fetchData } = useData();
     const { hasPermission } = useAuth();
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingReunion, setEditingReunion] = useState<Reunion | null>(null);
@@ -49,14 +49,26 @@ const Reuniones: React.FC<ReunionesProps> = ({ navigateTo }) => {
         refresh();
     }, [fetchData]);
 
-    // Use the fetched summary view for stats, ensuring high performance and accuracy
+    // Calculate stats directly from the raw asistencias array for reliability
     const attendanceStats = useMemo(() => {
         const stats = new Map<number, { presentes: number, ausentes: number }>();
-        resumenReuniones.forEach(r => {
-            stats.set(r.reunionId, { presentes: r.presentes, ausentes: r.ausentes });
+        
+        asistencias.forEach(a => {
+            const rId = Number(a.reunionId);
+            if (!stats.has(rId)) {
+                stats.set(rId, { presentes: 0, ausentes: 0 });
+            }
+            
+            const current = stats.get(rId)!;
+            if (a.estado === 'Presente') {
+                current.presentes++;
+            } else {
+                current.ausentes++;
+            }
         });
+        
         return stats;
-    }, [resumenReuniones]);
+    }, [asistencias]);
 
     // Fetch specific attendance when viewing a reunion (Modal Detail)
     useEffect(() => {
@@ -264,7 +276,6 @@ const Reuniones: React.FC<ReunionesProps> = ({ navigateTo }) => {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {filteredReuniones.map(reunion => {
                     const encargado = encargados.find(e => e.id === reunion.encargadoId);
-                    // Use the pre-calculated stats map derived from the DB view
                     const stats = attendanceStats.get(reunion.id) || { presentes: 0, ausentes: 0 };
                     
                     return (
@@ -280,10 +291,10 @@ const Reuniones: React.FC<ReunionesProps> = ({ navigateTo }) => {
                                     }`}>{reunion.estado}</span>
                                 </div>
                                 <p className="text-sm text-text-secondary">{formatDate(reunion.fecha)}</p>
-                                <p className="text-sm text-text-secondary">Dirigido por: {encargado?.nombre} {encargado?.apellido}</p>
-                                <div className="flex space-x-4 mt-3 text-sm">
-                                    <p><span className="font-bold text-green-400">{stats.presentes}</span> Presentes</p>
-                                    <p><span className="font-bold text-red-400">{stats.ausentes}</span> Ausentes</p>
+                                <p className="text-sm text-text-secondary mb-2">Dirigido por: {encargado?.nombre} {encargado?.apellido}</p>
+                                <div className="flex items-center gap-2 text-sm text-green-400 font-semibold bg-green-400/10 px-2 py-1 rounded w-fit">
+                                    <UsersIcon className="w-4 h-4" />
+                                    <span>{stats.presentes} Presentes</span>
                                 </div>
                             </div>
                             <div className="mt-4 flex space-x-2">
@@ -348,27 +359,37 @@ const Reuniones: React.FC<ReunionesProps> = ({ navigateTo }) => {
                          <span className="ml-2 text-text-secondary">Cargando datos actualizados...</span>
                     </div>
                 ) : (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <div>
-                            <h3 className="text-lg font-semibold text-green-400 mb-2">Presentes ({attendanceDetails.presentes.length})</h3>
-                            <ul className="space-y-2 text-sm text-text-secondary max-h-80 overflow-y-auto pr-2">
-                                {attendanceDetails.presentes.map(ado => (
-                                    <li key={ado.id} className="bg-background p-2 rounded-md flex justify-between items-center">
-                                        <span>{ado.nombre} {ado.apellido}</span>
-                                        {ado.detalle && ado.detalle !== 'Regular' && <span className="text-xs bg-primary/50 text-white px-1.5 py-0.5 rounded-full">{ado.detalle}</span>}
-                                    </li>
-                                ))}
-                                {attendanceDetails.presentes.length === 0 && <p className="p-2">No hubo asistentes.</p>}
-                            </ul>
+                    <>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div>
+                                <h3 className="text-lg font-semibold text-green-400 mb-2">Presentes ({attendanceDetails.presentes.length})</h3>
+                                <ul className="space-y-2 text-sm text-text-secondary max-h-80 overflow-y-auto pr-2">
+                                    {attendanceDetails.presentes.map(ado => (
+                                        <li key={ado.id} className="bg-background p-2 rounded-md flex justify-between items-center">
+                                            <span>{ado.nombre} {ado.apellido}</span>
+                                            {ado.detalle && ado.detalle !== 'Regular' && <span className="text-xs bg-primary/50 text-white px-1.5 py-0.5 rounded-full">{ado.detalle}</span>}
+                                        </li>
+                                    ))}
+                                    {attendanceDetails.presentes.length === 0 && <p className="p-2">No hubo asistentes.</p>}
+                                </ul>
+                            </div>
+                            <div>
+                                <h3 className="text-lg font-semibold text-red-400 mb-2">Ausentes ({attendanceDetails.ausentes.length})</h3>
+                                 <ul className="space-y-2 text-sm text-text-secondary max-h-80 overflow-y-auto pr-2">
+                                    {attendanceDetails.ausentes.map(ado => <li key={ado.id} className="bg-background p-2 rounded-md">{ado.nombre} {ado.apellido}</li>)}
+                                    {attendanceDetails.ausentes.length === 0 && <p className="p-2">No hubo ausentes.</p>}
+                                </ul>
+                            </div>
                         </div>
-                        <div>
-                            <h3 className="text-lg font-semibold text-red-400 mb-2">Ausentes ({attendanceDetails.ausentes.length})</h3>
-                             <ul className="space-y-2 text-sm text-text-secondary max-h-80 overflow-y-auto pr-2">
-                                {attendanceDetails.ausentes.map(ado => <li key={ado.id} className="bg-background p-2 rounded-md">{ado.nombre} {ado.apellido}</li>)}
-                                {attendanceDetails.ausentes.length === 0 && <p className="p-2">No hubo ausentes.</p>}
-                            </ul>
+                        <div className="flex justify-end mt-6 pt-4 border-t border-border">
+                             <button
+                                onClick={() => setViewingAttendanceReunion(null)}
+                                className="bg-gray-600 text-white px-4 py-2 rounded-lg hover:bg-gray-700 transition-colors"
+                            >
+                                Cerrar Vista
+                            </button>
                         </div>
-                    </div>
+                    </>
                 )}
             </Modal>
             

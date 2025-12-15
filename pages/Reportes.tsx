@@ -12,6 +12,7 @@ const Reportes: React.FC = () => {
     const { adolescentes, reuniones, asistencias, encargados, tutores, tutoresAdolescentes, eventos, inscripciones, pagos, participantes, fetchData } = useData();
     const [activeReport, setActiveReport] = useState<ReportType>('cumpleanos');
     const [selectedReunionId, setSelectedReunionId] = useState<number | null>(null);
+    const [selectedEventoId, setSelectedEventoId] = useState<number | null>(null);
     const [dateRange, setDateRange] = useState({ start: '', end: '' });
     const [isRefreshing, setIsRefreshing] = useState(false);
 
@@ -120,40 +121,33 @@ const Reportes: React.FC = () => {
                 }));
             
             case 'pagosEvento':
-                let filteredEvents = eventos;
-                if (dateRange.start && dateRange.end) {
-                    const startDate = new Date(dateRange.start);
-                    // Add 1 day to end date to include the whole day
-                    const endDate = new Date(dateRange.end);
-                    endDate.setDate(endDate.getDate() + 1);
+                if (!selectedEventoId) return [];
 
-                    filteredEvents = eventos.filter(e => {
-                        const eventDate = new Date(e.fechaInicio);
-                        return eventDate >= startDate && eventDate <= endDate;
-                    });
-                }
-                
-                return filteredEvents.map(evento => {
-                    const eventoInscripciones = inscripciones.filter(i => i.eventoId === evento.id);
-                    const inscripcionIds = eventoInscripciones.map(i => i.id);
-                    
-                    const totalRecaudado = pagos
-                        .filter(p => inscripcionIds.includes(p.inscripcionId))
-                        .reduce((sum, p) => sum + p.monto, 0);
-                        
-                    const participantesCount = participantes.filter(p => p.eventoId === evento.id).length;
+                // 1. Obtener inscripciones del evento seleccionado
+                const inscripcionesEvento = inscripciones.filter(i => i.eventoId === Number(selectedEventoId));
+                const inscripcionIds = inscripcionesEvento.map(i => i.id);
+
+                // 2. Obtener los pagos correspondientes a esas inscripciones
+                const pagosEvento = pagos.filter(p => inscripcionIds.includes(p.inscripcionId));
+
+                // 3. Mapear datos para mostrar (Fecha, Adolescente, Monto)
+                return pagosEvento.map(p => {
+                    const inscripcion = inscripcionesEvento.find(i => i.id === p.inscripcionId);
+                    const adolescente = adolescentes.find(a => a.id === inscripcion?.adolescenteId);
                     
                     return {
-                        ...evento,
-                        totalRecaudado,
-                        participantesCount
+                        id: p.id,
+                        fecha: p.fecha,
+                        monto: p.monto,
+                        adolescenteNombre: adolescente ? `${adolescente.nombre} ${adolescente.apellido}` : 'Desconocido',
+                        adolescenteCedula: adolescente?.cedula || 'N/A'
                     };
-                });
+                }).sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime());
 
             default:
                 return [];
         }
-    }, [activeReport, adolescentes, reuniones, asistencias, encargados, tutores, tutoresAdolescentes, eventos, inscripciones, pagos, participantes, selectedReunionId, dateRange]);
+    }, [activeReport, adolescentes, reuniones, asistencias, encargados, tutores, tutoresAdolescentes, eventos, inscripciones, pagos, participantes, selectedReunionId, selectedEventoId, dateRange]);
 
     const generarPDFAsistencia = () => {
         if (!selectedReunionId) return;
@@ -357,20 +351,43 @@ const Reportes: React.FC = () => {
             case 'pagosEvento':
                 return (
                     <div>
-                        <div className="flex gap-4 mb-4">
-                            <input type="date" value={dateRange.start} onChange={e => setDateRange(prev => ({...prev, start: e.target.value}))} className="bg-background border border-border p-2 rounded-md" placeholder="Fecha de inicio"/>
-                            <input type="date" value={dateRange.end} onChange={e => setDateRange(prev => ({...prev, end: e.target.value}))} className="bg-background border border-border p-2 rounded-md" placeholder="Fecha de fin"/>
-                        </div>
-                        <ReportTable headers={['Evento', 'Fecha', 'N° Participantes', 'Total Recaudado']}>
-                            {(reportData as any[]).map(item => (
-                                <tr key={item.id}>
-                                    <td className="p-2">{item.tema}</td>
-                                    <td className="p-2">{formatDate(item.fechaInicio)}</td>
-                                    <td className="p-2 text-center">{item.participantesCount}</td>
-                                    <td className="p-2 text-right font-mono">{formatCurrency(item.totalRecaudado)}</td>
-                                </tr>
-                            ))}
-                        </ReportTable>
+                         <div className="mb-4">
+                            <label className="block text-sm font-medium text-text-secondary mb-1">Seleccionar Evento:</label>
+                            <select
+                                value={selectedEventoId || ''}
+                                onChange={(e) => setSelectedEventoId(Number(e.target.value))}
+                                className="bg-background border border-border p-2 rounded-md w-full md:w-96"
+                            >
+                                <option value="">-- Seleccione un evento --</option>
+                                {eventos.map(e => (
+                                    <option key={e.id} value={e.id}>{e.tema} ({formatDate(e.fechaInicio)})</option>
+                                ))}
+                            </select>
+                         </div>
+
+                         {selectedEventoId && (
+                             <ReportTable headers={['Fecha Pago', 'Adolescente', 'Cédula', 'Monto']}>
+                                {(reportData as any[]).map(p => (
+                                    <tr key={p.id}>
+                                        <td className="p-2">{formatDate(p.fecha)}</td>
+                                        <td className="p-2">{p.adolescenteNombre}</td>
+                                        <td className="p-2">{p.adolescenteCedula}</td>
+                                        <td className="p-2 text-right font-mono text-green-400">{formatCurrency(p.monto)}</td>
+                                    </tr>
+                                ))}
+                                {(reportData as any[]).length === 0 && (
+                                    <tr><td colSpan={4} className="p-4 text-center text-text-secondary">No hay pagos registrados para este evento.</td></tr>
+                                )}
+                                {(reportData as any[]).length > 0 && (
+                                     <tr className="border-t-2 border-border bg-background/50 font-bold">
+                                        <td colSpan={3} className="p-2 text-right">Total Recaudado:</td>
+                                        <td className="p-2 text-right text-green-400">
+                                            {formatCurrency((reportData as any[]).reduce((sum, p) => sum + p.monto, 0))}
+                                        </td>
+                                     </tr>
+                                )}
+                             </ReportTable>
+                         )}
                     </div>
                 );
             default: return null;
@@ -419,7 +436,7 @@ const ReportTable: React.FC<{headers: string[], children: React.ReactNode}> = ({
         <table className="w-full text-sm text-left text-text-secondary">
             <thead className="text-xs text-text-primary uppercase bg-background">
                 <tr>
-                    {headers.map(h => <th key={h} scope="col" className={`px-2 py-3 ${h.startsWith('N°') || h.startsWith('Total') || h.startsWith('Presentes') || h.startsWith('Ausentes') || h.startsWith('%') ? 'text-center' : 'text-left'}`}>{h}</th>)}
+                    {headers.map(h => <th key={h} scope="col" className={`px-2 py-3 ${h.startsWith('N°') || h.startsWith('Total') || h.startsWith('Presentes') || h.startsWith('Ausentes') || h.startsWith('%') || h.startsWith('Monto') ? 'text-center' : 'text-left'} ${h.startsWith('Monto') || h.startsWith('Total') ? 'text-right' : ''}`}>{h}</th>)}
                 </tr>
             </thead>
             <tbody className="divide-y divide-border">
