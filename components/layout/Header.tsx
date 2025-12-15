@@ -1,14 +1,21 @@
-
 import React from 'react';
 import { useAuth } from '../../contexts/AuthContext';
-import { MenuIcon } from '../ui/Icons';
+import { MenuIcon, LogOutIcon } from '../ui/Icons';
 
 interface HeaderProps {
     toggleSidebar: () => void;
 }
 
 const Header: React.FC<HeaderProps> = ({ toggleSidebar }) => {
-  const { user, rol } = useAuth();
+  const { user, rol, logout } = useAuth();
+
+  const handleLogout = async () => {
+      try {
+          await logout();
+      } catch (error) {
+          console.error("Error logging out", error);
+      }
+  };
 
   return (
     <header className="bg-surface border-b border-border shadow-sm p-4 flex justify-between items-center">
@@ -23,16 +30,25 @@ const Header: React.FC<HeaderProps> = ({ toggleSidebar }) => {
                 Bienvenido, {user?.nombre || 'Usuario'}
             </h1>
         </div>
-      <div className="flex items-center">
-        <div className="text-right mr-4">
-            <p className="font-semibold text-text-primary">{user?.nombre}</p>
-            <p className="text-sm text-text-secondary">{rol?.nombre}</p>
+      <div className="flex items-center gap-4">
+        <div className="flex items-center">
+            <div className="text-right mr-3 hidden md:block">
+                <p className="font-semibold text-text-primary text-sm">{user?.nombre}</p>
+                <p className="text-xs text-text-secondary">{rol?.nombre}</p>
+            </div>
+            <img 
+                className="w-10 h-10 rounded-full object-cover border-2 border-primary/20" 
+                src={user?.avatarUrl || `https://ui-avatars.com/api/?name=${user?.nombre || 'User'}&background=random`} 
+                alt="User Avatar" 
+            />
         </div>
-        <img 
-            className="w-10 h-10 rounded-full object-cover" 
-            src={user?.avatarUrl || `https://i.pravatar.cc/150?u=${user?.id}`} 
-            alt="User Avatar" 
-        />
+        <button 
+            onClick={handleLogout}
+            className="p-2 rounded-full text-text-secondary hover:bg-red-500/10 hover:text-red-400 transition-colors"
+            title="Cerrar Sesión"
+        >
+            <LogOutIcon className="w-6 h-6" />
+        </button>
       </div>
     </header>
   );

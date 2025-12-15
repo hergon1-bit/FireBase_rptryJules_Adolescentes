@@ -1,4 +1,3 @@
-
 import React, { useState, useCallback, useEffect } from 'react';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { DataProvider } from './contexts/DataContext';
@@ -17,11 +16,12 @@ import Asistencia from './pages/Asistencia';
 import LimpiarTablas from './pages/LimpiarTablas';
 import CargarTablas from './pages/CargarTablas';
 import UpdatePassword from './pages/UpdatePassword';
+import LoginPage from './pages/LoginPage';
 import { Page } from './types';
 import { supabase } from './services/supabase';
 
 const AppContent: React.FC = () => {
-    const { user } = useAuth();
+    const { user, loading } = useAuth();
     const [currentPage, setCurrentPage] = useState<Page>('dashboard');
     const [selectedReunionId, setSelectedReunionId] = useState<number | null>(null);
     const [isSidebarOpen, setSidebarOpen] = useState(true);
@@ -45,6 +45,20 @@ const AppContent: React.FC = () => {
             setSelectedReunionId(params.reunionId);
         }
     }, []);
+
+    // 1. Show Loading Screen
+    if (loading) {
+        return (
+            <div className="flex h-screen items-center justify-center bg-background">
+                <div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-primary"></div>
+            </div>
+        );
+    }
+
+    // 2. Show Login Page if not authenticated
+    if (!user && currentPage !== 'update-password') {
+        return <LoginPage />;
+    }
 
     const renderPage = () => {
         if (currentPage === 'update-password') {
