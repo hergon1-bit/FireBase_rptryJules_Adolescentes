@@ -1,7 +1,6 @@
-
 import React, { createContext, useState, useContext, ReactNode, useEffect, useCallback } from 'react';
 import { useAuth } from './AuthContext';
-import { Adolescente, Encargado, Reunion, Tutor, Evento, Asistencia, TutorAdolescente, InscripcionEvento, PagoEvento, ParticipanteEvento, CelebracionCumpleanos, Usuario, Rol, TipoAsistencia, AsistenciaDetalle } from '../types';
+import { Adolescente, Encargado, Reunion, Tutor, Evento, Asistencia, TutorAdolescente, InscripcionEvento, PagoEvento, ParticipanteEvento, CelebracionCumpleanos, Usuario, Rol, TipoAsistencia, AsistenciaDetalle, ResumenReunion } from '../types';
 import { api } from '../services/api';
 
 type ClearableTable = 'adolescentes' | 'encargados' | 'reuniones' | 'tutores' | 'eventos';
@@ -20,6 +19,7 @@ interface DataContextType {
   celebraciones: CelebracionCumpleanos[];
   usuarios: Usuario[];
   roles: Rol[];
+  resumenReuniones: ResumenReunion[];
   fetchData: () => Promise<void>;
   
   addAdolescente: (adolescente: Omit<Adolescente, 'id'>) => Promise<void>;
@@ -91,6 +91,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [celebraciones, setCelebraciones] = useState<CelebracionCumpleanos[]>([]);
   const [usuarios, setUsuarios] = useState<Usuario[]>([]);
   const [roles, setRoles] = useState<Rol[]>([]);
+  const [resumenReuniones, setResumenReuniones] = useState<ResumenReunion[]>([]);
 
 
   const fetchData = useCallback(async () => {
@@ -109,6 +110,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           api.getCumpleanosCelebrados(),
           api.getUsuarios(),
           api.getRoles(),
+          api.getResumenReuniones(),
         ]);
 
         const [
@@ -125,6 +127,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           celebracionesRes,
           usuariosRes,
           rolesRes,
+          resumenReunionesRes,
         ] = results;
 
         // Helper to extract error message safely
@@ -172,6 +175,9 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
         if (rolesRes.status === 'fulfilled') setRoles(rolesRes.value);
         else console.error("Error fetching Roles:", getErrorMessage(rolesRes.reason));
+
+        if (resumenReunionesRes.status === 'fulfilled') setResumenReuniones(resumenReunionesRes.value);
+        else console.error("Error fetching Resumen Reuniones:", getErrorMessage(resumenReunionesRes.reason));
 
     } catch (error) {
         console.error("Critical error in fetchData:", error);
@@ -379,7 +385,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   return (
     <DataContext.Provider value={{ 
       adolescentes, encargados, reuniones, tutores, eventos, asistencias, 
-      tutoresAdolescentes, inscripciones, pagos, participantes, celebraciones, usuarios, roles, fetchData,
+      tutoresAdolescentes, inscripciones, pagos, participantes, celebraciones, usuarios, roles, resumenReuniones, fetchData,
       addAdolescente, updateAdolescente, deleteAdolescente, addAdolescentesBulk,
       addUser, updateUser, deleteUser, sendPasswordReset,
       addEncargado, updateEncargado, deleteEncargado, addEncargadosBulk,

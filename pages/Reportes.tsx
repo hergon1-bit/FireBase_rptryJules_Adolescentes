@@ -2,7 +2,9 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { useData } from '../contexts/DataContext';
 import { formatDate, formatCurrency } from '../utils/helpers';
 import { Adolescente, AsistenciaDetalle } from '../types';
-import { RefreshIcon } from '../components/ui/Icons';
+import { RefreshIcon, PrinterIcon } from '../components/ui/Icons';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 type ReportType = 'cumpleanos' | 'asistenciaReunion' | 'resumenAsistencia' | 'ausencias' | 'activos' | 'tutores' | 'pagosEvento';
 
@@ -153,6 +155,70 @@ const Reportes: React.FC = () => {
         }
     }, [activeReport, adolescentes, reuniones, asistencias, encargados, tutores, tutoresAdolescentes, eventos, inscripciones, pagos, participantes, selectedReunionId, dateRange]);
 
+    const generarPDFAsistencia = () => {
+        if (!selectedReunionId) return;
+        
+        const reunion = reuniones.find(r => r.id === selectedReunionId);
+        if (!reunion) return;
+        
+        const encargado = encargados.find(e => e.id === reunion.encargadoId);
+        const data = reportData as (Adolescente & { asistenciaDetalle?: AsistenciaDetalle })[];
+        
+        const doc = new jsPDF();
+        const now = new Date().toLocaleString('es-PY');
+
+        // Header
+        doc.setFontSize(18);
+        doc.text("Lista de Asistentes", 105, 15, { align: "center" });
+        
+        doc.setFontSize(10);
+        doc.text(`Generado: ${now}`, 200, 15, { align: "right" });
+
+        // Reunion Info Box
+        doc.setDrawColor(0);
+        doc.setFillColor(240, 240, 240);
+        doc.rect(14, 25, 182, 30, 'F');
+        
+        doc.setFontSize(12);
+        doc.setFont("helvetica", "bold");
+        doc.text("Datos de la Reunión", 105, 32, { align: "center" });
+
+        doc.setFontSize(10);
+        doc.setFont("helvetica", "normal");
+        
+        // Col 1
+        doc.text(`Nro Reunión: ${reunion.id}`, 20, 40);
+        doc.text(`Fecha: ${formatDate(reunion.fecha)}`, 20, 48);
+        
+        // Col 2
+        doc.text(`Tema: ${reunion.tema}`, 100, 40);
+        doc.text(`Dirigido por: ${encargado ? `${encargado.nombre} ${encargado.apellido}` : 'N/A'}`, 100, 48);
+
+        // Stats
+        doc.setFont("helvetica", "bold");
+        doc.text(`Total Presentes: ${data.length}`, 20, 60);
+
+        // Table
+        const tableBody = data.map(ado => [
+            ado.nombre,
+            ado.apellido,
+            ado.cedula,
+            ado.asistenciaDetalle || 'Regular'
+        ]);
+
+        autoTable(doc, {
+            startY: 65,
+            head: [['Nombre', 'Apellido', 'Cédula', 'Detalle']],
+            body: tableBody,
+            theme: 'grid',
+            headStyles: { fillColor: [79, 70, 229] }, // Primary color match
+            styles: { fontSize: 10, cellPadding: 3 },
+            alternateRowStyles: { fillColor: [245, 245, 245] }
+        });
+
+        doc.save(`Asistentes_Reunion_${reunion.id}.pdf`);
+    };
+
     const renderReportContent = () => {
         switch (activeReport) {
             case 'cumpleanos':
@@ -170,12 +236,27 @@ const Reportes: React.FC = () => {
              case 'asistenciaReunion':
                 return (
                      <div>
-                        <div className="mb-4">
-                            <label className="block text-sm font-medium text-text-secondary mb-1">Seleccionar Reunión para ver lista detallada:</label>
-                            <select onChange={(e) => setSelectedReunionId(Number(e.target.value))} className="bg-background border border-border p-2 rounded-md w-full max-w-md">
-                                <option value="">-- Seleccione una reunión --</option>
-                                {reuniones.map(r => <option key={r.id} value={r.id}>{r.tema} - {formatDate(r.fecha)}</option>)}
-                            </select>
+                        <div className="flex flex-col md:flex-row md:items-end gap-4 mb-4 justify-between">
+                            <div className="w-full md:w-auto">
+                                <label className="block text-sm font-medium text-text-secondary mb-1">Seleccionar Reunión para ver lista detallada:</label>
+                                <select onChange={(e) => setSelectedReunionId(Number(e.target.value))} className="bg-background border border-border p-2 rounded-md w-full md:w-96">
+                                    <option value="">-- Seleccione una reunión --</option>
+                                    {reuniones.map(r => (
+                                        <option key={r.id} value={r.id}>
+                                            Nro. {r.id} - {r.tema} - {formatDate(r.fecha)}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                            {selectedReunionId && (reportData as any[]).length > 0 && (
+                                <button 
+                                    onClick={generarPDFAsistencia}
+                                    className="flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-md transition-colors shadow-md"
+                                >
+                                    <PrinterIcon className="w-5 h-5" />
+                                    <span>Imprimir PDF</span>
+                                </button>
+                            )}
                         </div>
                         {selectedReunionId && (
                             <ReportTable headers={['Nombre', 'Apellido', 'Cédula', 'Detalle']}>

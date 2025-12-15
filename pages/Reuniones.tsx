@@ -14,12 +14,13 @@ interface ReunionesProps {
 }
 
 const Reuniones: React.FC<ReunionesProps> = ({ navigateTo }) => {
-    const { reuniones, encargados, asistencias, adolescentes, addReunion, updateReunion, deleteReunion } = useData();
+    const { reuniones, encargados, asistencias, adolescentes, resumenReuniones, addReunion, updateReunion, deleteReunion, fetchData } = useData();
     const { hasPermission } = useAuth();
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingReunion, setEditingReunion] = useState<Reunion | null>(null);
     const [dateFilter, setDateFilter] = useState({ start: '', end: '' });
     const [viewingAttendanceReunion, setViewingAttendanceReunion] = useState<Reunion | null>(null);
+    const [isRefreshing, setIsRefreshing] = useState(false);
     
     // State for direct attendance fetching (reliable view)
     const [viewingAttendanceData, setViewingAttendanceData] = useState<Asistencia[]>([]);
@@ -38,7 +39,26 @@ const Reuniones: React.FC<ReunionesProps> = ({ navigateTo }) => {
 
     const { values, handleInputChange, setValues, resetForm } = useForm(initialFormState);
 
-    // Fetch specific attendance when viewing a reunion
+    // Force data refresh on mount to ensure cards show latest totals
+    useEffect(() => {
+        const refresh = async () => {
+            setIsRefreshing(true);
+            await fetchData();
+            setIsRefreshing(false);
+        };
+        refresh();
+    }, [fetchData]);
+
+    // Use the fetched summary view for stats, ensuring high performance and accuracy
+    const attendanceStats = useMemo(() => {
+        const stats = new Map<number, { presentes: number, ausentes: number }>();
+        resumenReuniones.forEach(r => {
+            stats.set(r.reunionId, { presentes: r.presentes, ausentes: r.ausentes });
+        });
+        return stats;
+    }, [resumenReuniones]);
+
+    // Fetch specific attendance when viewing a reunion (Modal Detail)
     useEffect(() => {
         const fetchSpecificAttendance = async () => {
             if (viewingAttendanceReunion) {
@@ -48,7 +68,7 @@ const Reuniones: React.FC<ReunionesProps> = ({ navigateTo }) => {
                     setViewingAttendanceData(data);
                 } catch (error) {
                     console.error("Error fetching specific attendance:", error);
-                    // Fallback to global context if error (though unlikely with this design)
+                    // Fallback to global context if error
                     setViewingAttendanceData(asistencias.filter(a => Number(a.reunionId) === Number(viewingAttendanceReunion.id)));
                 } finally {
                     setIsLoadingAttendance(false);
@@ -130,16 +150,6 @@ const Reuniones: React.FC<ReunionesProps> = ({ navigateTo }) => {
             setReunionToDelete(null);
         }
     };
-
-    const getAsistenciaCount = (reunionId: number) => {
-        // Ensure strictly numeric comparison against global state (useful for overview)
-        const targetId = Number(reunionId);
-        const reunionAsistencias = asistencias.filter(a => Number(a.reunionId) === targetId);
-        
-        const presentes = reunionAsistencias.filter(a => a.estado === 'Presente').length;
-        const ausentes = reunionAsistencias.filter(a => a.estado === 'Ausente').length;
-        return { presentes, ausentes };
-    }
     
     const handleDateFilterChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         setDateFilter({
@@ -210,7 +220,10 @@ const Reuniones: React.FC<ReunionesProps> = ({ navigateTo }) => {
     return (
         <div className="space-y-6">
             <div className="flex justify-between items-center">
-                <h1 className="text-3xl font-bold">Gestión de Reuniones</h1>
+                <div className="flex items-center gap-4">
+                    <h1 className="text-3xl font-bold">Gestión de Reuniones</h1>
+                    {isRefreshing && <RefreshIcon className="w-5 h-5 animate-spin text-secondary" />}
+                </div>
                 {hasPermission('reuniones', 'create') && (
                     <button onClick={openModalForCreate} className="bg-primary text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition">
                         Crear Reunión
@@ -251,7 +264,9 @@ const Reuniones: React.FC<ReunionesProps> = ({ navigateTo }) => {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {filteredReuniones.map(reunion => {
                     const encargado = encargados.find(e => e.id === reunion.encargadoId);
-                    const { presentes, ausentes } = getAsistenciaCount(reunion.id);
+                    // Use the pre-calculated stats map derived from the DB view
+                    const stats = attendanceStats.get(reunion.id) || { presentes: 0, ausentes: 0 };
+                    
                     return (
                         <div key={reunion.id} className="bg-surface p-5 rounded-lg shadow-lg flex flex-col justify-between">
                             <div>
@@ -267,8 +282,8 @@ const Reuniones: React.FC<ReunionesProps> = ({ navigateTo }) => {
                                 <p className="text-sm text-text-secondary">{formatDate(reunion.fecha)}</p>
                                 <p className="text-sm text-text-secondary">Dirigido por: {encargado?.nombre} {encargado?.apellido}</p>
                                 <div className="flex space-x-4 mt-3 text-sm">
-                                    <p><span className="font-bold text-green-400">{presentes}</span> Presentes</p>
-                                    <p><span className="font-bold text-red-400">{ausentes}</span> Ausentes</p>
+                                    <p><span className="font-bold text-green-400">{stats.presentes}</span> Presentes</p>
+                                    <p><span className="font-bold text-red-400">{stats.ausentes}</span> Ausentes</p>
                                 </div>
                             </div>
                             <div className="mt-4 flex space-x-2">

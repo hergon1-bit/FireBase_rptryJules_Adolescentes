@@ -75,6 +75,13 @@ export interface Asistencia {
   detalle?: AsistenciaDetalle;
 }
 
+// Nueva interfaz para la vista de resumen
+export interface ResumenReunion {
+  reunionId: number;
+  presentes: number;
+  ausentes: number;
+}
+
 export type GradoParentesco = 'Padre' | 'Madre' | 'Tío' | 'Tía' | 'Abuelo' | 'Abuela' | 'Tutor Legal';
 
 export interface Tutor {

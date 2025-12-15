@@ -2,7 +2,7 @@ import { supabase } from './supabase';
 import { 
   Usuario, Rol, Adolescente, Encargado, Reunion, Tutor, Evento, Asistencia, 
   TutorAdolescente, InscripcionEvento, PagoEvento, ParticipanteEvento, TipoAsistencia, AsistenciaDetalle,
-  CelebracionCumpleanos
+  CelebracionCumpleanos, ResumenReunion
 } from '../types';
 
 // Helper to handle Supabase responses and throw proper Errors
@@ -16,7 +16,42 @@ const handleSupabaseData = <T>(data: T | null, error: any, context: string): T =
     return data as T;
 };
 
-// Constant for maximum rows to fetch to avoid Supabase default limit of 1000
+// Generic helper to fetch ALL rows via pagination, bypassing the 10k limit
+const fetchAllRows = async (
+    table: string, 
+    select: string, 
+    orderBy?: { column: string, ascending: boolean }
+) => {
+    let allData: any[] = [];
+    let hasMore = true;
+    let page = 0;
+    const pageSize = 1000; // Efficient chunk size for Supabase
+
+    while (hasMore) {
+        let query = supabase.from(table).select(select).range(page * pageSize, (page + 1) * pageSize - 1);
+        
+        if (orderBy) {
+            query = query.order(orderBy.column, { ascending: orderBy.ascending });
+        }
+        
+        const { data, error } = await query;
+        
+        if (error) throw error;
+
+        if (data && data.length > 0) {
+            allData = allData.concat(data);
+            if (data.length < pageSize) {
+                hasMore = false;
+            }
+        } else {
+            hasMore = false;
+        }
+        page++;
+    }
+    return allData;
+};
+
+// Constant for maximum rows to fetch to avoid Supabase default limit of 1000 (kept for non-paginated legacy calls if any)
 const MAX_ROWS = 10000;
 
 export const api = {
@@ -50,133 +85,125 @@ export const api = {
 
   // --- Data Getters ---
   getAdolescentes: async (): Promise<Adolescente[]> => {
-    // Explicitly selecting columns based on schema: 
-    // id, nombre, apellido, cedula, fecha_nacimiento, barrio, ciudad, telefono, sexo, estado
-    const { data, error } = await supabase
-        .from('adolescentes')
-        .select('id, nombre, apellido, cedula, fecha_nacimiento, barrio, ciudad, telefono, sexo, estado')
-        .range(0, MAX_ROWS)
-        .order('nombre', { ascending: true });
-    const result = handleSupabaseData(data, error, 'getAdolescentes');
-    return (result || []).map((a: any) => ({
-        id: a.id,
-        nombre: a.nombre,
-        apellido: a.apellido,
-        cedula: a.cedula,
-        fechaNacimiento: a.fecha_nacimiento,
-        barrio: a.barrio,
-        ciudad: a.ciudad,
-        telefono: a.telefono,
-        sexo: a.sexo,
-        estado: a.estado
-    }));
+    try {
+        // Now using fetchAllRows to remove limits
+        const data = await fetchAllRows(
+            'adolescentes', 
+            'id, nombre, apellido, cedula, fecha_nacimiento, barrio, ciudad, telefono, sexo, estado',
+            { column: 'nombre', ascending: true }
+        );
+        return data.map((a: any) => ({
+            id: a.id,
+            nombre: a.nombre,
+            apellido: a.apellido,
+            cedula: a.cedula,
+            fechaNacimiento: a.fecha_nacimiento,
+            barrio: a.barrio,
+            ciudad: a.ciudad,
+            telefono: a.telefono,
+            sexo: a.sexo,
+            estado: a.estado
+        }));
+    } catch (error) {
+        handleSupabaseData(null, error, 'getAdolescentes');
+        return [];
+    }
   },
   getEncargados: async (): Promise<Encargado[]> => {
-    // Explicitly selecting columns based on schema:
-    // id, nombre, apellido, cedula, fecha_nacimiento, barrio, ciudad, telefono, email
-    const { data, error } = await supabase
-        .from('encargados')
-        .select('id, nombre, apellido, cedula, fecha_nacimiento, barrio, ciudad, telefono, email')
-        .range(0, MAX_ROWS)
-        .order('nombre', { ascending: true });
-    const result = handleSupabaseData(data, error, 'getEncargados');
-    return (result || []).map((e: any) => ({
-        id: e.id,
-        nombre: e.nombre,
-        apellido: e.apellido,
-        cedula: e.cedula,
-        fechaNacimiento: e.fecha_nacimiento,
-        barrio: e.barrio,
-        ciudad: e.ciudad,
-        telefono: e.telefono,
-        email: e.email
-    }));
+    try {
+        const data = await fetchAllRows(
+            'encargados',
+            'id, nombre, apellido, cedula, fecha_nacimiento, barrio, ciudad, telefono, email',
+            { column: 'nombre', ascending: true }
+        );
+        return data.map((e: any) => ({
+            id: e.id,
+            nombre: e.nombre,
+            apellido: e.apellido,
+            cedula: e.cedula,
+            fechaNacimiento: e.fecha_nacimiento,
+            barrio: e.barrio,
+            ciudad: e.ciudad,
+            telefono: e.telefono,
+            email: e.email
+        }));
+    } catch (error) {
+        handleSupabaseData(null, error, 'getEncargados');
+        return [];
+    }
   },
   getReuniones: async (): Promise<Reunion[]> => {
-    // Explicitly selecting columns based on schema:
-    // id, fecha, tema, encargado_id
-    // Note: 'estado' is included for application logic compatibility, handled as optional/nullable if DB doesn't strictly have it
-    const { data, error } = await supabase
-        .from('reuniones')
-        .select('id, fecha, tema, encargado_id, estado') 
-        .range(0, MAX_ROWS)
-        .order('fecha', { ascending: false });
-    const result = handleSupabaseData(data, error, 'getReuniones');
-    return (result || []).map((r: any) => ({
-        id: r.id,
-        fecha: r.fecha,
-        tema: r.tema,
-        encargadoId: r.encargado_id,
-        estado: r.estado || 'En Proceso' // Default fallback
-    }));
+    try {
+        const data = await fetchAllRows(
+            'reuniones',
+            'id, fecha, tema, encargado_id, estado',
+            { column: 'fecha', ascending: false }
+        );
+        return data.map((r: any) => ({
+            id: r.id,
+            fecha: r.fecha,
+            tema: r.tema,
+            encargadoId: r.encargado_id,
+            estado: r.estado || 'En Proceso'
+        }));
+    } catch (error) {
+        handleSupabaseData(null, error, 'getReuniones');
+        return [];
+    }
   },
   getTutores: async (): Promise<Tutor[]> => {
-    const { data, error } = await supabase
-        .from('tutores')
-        .select('*')
-        .range(0, MAX_ROWS)
-        .order('nombre', { ascending: true });
-    const result = handleSupabaseData(data, error, 'getTutores');
-    return result || [];
+    try {
+        const data = await fetchAllRows(
+            'tutores',
+            '*',
+            { column: 'nombre', ascending: true }
+        );
+        return data as Tutor[];
+    } catch (error) {
+        handleSupabaseData(null, error, 'getTutores');
+        return [];
+    }
   },
   getEventos: async (): Promise<Evento[]> => {
-    const { data, error } = await supabase
-        .from('eventos')
-        .select('*')
-        .range(0, MAX_ROWS)
-        .order('fecha_inicio', { ascending: false });
-    const result = handleSupabaseData(data, error, 'getEventos');
-    return (result || []).map((e: any) => ({
-        id: e.id,
-        tema: e.tema,
-        lugar: e.lugar,
-        fechaInicio: e.fecha_inicio || e.fechaInicio,
-        horaInicio: e.hora_inicio || e.horaInicio,
-        fechaFin: e.fecha_fin || e.fechaFin,
-        horaFin: e.hora_fin || e.horaFin,
-        tieneCosto: e.tiene_costo || e.tieneCosto,
-        costoTotal: e.costo_total || e.costoTotal,
-        costoPersona: e.costo_persona || e.costoPersona
-    }));
+    try {
+        const data = await fetchAllRows(
+            'eventos',
+            '*',
+            { column: 'fecha_inicio', ascending: false }
+        );
+        return data.map((e: any) => ({
+            id: e.id,
+            tema: e.tema,
+            lugar: e.lugar,
+            fechaInicio: e.fecha_inicio || e.fechaInicio,
+            horaInicio: e.hora_inicio || e.horaInicio,
+            fechaFin: e.fecha_fin || e.fechaFin,
+            horaFin: e.hora_fin || e.horaFin,
+            tieneCosto: e.tiene_costo || e.tieneCosto,
+            costoTotal: e.costo_total || e.costoTotal,
+            costoPersona: e.costo_persona || e.costoPersona
+        }));
+    } catch (error) {
+        handleSupabaseData(null, error, 'getEventos');
+        return [];
+    }
   },
   getAsistencias: async (): Promise<Asistencia[]> => {
-    // Fetch all records with pagination to avoid limit issues
-    let allData: any[] = [];
-    let hasMore = true;
-    let page = 0;
-    const pageSize = 2000; // Chunk size
-
     try {
-        while (hasMore) {
-            const { data, error } = await supabase
-                .from('asistencias')
-                .select('reunion_id, adolescente_id, estado, detalle')
-                .range(page * pageSize, (page + 1) * pageSize - 1);
-            
-            if (error) {
-                console.error("Error fetching asistencias page " + page, error);
-                throw error;
-            }
-
-            if (data && data.length > 0) {
-                allData = allData.concat(data);
-                if (data.length < pageSize) hasMore = false;
-            } else {
-                hasMore = false;
-            }
-            page++;
-        }
+        const data = await fetchAllRows(
+            'asistencias',
+            'reunion_id, adolescente_id, estado, detalle'
+        );
+        return data.map((a: any) => ({
+            reunionId: a.reunion_id,
+            adolescenteId: a.adolescente_id,
+            estado: a.estado,
+            detalle: a.detalle
+        }));
     } catch (error) {
-         handleSupabaseData(null, error, 'getAsistencias'); // Throw standard error
+         handleSupabaseData(null, error, 'getAsistencias'); 
          return [];
     }
-    
-    return allData.map((a: any) => ({
-        reunionId: a.reunion_id,
-        adolescenteId: a.adolescente_id,
-        estado: a.estado,
-        detalle: a.detalle
-    }));
   },
   getAsistenciasByReunion: async (reunionId: number): Promise<Asistencia[]> => {
     // Specific fetch for a single meeting to ensure data accuracy in detailed views
@@ -193,6 +220,19 @@ export const api = {
        estado: a.estado,
        detalle: a.detalle
    }));
+  },
+  // --- New method for fetching Attendance Summary from View ---
+  getResumenReuniones: async (): Promise<ResumenReunion[]> => {
+    const { data, error } = await supabase.from('view_resumen_asistencia').select('*');
+    if (error) {
+        console.warn("Could not fetch view_resumen_asistencia", error);
+        return [];
+    }
+    return (data || []).map((r: any) => ({
+        reunionId: r.reunion_id,
+        presentes: r.presentes || 0,
+        ausentes: r.ausentes || 0
+    }));
   },
   getTutorAdolescente: async (): Promise<TutorAdolescente[]> => {
     const { data, error } = await supabase
