@@ -1,8 +1,7 @@
-
 import React, { useState } from 'react';
 import { api } from '../services/api';
-import { useAuth } from '../contexts/AuthContext';
 import { Page } from '../types';
+import { EyeIcon, EyeOffIcon } from '../components/ui/Icons';
 
 interface UpdatePasswordProps {
     navigateTo: (page: Page) => void;
@@ -10,6 +9,7 @@ interface UpdatePasswordProps {
 
 const UpdatePassword: React.FC<UpdatePasswordProps> = ({ navigateTo }) => {
     const [password, setPassword] = useState('');
+    const [showPassword, setShowPassword] = useState(false);
     const [message, setMessage] = useState('');
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
@@ -44,14 +44,23 @@ const UpdatePassword: React.FC<UpdatePasswordProps> = ({ navigateTo }) => {
                 <form onSubmit={handleUpdate} className="space-y-4">
                     <div>
                         <label className="block text-sm font-medium text-text-secondary mb-1">Nueva Contraseña</label>
-                        <input
-                            type="password"
-                            value={password}
-                            onChange={(e) => setPassword(e.target.value)}
-                            required
-                            minLength={6}
-                            className="w-full px-3 py-2 bg-background border border-border rounded-md focus:ring-primary focus:border-primary text-text-primary"
-                        />
+                        <div className="relative">
+                            <input
+                                type={showPassword ? "text" : "password"}
+                                value={password}
+                                onChange={(e) => setPassword(e.target.value)}
+                                required
+                                minLength={6}
+                                className="w-full px-3 py-2 bg-background border border-border rounded-md focus:ring-primary focus:border-primary text-text-primary pr-10"
+                            />
+                            <button
+                                type="button"
+                                onClick={() => setShowPassword(!showPassword)}
+                                className="absolute right-3 top-1/2 transform -translate-y-1/2 text-text-secondary hover:text-text-primary focus:outline-none"
+                            >
+                                {showPassword ? <EyeOffIcon className="w-5 h-5" /> : <EyeIcon className="w-5 h-5" />}
+                            </button>
+                        </div>
                     </div>
                     <button
                         type="submit"

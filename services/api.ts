@@ -643,13 +643,18 @@ export const api = {
     if (!usuario.password) {
         throw new Error("Se requiere una contraseña para crear un usuario nuevo.");
     }
+    if (usuario.password.length < 6) {
+        throw new Error("La contraseña debe tener al menos 6 caracteres.");
+    }
 
     const { data: authData, error: authError } = await supabase.auth.signUp({
         email: usuario.email,
         password: usuario.password,
         options: {
             data: {
-                nombre: usuario.nombre
+                nombre: usuario.nombre,
+                rol_id: usuario.rolId, // Pass role ID to support potential triggers
+                avatar_url: usuario.avatarUrl
             }
         }
     });

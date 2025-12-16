@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo } from 'react';
 import { useData } from '../contexts/DataContext';
 import { useAuth } from '../contexts/AuthContext';
@@ -6,7 +5,7 @@ import { Usuario } from '../types';
 import Modal from '../components/ui/Modal';
 import ConfirmationModal from '../components/ui/ConfirmationModal';
 import { useForm } from '../hooks/useForm';
-import { KeyIcon } from '../components/ui/Icons';
+import { KeyIcon, EyeIcon, EyeOffIcon } from '../components/ui/Icons';
 
 // Helper Components
 const InputField: React.FC<React.InputHTMLAttributes<HTMLInputElement> & { label: string }> = ({ label, ...props }) => (
@@ -55,6 +54,7 @@ const Usuarios: React.FC = () => {
     const [isUserConfirmOpen, setIsUserConfirmOpen] = useState(false);
     const [userToDelete, setUserToDelete] = useState<Usuario | null>(null);
     const [searchTerm, setSearchTerm] = useState('');
+    const [showPassword, setShowPassword] = useState(false);
     
     const initialFormState = {
         nombre: '',
@@ -76,6 +76,7 @@ const Usuarios: React.FC = () => {
     const openModalForCreateUser = () => {
         setEditingUser(null);
         resetForm();
+        setShowPassword(false);
         setIsUserModalOpen(true);
     };
 
@@ -107,6 +108,8 @@ const Usuarios: React.FC = () => {
                 await updateUser({ ...userData, id: editingUser.id });
             } else {
                 if (!userData.password) { alert('La contraseña es obligatoria para nuevos usuarios.'); return; }
+                if (userData.password.length < 6) { alert('La contraseña debe tener al menos 6 caracteres.'); return; }
+
                 // Make sure to pass the password explicitly
                 await addUser({ ...userData, password: values.password }); 
             }
@@ -215,7 +218,27 @@ const Usuarios: React.FC = () => {
                     <InputField label="Correo Electrónico" name="email" type="email" value={values.email} onChange={handleInputChange} required />
                     
                     {!editingUser ? (
-                        <InputField label="Contraseña" name="password" type="password" value={values.password} onChange={handleInputChange} required />
+                        <div>
+                            <label htmlFor="password" className="block text-sm font-medium text-text-secondary">Contraseña</label>
+                            <div className="relative mt-1">
+                                <input 
+                                    id="password" 
+                                    name="password" 
+                                    type={showPassword ? "text" : "password"} 
+                                    value={values.password} 
+                                    onChange={handleInputChange} 
+                                    required
+                                    className="block w-full px-3 py-2 bg-background border border-border rounded-md shadow-sm focus:outline-none focus:ring-primary focus:border-primary sm:text-sm pr-10"
+                                />
+                                <button
+                                    type="button"
+                                    onClick={() => setShowPassword(!showPassword)}
+                                    className="absolute right-3 top-1/2 transform -translate-y-1/2 text-text-secondary hover:text-text-primary focus:outline-none"
+                                >
+                                    {showPassword ? <EyeOffIcon className="w-4 h-4" /> : <EyeIcon className="w-4 h-4" />}
+                                </button>
+                            </div>
+                        </div>
                     ) : (
                         <div className="bg-background/50 p-3 rounded-md border border-border">
                             <p className="text-sm text-text-secondary mb-2">Para cambiar la contraseña, envíe un correo de recuperación.</p>
