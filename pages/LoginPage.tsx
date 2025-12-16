@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../services/api';
-import { KeyIcon, logo.png,EyeIcon, EyeOffIcon, MailIcon, ArrowLeftIcon } from '../components/ui/Icons';
+import { KeyIcon, UsersIcon,EyeIcon, EyeOffIcon, MailIcon, ArrowLeftIcon } from '../components/ui/Icons';
 
 const LoginPage: React.FC = () => {
   const { login } = useAuth();
