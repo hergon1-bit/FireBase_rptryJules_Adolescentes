@@ -20,7 +20,8 @@ const LoginPage: React.FC = () => {
       // El cambio de estado en AuthContext redirigirá automáticamente en App.tsx
     } catch (err: any) {
       console.error(err);
-      setError('Credenciales incorrectas o error al iniciar sesión.');
+      // Display the actual error message from Supabase
+      setError(err.message || 'Credenciales incorrectas o error al iniciar sesión.');
     } finally {
       setIsLoading(false);
     }

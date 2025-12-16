@@ -1,4 +1,5 @@
-import { supabase } from './supabase';
+import { supabase, supabaseUrl, supabaseKey } from './supabase';
+import { createClient } from '@supabase/supabase-js';
 import { 
   Usuario, Rol, Adolescente, Encargado, Reunion, Tutor, Evento, Asistencia, 
   TutorAdolescente, InscripcionEvento, PagoEvento, ParticipanteEvento, TipoAsistencia, AsistenciaDetalle,
@@ -639,7 +640,8 @@ export const api = {
   
   // Usuarios & Roles
   createUsuario: async (usuario: Omit<Usuario, 'id' | 'password'> & { id?: string, password?: string }): Promise<Usuario> => {
-    // 1. Create the user in Supabase Auth (Sign Up)
+    // 1. Create the user in Supabase Auth (Sign Up) using a separate client
+    // This prevents the current session (admin) from being logged out when creating a new user.
     if (!usuario.password) {
         throw new Error("Se requiere una contraseña para crear un usuario nuevo.");
     }
@@ -647,13 +649,22 @@ export const api = {
         throw new Error("La contraseña debe tener al menos 6 caracteres.");
     }
 
-    const { data: authData, error: authError } = await supabase.auth.signUp({
+    // Initialize temporary client for this operation
+    const tempSupabase = createClient(supabaseUrl, supabaseKey, {
+        auth: {
+            persistSession: false,
+            autoRefreshToken: false,
+            detectSessionInUrl: false
+        }
+    });
+
+    const { data: authData, error: authError } = await tempSupabase.auth.signUp({
         email: usuario.email,
         password: usuario.password,
         options: {
             data: {
                 nombre: usuario.nombre,
-                rol_id: usuario.rolId, // Pass role ID to support potential triggers
+                rol_id: usuario.rolId,
                 avatar_url: usuario.avatarUrl
             }
         }
@@ -671,7 +682,10 @@ export const api = {
          throw new Error("No se pudo obtener el ID del usuario creado en Auth.");
     }
 
-    // 3. Insert into public.usuarios using the retrieved ID
+    // 3. Insert into public.usuarios using the retrieved ID. We use the main 'supabase' client here
+    // as we might need the admin's permissions if RLS is set up that way, although usually public writes 
+    // are handled via triggers or unrestricted for this table in simple apps.
+    // However, since we are admin, we should use the main client.
     const dbPayload = {
         id: userId, 
         nombre: usuario.nombre,
@@ -680,9 +694,19 @@ export const api = {
         avatar_url: usuario.avatarUrl
     };
 
-    const { data, error } = await supabase.from('usuarios').insert(dbPayload).select().single();
+    // Use upsert instead of insert to handle cases where a Trigger might have already created the record
+    const { data, error } = await supabase.from('usuarios').upsert(dbPayload).select().single();
     
-    const result = handleSupabaseData(data, error, 'createUsuario');
+    if (error) {
+        // Handle Fake ID scenario (Auth returns ID for existing user, but ID not in DB -> FK violation)
+        if (error.code === '23503') { // foreign_key_violation
+             throw new Error(`El correo '${usuario.email}' ya está registrado en el sistema de autenticación.`);
+        }
+        // Handle generic errors via helper
+        handleSupabaseData(null, error, 'createUsuario');
+    }
+    
+    const result = data as any; // Safe cast since we handled error
     return { ...result, rolId: result.rol_id, avatarUrl: result.avatar_url };
   },
   updateUsuario: async (usuario: Usuario & { password?: string }): Promise<Usuario> => {
