@@ -28,7 +28,7 @@ const StatCard: React.FC<{ icon: React.ReactNode; title: string; value: string |
 
 const Dashboard: React.FC<DashboardProps> = ({ navigateTo }) => {
     const { adolescentes, reuniones, encargados, tutores, eventos, celebraciones, asistencias, usuarios, roles, addCelebracionCumpleanos, fetchData } = useData();
-    const { user, hasPermission } = useAuth();
+    const { user, rol, hasPermission } = useAuth();
     const [isLoading, setIsLoading] = useState(false);
 
     useEffect(() => {
@@ -182,13 +182,28 @@ const Dashboard: React.FC<DashboardProps> = ({ navigateTo }) => {
 
     }, [stats.adolescentesActivosData, encargados, celebraciones]);
 
-    // Lógica para actividad reciente de usuarios
+    // Lógica para actividad reciente de usuarios (Columna lateral)
     const usuariosRecientes = useMemo(() => {
         return [...usuarios]
             .filter(u => u.lastSignInAt)
             .sort((a, b) => new Date(b.lastSignInAt!).getTime() - new Date(a.lastSignInAt!).getTime())
             .slice(0, 5);
     }, [usuarios]);
+
+    // Lógica para todos los usuarios (Tabla inferior - Solo Admins)
+    const todosLosUsuarios = useMemo(() => {
+        return [...usuarios].sort((a, b) => {
+            const dateA = a.lastSignInAt ? new Date(a.lastSignInAt).getTime() : 0;
+            const dateB = b.lastSignInAt ? new Date(b.lastSignInAt).getTime() : 0;
+            return dateB - dateA;
+        });
+    }, [usuarios]);
+
+    // Validación de Administrador más robusta (ID 1 o nombre flexible)
+    const isAdmin = useMemo(() => {
+        if (!rol) return false;
+        return rol.id === 1 || rol.nombre?.toLowerCase().includes('administrador');
+    }, [rol]);
 
     if (isLoading && reuniones.length === 0) {
         return (
@@ -292,12 +307,12 @@ const Dashboard: React.FC<DashboardProps> = ({ navigateTo }) => {
                         </div>
                     </div>
 
-                    {/* Nueva Sección: Últimas Conexiones */}
+                    {/* Sección: Últimas Conexiones (Resumen) */}
                     {hasPermission('usuarios', 'read') && (
                         <div className="bg-surface p-6 rounded-lg shadow-lg">
                             <h2 className="text-xl font-semibold text-text-primary mb-4 flex items-center gap-2">
                                 <KeyIcon className="w-5 h-5 text-secondary"/>
-                                Últimas Conexiones
+                                Actividad Reciente de Usuarios
                             </h2>
                             <div className="space-y-3">
                                 {usuariosRecientes.length > 0 ? usuariosRecientes.map(u => (
@@ -437,6 +452,103 @@ const Dashboard: React.FC<DashboardProps> = ({ navigateTo }) => {
                     </div>
                 </div>
             </div>
+
+            {/* TABLA DE AUDITORIA DE USUARIOS (Última posición - Solo Administradores) */}
+            {isAdmin && (
+                <div className="bg-surface p-6 rounded-lg shadow-lg border border-border/50 animate-fade-in mt-12">
+                    <div className="flex items-center justify-between mb-6">
+                        <div className="flex items-center gap-3">
+                            <div className="bg-primary/20 p-2 rounded-lg">
+                                <UsersIcon className="w-6 h-6 text-primary" />
+                            </div>
+                            <div>
+                                <h2 className="text-xl font-bold text-text-primary">
+                                    Auditoría de Conexiones
+                                </h2>
+                                <p className="text-xs text-text-secondary">Monitoreo global de acceso al sistema</p>
+                            </div>
+                        </div>
+                        <div className="flex flex-col items-end">
+                            <span className="text-[10px] bg-primary/20 text-primary px-3 py-1 rounded-full font-bold uppercase tracking-wider">
+                                Acceso Nivel Admin
+                            </span>
+                            {user && <span className="text-[10px] text-text-secondary mt-1">Sesión actual: {user.nombre}</span>}
+                        </div>
+                    </div>
+                    
+                    <div className="overflow-x-auto rounded-lg border border-border">
+                        <table className="min-w-full divide-y divide-border">
+                            <thead className="bg-background/80">
+                                <tr>
+                                    <th className="px-6 py-4 text-left text-xs font-bold text-text-secondary uppercase tracking-widest">Usuario del Sistema</th>
+                                    <th className="px-6 py-4 text-left text-xs font-bold text-text-secondary uppercase tracking-widest">Rol Asignado</th>
+                                    <th className="px-6 py-4 text-left text-xs font-bold text-text-secondary uppercase tracking-widest">Email</th>
+                                    <th className="px-6 py-4 text-right text-xs font-bold text-text-secondary uppercase tracking-widest">Última Conexión (Fecha - Hora)</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-border bg-surface/30">
+                                {todosLosUsuarios.map((u) => (
+                                    <tr key={u.id} className={`hover:bg-background/40 transition-colors ${u.id === user?.id ? 'bg-primary/5' : ''}`}>
+                                        <td className="px-6 py-4 whitespace-nowrap">
+                                            <div className="flex items-center">
+                                                <div className={`h-9 w-9 rounded-full flex items-center justify-center text-white font-bold text-sm mr-3 shadow-inner ${u.id === user?.id ? 'bg-primary' : 'bg-gray-600'}`}>
+                                                    {u.nombre.charAt(0).toUpperCase()}
+                                                </div>
+                                                <div>
+                                                    <div className="text-sm font-bold text-text-primary">
+                                                        {u.nombre}
+                                                        {u.id === user?.id && <span className="ml-2 text-[10px] bg-green-500/20 text-green-400 px-1.5 py-0.5 rounded">Tú</span>}
+                                                    </div>
+                                                    <div className="text-[10px] text-text-secondary font-mono">{u.id.substring(0, 8)}...</div>
+                                                </div>
+                                            </div>
+                                        </td>
+                                        <td className="px-6 py-4 whitespace-nowrap">
+                                            <span className={`text-[10px] font-bold px-2.5 py-1 rounded border ${
+                                                roles.find(r => r.id === u.rolId)?.nombre?.toLowerCase().includes('admin') 
+                                                ? 'bg-red-500/10 text-red-400 border-red-500/20' 
+                                                : 'bg-surface text-text-secondary border-border'
+                                            }`}>
+                                                {roles.find(r => r.id === u.rolId)?.nombre || 'Sin Rol'}
+                                            </span>
+                                        </td>
+                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-text-secondary font-medium">
+                                            {u.email}
+                                        </td>
+                                        <td className="px-6 py-4 whitespace-nowrap text-right">
+                                            {u.lastSignInAt ? (
+                                                <div className="flex flex-col items-end">
+                                                    <span className="text-sm font-bold text-secondary">
+                                                        {formatDate(u.lastSignInAt)}
+                                                    </span>
+                                                    <span className="text-[10px] text-text-secondary">
+                                                        {formatRelativeTime(u.lastSignInAt)}
+                                                    </span>
+                                                </div>
+                                            ) : (
+                                                <span className="text-sm font-black text-red-600 bg-red-600/10 px-3 py-1 rounded animate-pulse">
+                                                    NUNCA
+                                                </span>
+                                            )}
+                                        </td>
+                                    </tr>
+                                ))}
+                                {todosLosUsuarios.length === 0 && (
+                                    <tr>
+                                        <td colSpan={4} className="px-6 py-12 text-center text-text-secondary italic bg-background/20">
+                                            Cargando lista de usuarios registrados...
+                                        </td>
+                                    </tr>
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
+                    <div className="mt-4 flex items-center gap-2 text-[10px] text-text-secondary italic">
+                        <div className="w-2 h-2 rounded-full bg-red-600"></div>
+                        <span>Los usuarios marcados en rojo nunca han iniciado sesión en esta cuenta.</span>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

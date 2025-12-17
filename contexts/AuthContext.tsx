@@ -1,4 +1,4 @@
-import React, { createContext, useState, useContext, ReactNode, useEffect } from 'react';
+import React, { createContext, useState, useContext, ReactNode, useEffect, useRef } from 'react';
 import { supabase } from '../services/supabase';
 import { Usuario, Rol } from '../types';
 import { api } from '../services/api';
@@ -18,6 +18,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [user, setUser] = useState<Usuario | null>(null);
   const [rol, setRol] = useState<Rol | null>(null);
   const [loading, setLoading] = useState(true);
+  
+  // Usamos una referencia para evitar procesar múltiples eventos de inicio de sesión simultáneos
+  const isProcessingAuth = useRef(false);
 
   // Cargar perfil del usuario desde la tabla 'usuarios' y su rol
   const fetchUserProfile = async (userId: string) => {
@@ -32,9 +35,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           setRol(userRole);
         }
       } else {
-        // Fallback: Si el usuario existe en Auth pero no en la tabla pública 'usuarios', limpiar sesión
         console.warn("Usuario autenticado pero no encontrado en tabla pública 'usuarios'.");
-        await supabase.auth.signOut();
         setUser(null);
         setRol(null);
       }
@@ -42,40 +43,66 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       console.error("Error fetching user profile:", error);
     } finally {
       setLoading(false);
+      isProcessingAuth.current = false;
     }
   };
 
   useEffect(() => {
-    // 1. Verificar sesión actual al iniciar
+    // 1. Verificación inicial de sesión
     const initializeAuth = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session?.user) {
-        await fetchUserProfile(session.user.id);
-      } else {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.user) {
+          isProcessingAuth.current = true;
+          // Registramos la conexión en segundo plano sin bloquear
+          api.updateLastSignIn(session.user.id).catch(err => console.debug("Sync conexión:", err));
+          await fetchUserProfile(session.user.id);
+        } else {
+          setLoading(false);
+        }
+      } catch (err) {
+        console.error("Auth init error:", err);
         setLoading(false);
       }
     };
 
     initializeAuth();
 
-    // 2. Escuchar cambios en la autenticación (Login, Logout, Auto-refresh)
+    // 2. Escuchar cambios de estado (Login, Logout, Token Refresh)
     const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (event === 'SIGNED_IN' && session?.user) {
-        setLoading(true);
-        await fetchUserProfile(session.user.id);
+      console.debug(`Auth Event: ${event}`);
+
+      if ((event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') && session?.user) {
+        // Si ya tenemos el usuario y el ID es el mismo, no activamos el loading global
+        // Esto evita que aparezca el círculo de carga al cambiar de pestaña
+        if (user?.id === session.user.id) {
+          // Actualizamos datos en silencio si es necesario
+          api.updateLastSignIn(session.user.id).catch(() => {});
+          return;
+        }
+
+        // Si es un nuevo inicio de sesión real
+        if (!isProcessingAuth.current) {
+          isProcessingAuth.current = true;
+          setLoading(true);
+          await api.updateLastSignIn(session.user.id);
+          await fetchUserProfile(session.user.id);
+        }
       } else if (event === 'SIGNED_OUT') {
         setUser(null);
         setRol(null);
         setLoading(false);
+        isProcessingAuth.current = false;
       }
     });
 
     return () => {
       authListener.subscription.unsubscribe();
     };
-  }, []);
+  }, [user?.id]); // Dependencia del ID de usuario para saber si cambió
 
   const login = async (email: string, password: string) => {
+    // El onAuthStateChange se encargará de cargar el perfil tras un login exitoso
     const { error } = await supabase.auth.signInWithPassword({
       email,
       password,
@@ -84,13 +111,14 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   };
 
   const logout = async () => {
+    setLoading(true);
     await supabase.auth.signOut();
   };
 
   const hasPermission = (module: keyof Rol['permisos'], action: keyof Rol['permisos'][keyof Rol['permisos']]): boolean => {
     if (!rol) return false;
-    // Si el rol es ID 1 (Admin) o tiene permisos explícitos
-    if (rol.id === 1) return true; 
+    // Nivel Administrador tiene acceso total
+    if (rol.id === 1 || rol.nombre?.toLowerCase().includes('admin')) return true; 
     return rol.permisos[module]?.[action] ?? false;
   };
 
