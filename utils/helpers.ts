@@ -1,4 +1,3 @@
-
 export const calcularEdad = (fechaNacimiento: string): number => {
   if (!fechaNacimiento) return 0;
   
@@ -129,8 +128,26 @@ export const formatDate = (date: Date | string) => {
   return new Date(d.getTime() + userTimezoneOffset).toLocaleDateString('es-ES', {
     year: 'numeric',
     month: 'long',
-    day: 'numeric'
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
   });
+};
+
+export const formatRelativeTime = (date: Date | string) => {
+    if (!date) return 'Nunca';
+    const d = typeof date === 'string' ? new Date(date) : date;
+    if (isNaN(d.getTime())) return 'N/A';
+    
+    const now = new Date();
+    const diffInSeconds = Math.floor((now.getTime() - d.getTime()) / 1000);
+    
+    if (diffInSeconds < 60) return 'Hace un momento';
+    if (diffInSeconds < 3600) return `Hace ${Math.floor(diffInSeconds / 60)} min`;
+    if (diffInSeconds < 86400) return `Hace ${Math.floor(diffInSeconds / 3600)} horas`;
+    if (diffInSeconds < 604800) return `Hace ${Math.floor(diffInSeconds / 86400)} días`;
+    
+    return d.toLocaleDateString('es-ES', { day: '2-digit', month: 'short' });
 };
 
 export const formatCurrency = (amount: number) => {

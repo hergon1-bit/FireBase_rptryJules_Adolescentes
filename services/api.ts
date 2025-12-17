@@ -63,6 +63,7 @@ export const api = {
     return {
         ...data,
         rolId: data.rol_id,
+        lastSignInAt: data.last_sign_in_at,
     };
   },
   getRolById: async (id: number): Promise<Rol | null> => {
@@ -290,7 +291,8 @@ export const api = {
     return (result || []).map((u: any) => ({
         ...u,
         rolId: u.rol_id ?? u.rolId,
-        avatarUrl: u.avatar_url ?? u.avatarUrl
+        avatarUrl: u.avatar_url ?? u.avatarUrl,
+        lastSignInAt: u.last_sign_in_at
     }));
   },
   getRoles: async (): Promise<Rol[]> => {
@@ -354,8 +356,9 @@ export const api = {
     }));
     const { error } = await supabase.from('adolescentes').insert(dbPayload);
     if (error) {
-        const msg = error.message || JSON.stringify(error);
-        throw new Error(msg);
+        // Safe error serialization
+        const errorMsg = error.message || (typeof error === 'object' ? JSON.stringify(error) : String(error));
+        throw new Error(errorMsg);
     }
   },
   updateAdolescente: async (adolescente: Adolescente): Promise<Adolescente> => {
@@ -641,7 +644,6 @@ export const api = {
   // Usuarios & Roles
   createUsuario: async (usuario: Omit<Usuario, 'id' | 'password'> & { id?: string, password?: string }): Promise<Usuario> => {
     // 1. Create the user in Supabase Auth (Sign Up) using a separate client
-    // This prevents the current session (admin) from being logged out when creating a new user.
     if (!usuario.password) {
         throw new Error("Se requiere una contraseña para crear un usuario nuevo.");
     }
@@ -682,10 +684,7 @@ export const api = {
          throw new Error("No se pudo obtener el ID del usuario creado en Auth.");
     }
 
-    // 3. Insert into public.usuarios using the retrieved ID. We use the main 'supabase' client here
-    // as we might need the admin's permissions if RLS is set up that way, although usually public writes 
-    // are handled via triggers or unrestricted for this table in simple apps.
-    // However, since we are admin, we should use the main client.
+    // 3. Insert into public.usuarios using the retrieved ID.
     const dbPayload = {
         id: userId, 
         nombre: usuario.nombre,
@@ -694,20 +693,22 @@ export const api = {
         avatar_url: usuario.avatarUrl
     };
 
-    // Use upsert instead of insert to handle cases where a Trigger might have already created the record
     const { data, error } = await supabase.from('usuarios').upsert(dbPayload).select().single();
     
     if (error) {
-        // Handle Fake ID scenario (Auth returns ID for existing user, but ID not in DB -> FK violation)
         if (error.code === '23503') { // foreign_key_violation
              throw new Error(`El correo '${usuario.email}' ya está registrado en el sistema de autenticación.`);
         }
-        // Handle generic errors via helper
         handleSupabaseData(null, error, 'createUsuario');
     }
     
-    const result = data as any; // Safe cast since we handled error
-    return { ...result, rolId: result.rol_id, avatarUrl: result.avatar_url };
+    const result = data as any;
+    return { 
+        ...result, 
+        rolId: result.rol_id, 
+        avatarUrl: result.avatar_url,
+        lastSignInAt: result.last_sign_in_at
+    };
   },
   updateUsuario: async (usuario: Usuario & { password?: string }): Promise<Usuario> => {
     const dbPayload = {
@@ -718,7 +719,12 @@ export const api = {
     };
     const { data, error } = await supabase.from('usuarios').update(dbPayload).eq('id', usuario.id).select().single();
     const result = handleSupabaseData(data, error, 'updateUsuario');
-    return { ...result, rolId: result.rol_id, avatarUrl: result.avatar_url };
+    return { 
+        ...result, 
+        rolId: result.rol_id, 
+        avatarUrl: result.avatar_url,
+        lastSignInAt: result.last_sign_in_at
+    };
   },
   deleteUsuario: async (id: string): Promise<void> => {
     const { error } = await supabase.from('usuarios').delete().eq('id', id);
@@ -796,7 +802,7 @@ export const api = {
         horaInicio: result.hora_inicio,
         fechaFin: result.fecha_fin,
         horaFin: result.hora_fin,
-        tieneCosto: result.tiene_costo, // Mapped correctly from DB result (snake to camel)
+        tieneCosto: result.tiene_costo,
         costoTotal: result.costo_total,
         costoPersona: result.costo_persona
     };
@@ -883,7 +889,6 @@ export const api = {
         adolescente_id: celebracion.adolescenteId,
         ano: celebracion.ano
     };
-    // Use upsert to handle potential duplicates on primary key (adolescente_id, ano) gracefully
     const { data, error } = await supabase.from('celebraciones_cumpleanos').upsert(dbPayload, { onConflict: 'adolescente_id,ano' }).select().single();
     const result = handleSupabaseData(data, error, 'addCumpleanosCelebrado');
     return { adolescenteId: result.adolescente_id, ano: result.ano };

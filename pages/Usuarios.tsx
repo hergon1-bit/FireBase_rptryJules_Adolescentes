@@ -6,6 +6,7 @@ import Modal from '../components/ui/Modal';
 import ConfirmationModal from '../components/ui/ConfirmationModal';
 import { useForm } from '../hooks/useForm';
 import { KeyIcon, EyeIcon, EyeOffIcon } from '../components/ui/Icons';
+import { formatRelativeTime } from '../utils/helpers';
 
 // Helper Components
 const InputField: React.FC<React.InputHTMLAttributes<HTMLInputElement> & { label: string }> = ({ label, ...props }) => (
@@ -66,10 +67,16 @@ const Usuarios: React.FC = () => {
     const { values, handleInputChange, setValues, resetForm } = useForm(initialFormState);
     
     const filteredUsuarios = useMemo(() => {
-        return usuarios.filter(user =>
-            user.nombre.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            user.email.toLowerCase().includes(searchTerm.toLowerCase())
-        );
+        return [...usuarios]
+            .filter(user =>
+                user.nombre.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                user.email.toLowerCase().includes(searchTerm.toLowerCase())
+            )
+            .sort((a, b) => {
+                const dateA = a.lastSignInAt ? new Date(a.lastSignInAt).getTime() : 0;
+                const dateB = b.lastSignInAt ? new Date(b.lastSignInAt).getTime() : 0;
+                return dateB - dateA; // Mostrar más recientes arriba
+            });
     }, [usuarios, searchTerm]);
 
     // --- User Handlers ---
@@ -115,7 +122,6 @@ const Usuarios: React.FC = () => {
             }
             setIsUserModalOpen(false);
         } catch (error: any) {
-            // Explicitly use .message if available to avoid [object Object]
             const msg = error instanceof Error ? error.message : (typeof error === 'string' ? error : JSON.stringify(error));
             alert(msg || "Ocurrió un error al guardar el usuario.");
         }
@@ -177,16 +183,22 @@ const Usuarios: React.FC = () => {
                             <th className="py-2 px-4 text-left text-xs font-medium text-text-secondary uppercase tracking-wider">Nombre</th>
                             <th className="py-2 px-4 text-left text-xs font-medium text-text-secondary uppercase tracking-wider">Email</th>
                             <th className="py-2 px-4 text-left text-xs font-medium text-text-secondary uppercase tracking-wider">Rol</th>
+                            <th className="py-2 px-4 text-left text-xs font-medium text-text-secondary uppercase tracking-wider">Última Conexión</th>
                             <th className="py-2 px-4 text-right text-xs font-medium text-text-secondary uppercase tracking-wider">Acciones</th>
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-border">
                         {filteredUsuarios.map(user => (
                             <tr key={user.id} className="hover:bg-background/50">
-                                <td className="py-3 px-4 whitespace-nowrap">{user.nombre}</td>
-                                <td className="py-3 px-4 whitespace-nowrap">{user.email}</td>
+                                <td className="py-3 px-4 whitespace-nowrap font-medium text-text-primary">{user.nombre}</td>
+                                <td className="py-3 px-4 whitespace-nowrap text-text-secondary">{user.email}</td>
                                 <td className="py-3 px-4 whitespace-nowrap">
                                     <RoleBadge roleName={roles.find(r => r.id === user.rolId)?.nombre} />
+                                </td>
+                                <td className="py-3 px-4 whitespace-nowrap">
+                                    <span className={`text-sm ${user.lastSignInAt ? 'text-secondary font-medium' : 'text-text-secondary italic'}`}>
+                                        {user.lastSignInAt ? formatRelativeTime(user.lastSignInAt) : 'Nunca'}
+                                    </span>
                                 </td>
                                 <td className="py-3 px-4 whitespace-nowrap text-right space-x-2 text-sm">
                                     {hasPermission('usuarios', 'update') && (

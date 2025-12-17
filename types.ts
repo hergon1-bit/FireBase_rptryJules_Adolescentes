@@ -1,4 +1,3 @@
-
 export interface Permisos {
   read: boolean;
   create: boolean;
@@ -25,6 +24,7 @@ export interface Usuario {
   nombre: string;
   rolId: number;
   avatarUrl?: string;
+  lastSignInAt?: string; // Fecha de última conexión
 }
 
 export type Sexo = 'Masculino' | 'Femenino';

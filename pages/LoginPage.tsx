@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../services/api';
-import { KeyIcon, UsersIcon,EyeIcon, EyeOffIcon, MailIcon, ArrowLeftIcon } from '../components/ui/Icons';
+import { KeyIcon, UsersIcon, EyeIcon, EyeOffIcon, MailIcon, ArrowLeftIcon } from '../components/ui/Icons';
 
 const LoginPage: React.FC = () => {
   const { login } = useAuth();
@@ -61,12 +61,8 @@ const LoginPage: React.FC = () => {
         
         {/* Header */}
         <div className="text-center mb-8">
-            <div className="flex justify-center mb-6">
-                <img 
-                    src="/logo.png" 
-                    alt="Ministerio de Adolescentes Casa de Oración CDE" 
-                    className="h-40 w-auto object-contain rounded-2xl" 
-                />
+            <div className="bg-primary/20 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
+                <UsersIcon className="w-8 h-8 text-primary" />
             </div>
             <h2 className="text-3xl font-bold text-text-primary">
                 {isRecovering ? 'Recuperar Cuenta' : 'Iniciar Sesión'}

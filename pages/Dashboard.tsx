@@ -1,8 +1,8 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { useData } from '../contexts/DataContext';
 import { useAuth } from '../contexts/AuthContext';
-import { calcularEdad, formatDate, calcularProximoCumpleanos, formatCurrency } from '../utils/helpers';
-import { UsersIcon, ClipboardListIcon, CalendarDaysIcon, HeartHandshakeIcon, CheckCircleIcon, RefreshIcon, UserCheckIcon, TrophyIcon } from '../components/ui/Icons';
+import { calcularEdad, formatDate, calcularProximoCumpleanos, formatCurrency, formatRelativeTime } from '../utils/helpers';
+import { UsersIcon, ClipboardListIcon, CalendarDaysIcon, HeartHandshakeIcon, CheckCircleIcon, RefreshIcon, UserCheckIcon, TrophyIcon, KeyIcon } from '../components/ui/Icons';
 import { Page } from '../types';
 
 
@@ -27,12 +27,10 @@ const StatCard: React.FC<{ icon: React.ReactNode; title: string; value: string |
 );
 
 const Dashboard: React.FC<DashboardProps> = ({ navigateTo }) => {
-    const { adolescentes, reuniones, encargados, tutores, eventos, celebraciones, asistencias, addCelebracionCumpleanos, fetchData } = useData();
-    const { user } = useAuth();
+    const { adolescentes, reuniones, encargados, tutores, eventos, celebraciones, asistencias, usuarios, roles, addCelebracionCumpleanos, fetchData } = useData();
+    const { user, hasPermission } = useAuth();
     const [isLoading, setIsLoading] = useState(false);
 
-    // Efecto para forzar la lectura de base de datos al entrar al Dashboard
-    // Esto asegura que si vienes de "Cargar Tablas", los datos estén frescos.
     useEffect(() => {
         const loadFreshData = async () => {
             setIsLoading(true);
@@ -49,7 +47,6 @@ const Dashboard: React.FC<DashboardProps> = ({ navigateTo }) => {
     };
     
     const stats = useMemo(() => {
-        // Robust filtering: case insensitive
         const adolescentesActivosData = adolescentes.filter(a => a.estado?.toLowerCase() === 'activo');
         
         const today = new Date();
@@ -89,7 +86,6 @@ const Dashboard: React.FC<DashboardProps> = ({ navigateTo }) => {
         .sort((a, b) => new Date(a.fecha).getTime() - new Date(b.fecha).getTime())
         .slice(0, 3), [reuniones]);
 
-    // Lógica para eventos en los próximos 3 meses
     const eventosTrimestrales = useMemo(() => {
         const today = new Date();
         today.setHours(0, 0, 0, 0);
@@ -100,7 +96,6 @@ const Dashboard: React.FC<DashboardProps> = ({ navigateTo }) => {
         return eventos
             .filter(e => {
                 if (!e.fechaInicio) return false;
-                // Parseo manual para evitar problemas de zona horaria con strings YYYY-MM-DD
                 const [y, m, d] = e.fechaInicio.split('-').map(Number);
                 const eventDate = new Date(y, m - 1, d);
                 return eventDate >= today && eventDate <= threeMonthsLater;
@@ -108,12 +103,10 @@ const Dashboard: React.FC<DashboardProps> = ({ navigateTo }) => {
             .sort((a, b) => new Date(a.fechaInicio).getTime() - new Date(b.fechaInicio).getTime());
     }, [eventos]);
 
-    // Lógica para Top 10 Asistencia en últimos 6 meses
     const topAsistentes = useMemo(() => {
         const sixMonthsAgo = new Date();
         sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
 
-        // 1. Obtener IDs de reuniones en el rango de fecha
         const reunionesUltimos6Meses = reuniones.filter(r => {
             const fechaReunion = new Date(r.fecha);
             return fechaReunion >= sixMonthsAgo && fechaReunion <= new Date();
@@ -122,18 +115,15 @@ const Dashboard: React.FC<DashboardProps> = ({ navigateTo }) => {
         const reunionesIds = new Set(reunionesUltimos6Meses.map(r => r.id));
         const totalReuniones = reunionesUltimos6Meses.length;
 
-        // 2. Contar asistencias presentes por adolescente
         const conteo: { [key: number]: number } = {};
         
         asistencias.forEach(a => {
-            // Solo considerar reuniones del periodo y estado Presente
             if (reunionesIds.has(Number(a.reunionId)) && a.estado === 'Presente') {
                 const adoId = Number(a.adolescenteId);
                 conteo[adoId] = (conteo[adoId] || 0) + 1;
             }
         });
 
-        // 3. Mapear a objeto final y ordenar
         return Object.entries(conteo)
             .map(([id, count]) => {
                 const ado = adolescentes.find(a => a.id === Number(id));
@@ -143,14 +133,13 @@ const Dashboard: React.FC<DashboardProps> = ({ navigateTo }) => {
                     percentage: totalReuniones > 0 ? (count / totalReuniones) * 100 : 0 
                 };
             })
-            .filter(item => item.ado && item.ado.estado === 'Activo') // Solo activos
+            .filter(item => item.ado && item.ado.estado === 'Activo')
             .sort((a, b) => b.count - a.count)
-            .slice(0, 10); // Top 10
+            .slice(0, 10);
 
     }, [reuniones, asistencias, adolescentes]);
 
 
-    // Combined Birthdays Logic
     const proximosCumpleaneros = useMemo(() => {
         const hoy = new Date();
         hoy.setHours(0, 0, 0, 0);
@@ -177,12 +166,10 @@ const Dashboard: React.FC<DashboardProps> = ({ navigateTo }) => {
             tipo: 'Encargado' as const 
         }));
 
-        // Filtrar adolescentes ya celebrados
         const finalAdolescentes = cumpleanerosAdolescentes.filter(a => 
             !celebraciones.some(c => c.adolescenteId === a.id && c.ano === currentYear)
         );
 
-        // Filtrar encargados ya celebrados
         const finalEncargados = cumpleanerosEncargados.filter(e => 
             !celebraciones.some(c => c.adolescenteId === e.id && c.ano === currentYear)
         );
@@ -194,6 +181,14 @@ const Dashboard: React.FC<DashboardProps> = ({ navigateTo }) => {
         });
 
     }, [stats.adolescentesActivosData, encargados, celebraciones]);
+
+    // Lógica para actividad reciente de usuarios
+    const usuariosRecientes = useMemo(() => {
+        return [...usuarios]
+            .filter(u => u.lastSignInAt)
+            .sort((a, b) => new Date(b.lastSignInAt!).getTime() - new Date(a.lastSignInAt!).getTime())
+            .slice(0, 5);
+    }, [usuarios]);
 
     if (isLoading && reuniones.length === 0) {
         return (
@@ -207,18 +202,28 @@ const Dashboard: React.FC<DashboardProps> = ({ navigateTo }) => {
     }
 
     return (
-        <div className="space-y-8">
-            <div className="flex items-center gap-4">
-                <h1 className="text-3xl font-bold text-text-primary">Dashboard</h1>
-                 <button 
-                    onClick={handleRefresh} 
-                    disabled={isLoading}
-                    className="p-2 rounded-full text-text-secondary hover:bg-surface hover:text-text-primary transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                    title="Sincronizar ahora"
-                >
-                    <RefreshIcon className={`w-5 h-5 ${isLoading ? 'animate-spin' : ''}`} />
-                </button>
-                {isLoading && <span className="text-sm text-secondary animate-pulse">Actualizando...</span>}
+        <div className="space-y-8 pb-12">
+            <div className="flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                    <h1 className="text-3xl font-bold text-text-primary">Dashboard</h1>
+                    <button 
+                        onClick={handleRefresh} 
+                        disabled={isLoading}
+                        className="p-2 rounded-full text-text-secondary hover:bg-surface hover:text-text-primary transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        title="Sincronizar ahora"
+                    >
+                        <RefreshIcon className={`w-5 h-5 ${isLoading ? 'animate-spin' : ''}`} />
+                    </button>
+                    {isLoading && <span className="text-sm text-secondary animate-pulse">Actualizando...</span>}
+                </div>
+                {hasPermission('usuarios', 'read') && (
+                    <button 
+                        onClick={() => navigateTo('usuarios')}
+                        className="text-sm text-primary hover:text-indigo-400 flex items-center gap-1 font-medium"
+                    >
+                        Ver todos los usuarios &rarr;
+                    </button>
+                )}
             </div>
             
             <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-6">
@@ -260,7 +265,7 @@ const Dashboard: React.FC<DashboardProps> = ({ navigateTo }) => {
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                {/* Columna Izquierda: Reuniones y Eventos */}
+                {/* Columna Izquierda: Reuniones y Actividad */}
                 <div className="space-y-8">
                     <div className="bg-surface p-6 rounded-lg shadow-lg">
                         <h2 className="text-xl font-semibold text-text-primary mb-4 flex items-center gap-2">
@@ -286,6 +291,40 @@ const Dashboard: React.FC<DashboardProps> = ({ navigateTo }) => {
                             )}
                         </div>
                     </div>
+
+                    {/* Nueva Sección: Últimas Conexiones */}
+                    {hasPermission('usuarios', 'read') && (
+                        <div className="bg-surface p-6 rounded-lg shadow-lg">
+                            <h2 className="text-xl font-semibold text-text-primary mb-4 flex items-center gap-2">
+                                <KeyIcon className="w-5 h-5 text-secondary"/>
+                                Últimas Conexiones
+                            </h2>
+                            <div className="space-y-3">
+                                {usuariosRecientes.length > 0 ? usuariosRecientes.map(u => (
+                                    <div key={u.id} className="bg-background/50 p-3 rounded-md flex items-center justify-between">
+                                        <div className="flex items-center gap-3">
+                                            <img 
+                                                className="w-8 h-8 rounded-full border border-border" 
+                                                src={u.avatarUrl || `https://ui-avatars.com/api/?name=${u.nombre}&background=random`} 
+                                                alt={u.nombre} 
+                                            />
+                                            <div>
+                                                <p className="text-sm font-semibold text-text-primary">{u.nombre}</p>
+                                                <p className="text-xs text-text-secondary">{roles.find(r => r.id === u.rolId)?.nombre}</p>
+                                            </div>
+                                        </div>
+                                        <div className="text-right">
+                                            <span className="text-xs font-medium text-secondary bg-secondary/10 px-2 py-1 rounded">
+                                                {formatRelativeTime(u.lastSignInAt!)}
+                                            </span>
+                                        </div>
+                                    </div>
+                                )) : (
+                                    <p className="text-text-secondary italic text-sm">No hay actividad reciente registrada.</p>
+                                )}
+                            </div>
+                        </div>
+                    )}
 
                     <div className="bg-surface p-6 rounded-lg shadow-lg">
                         <h2 className="text-xl font-semibold text-text-primary mb-4 flex items-center gap-2">
