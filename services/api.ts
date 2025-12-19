@@ -3,7 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 import { 
   Usuario, Rol, Adolescente, Encargado, Reunion, Tutor, Evento, Asistencia, 
   TutorAdolescente, InscripcionEvento, PagoEvento, ParticipanteEvento, TipoAsistencia, AsistenciaDetalle,
-  CelebracionCumpleanos, ResumenReunion
+  CelebracionCumpleanos, ResumenReunion, Devocional, EntregaDevocional
 } from '../types';
 
 // Helper para manejar respuestas de Supabase y lanzar errores limpios
@@ -304,6 +304,114 @@ export const api = {
         ano: c.ano
     }));
   },
+
+  // --- Tareas / Devocionales ---
+  
+  getDevocionales: async (): Promise<Devocional[]> => {
+    try {
+        const { data, error } = await supabase.from('devocionales').select('*').order('numero_semana', { ascending: false });
+        if (error && error.code === '42P01') {
+            console.warn("Tabla 'devocionales' no existe aún.");
+            return [];
+        }
+        const result = handleSupabaseData(data, error, 'getDevocionales');
+        return (result || []).map((d: any) => ({
+            id: d.id,
+            numeroSemana: d.numero_semana,
+            tema: d.tema,
+            fechaDistribucion: d.fecha_distribucion,
+            fechaVencimiento: d.fecha_vencimiento
+        }));
+    } catch (e) {
+        console.error(e);
+        return [];
+    }
+  },
+
+  getEntregasDevocionales: async (): Promise<EntregaDevocional[]> => {
+    try {
+        const data = await fetchAllRows('entregas_devocionales', '*');
+        return data.map((e: any) => ({
+            id: e.id,
+            devocionalId: e.devocional_id,
+            adolescenteId: e.adolescente_id,
+            fechaEntrega: e.fecha_entrega,
+            observaciones: e.observaciones
+        }));
+    } catch (e) {
+        // Ignorar si tabla no existe
+        return [];
+    }
+  },
+
+  createDevocional: async (d: Omit<Devocional, 'id'>): Promise<Devocional> => {
+    const dbPayload = {
+        numero_semana: d.numeroSemana,
+        tema: d.tema,
+        fecha_distribucion: d.fechaDistribucion,
+        fecha_vencimiento: d.fechaVencimiento
+    };
+    const { data, error } = await supabase.from('devocionales').insert(dbPayload).select().single();
+    const result = handleSupabaseData(data, error, 'createDevocional');
+    return {
+        id: result.id,
+        numeroSemana: result.numero_semana,
+        tema: result.tema,
+        fechaDistribucion: result.fecha_distribucion,
+        fechaVencimiento: result.fecha_vencimiento
+    };
+  },
+
+  updateDevocional: async (d: Devocional): Promise<Devocional> => {
+    const dbPayload = {
+        numero_semana: d.numeroSemana,
+        tema: d.tema,
+        fecha_distribucion: d.fechaDistribucion,
+        fecha_vencimiento: d.fechaVencimiento
+    };
+    const { data, error } = await supabase.from('devocionales').update(dbPayload).eq('id', d.id).select().single();
+    const result = handleSupabaseData(data, error, 'updateDevocional');
+    return {
+        id: result.id,
+        numeroSemana: result.numero_semana,
+        tema: result.tema,
+        fechaDistribucion: result.fecha_distribucion,
+        fechaVencimiento: result.fecha_vencimiento
+    };
+  },
+
+  deleteDevocional: async (id: number): Promise<void> => {
+    const { error } = await supabase.from('devocionales').delete().eq('id', id);
+    if (error) throw new Error(error.message);
+  },
+
+  registrarEntrega: async (entrega: Omit<EntregaDevocional, 'id'>): Promise<void> => {
+     const dbPayload = {
+        devocional_id: entrega.devocionalId,
+        adolescente_id: entrega.adolescenteId,
+        fecha_entrega: entrega.fechaEntrega,
+        observaciones: entrega.observaciones
+     };
+     const { error } = await supabase.from('entregas_devocionales').insert(dbPayload);
+     if (error) throw new Error(error.message);
+  },
+  
+  registrarEntregasBulk: async (entregas: Omit<EntregaDevocional, 'id'>[]): Promise<void> => {
+      const dbPayload = entregas.map(e => ({
+        devocional_id: e.devocionalId,
+        adolescente_id: e.adolescenteId,
+        fecha_entrega: e.fechaEntrega,
+        observaciones: e.observaciones
+      }));
+      const { error } = await supabase.from('entregas_devocionales').insert(dbPayload);
+      if (error) throw new Error(error.message);
+  },
+
+  deleteEntrega: async (id: number): Promise<void> => {
+    const { error } = await supabase.from('entregas_devocionales').delete().eq('id', id);
+    if (error) throw new Error(error.message);
+  },
+
 
   // --- Operaciones CRUD ---
 

@@ -1,6 +1,6 @@
 import React, { createContext, useState, useContext, ReactNode, useEffect, useCallback } from 'react';
 import { useAuth } from './AuthContext';
-import { Adolescente, Encargado, Reunion, Tutor, Evento, Asistencia, TutorAdolescente, InscripcionEvento, PagoEvento, ParticipanteEvento, CelebracionCumpleanos, Usuario, Rol, TipoAsistencia, AsistenciaDetalle, ResumenReunion } from '../types';
+import { Adolescente, Encargado, Reunion, Tutor, Evento, Asistencia, TutorAdolescente, InscripcionEvento, PagoEvento, ParticipanteEvento, CelebracionCumpleanos, Usuario, Rol, TipoAsistencia, AsistenciaDetalle, ResumenReunion, Devocional, EntregaDevocional } from '../types';
 import { api } from '../services/api';
 
 type ClearableTable = 'adolescentes' | 'encargados' | 'reuniones' | 'tutores' | 'eventos';
@@ -20,6 +20,9 @@ interface DataContextType {
   usuarios: Usuario[];
   roles: Rol[];
   resumenReuniones: ResumenReunion[];
+  devocionales: Devocional[];
+  entregasDevocionales: EntregaDevocional[];
+
   fetchData: () => Promise<void>;
   
   addAdolescente: (adolescente: Omit<Adolescente, 'id'>) => Promise<void>;
@@ -72,6 +75,13 @@ interface DataContextType {
 
   // Data Management
   clearTable: (tableName: ClearableTable) => Promise<void>;
+
+  // Tareas
+  addDevocional: (devocional: Omit<Devocional, 'id'>) => Promise<void>;
+  updateDevocional: (devocional: Devocional) => Promise<void>;
+  deleteDevocional: (id: number) => Promise<void>;
+  registrarEntregaBulk: (entregas: Omit<EntregaDevocional, 'id'>[]) => Promise<void>;
+  deleteEntrega: (id: number) => Promise<void>;
 }
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
@@ -92,6 +102,8 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [usuarios, setUsuarios] = useState<Usuario[]>([]);
   const [roles, setRoles] = useState<Rol[]>([]);
   const [resumenReuniones, setResumenReuniones] = useState<ResumenReunion[]>([]);
+  const [devocionales, setDevocionales] = useState<Devocional[]>([]);
+  const [entregasDevocionales, setEntregasDevocionales] = useState<EntregaDevocional[]>([]);
 
 
   const fetchData = useCallback(async () => {
@@ -111,6 +123,8 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           api.getUsuarios(),
           api.getRoles(),
           api.getResumenReuniones(),
+          api.getDevocionales(),
+          api.getEntregasDevocionales(),
         ]);
 
         const [
@@ -128,6 +142,8 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           usuariosRes,
           rolesRes,
           resumenReunionesRes,
+          devocionalesRes,
+          entregasRes,
         ] = results;
 
         // Helper to extract error message safely
@@ -178,6 +194,12 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
         if (resumenReunionesRes.status === 'fulfilled') setResumenReuniones(resumenReunionesRes.value);
         else console.error("Error fetching Resumen Reuniones:", getErrorMessage(resumenReunionesRes.reason));
+
+        if (devocionalesRes.status === 'fulfilled') setDevocionales(devocionalesRes.value);
+        else console.error("Error fetching Devocionales:", getErrorMessage(devocionalesRes.reason));
+
+        if (entregasRes.status === 'fulfilled') setEntregasDevocionales(entregasRes.value);
+        else console.error("Error fetching Entregas:", getErrorMessage(entregasRes.reason));
 
     } catch (error) {
         console.error("Critical error in fetchData:", error);
@@ -382,10 +404,39 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     await fetchData();
   };
 
+  // Tareas Methods
+  const addDevocional = async (devocional: Omit<Devocional, 'id'>) => {
+    await api.createDevocional(devocional);
+    await fetchData();
+  };
+
+  const updateDevocional = async (devocional: Devocional) => {
+    await api.updateDevocional(devocional);
+    await fetchData();
+  };
+
+  const deleteDevocional = async (id: number) => {
+    await api.deleteDevocional(id);
+    await fetchData();
+  };
+
+  const registrarEntregaBulk = async (entregas: Omit<EntregaDevocional, 'id'>[]) => {
+      await api.registrarEntregasBulk(entregas);
+      await fetchData();
+  };
+  
+  const deleteEntrega = async (id: number) => {
+      await api.deleteEntrega(id);
+      await fetchData();
+  };
+
+
   return (
     <DataContext.Provider value={{ 
       adolescentes, encargados, reuniones, tutores, eventos, asistencias, 
-      tutoresAdolescentes, inscripciones, pagos, participantes, celebraciones, usuarios, roles, resumenReuniones, fetchData,
+      tutoresAdolescentes, inscripciones, pagos, participantes, celebraciones, usuarios, roles, resumenReuniones, 
+      devocionales, entregasDevocionales,
+      fetchData,
       addAdolescente, updateAdolescente, deleteAdolescente, addAdolescentesBulk,
       addUser, updateUser, deleteUser, sendPasswordReset,
       addEncargado, updateEncargado, deleteEncargado, addEncargadosBulk,
@@ -395,7 +446,8 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       addEvento, updateEvento, deleteEvento,
       addInscripcion, updateInscripcion, deleteInscripcion, addPago, deletePago, addParticipante, removeParticipante,
       addCelebracionCumpleanos,
-      clearTable
+      clearTable,
+      addDevocional, updateDevocional, deleteDevocional, registrarEntregaBulk, deleteEntrega
     }}>
       {children}
     </DataContext.Provider>

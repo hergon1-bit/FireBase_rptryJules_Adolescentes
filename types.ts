@@ -1,3 +1,4 @@
+
 export interface Permisos {
   read: boolean;
   create: boolean;
@@ -15,6 +16,7 @@ export interface Rol {
     tutores: Permisos;
     eventos: Permisos;
     usuarios: Permisos;
+    tareas?: Permisos; // Nuevo módulo opcional
   };
 }
 
@@ -138,4 +140,21 @@ export interface CelebracionCumpleanos {
   ano: number;
 }
 
-export type Page = 'dashboard' | 'adolescentes' | 'encargados' | 'reuniones' | 'tutores' | 'eventos' | 'reportes' | 'usuarios' | 'roles' | 'asistencia' | 'limpiar-tablas' | 'cargar-tablas' | 'update-password';
+// --- TAREAS / DEVOCIONALES ---
+export interface Devocional {
+  id: number;
+  numeroSemana: number;
+  tema: string;
+  fechaDistribucion: string; // YYYY-MM-DD
+  fechaVencimiento: string; // YYYY-MM-DD
+}
+
+export interface EntregaDevocional {
+  id: number;
+  devocionalId: number;
+  adolescenteId: number;
+  fechaEntrega: string; // YYYY-MM-DD
+  observaciones?: string;
+}
+
+export type Page = 'dashboard' | 'adolescentes' | 'encargados' | 'reuniones' | 'tutores' | 'eventos' | 'reportes' | 'usuarios' | 'roles' | 'asistencia' | 'limpiar-tablas' | 'cargar-tablas' | 'update-password' | 'tareas';

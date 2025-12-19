@@ -17,6 +17,7 @@ import LimpiarTablas from './pages/LimpiarTablas';
 import CargarTablas from './pages/CargarTablas';
 import UpdatePassword from './pages/UpdatePassword';
 import LoginPage from './pages/LoginPage';
+import Tareas from './pages/Tareas';
 import { Page } from './types';
 import { supabase } from './services/supabase';
 
@@ -90,6 +91,8 @@ const AppContent: React.FC = () => {
                 return <LimpiarTablas />;
             case 'cargar-tablas':
                 return <CargarTablas />;
+            case 'tareas':
+                return <Tareas />;
             default:
                 return <Dashboard navigateTo={navigateTo} />;
         }
