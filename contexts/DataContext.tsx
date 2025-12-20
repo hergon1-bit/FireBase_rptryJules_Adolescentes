@@ -82,6 +82,7 @@ interface DataContextType {
   deleteDevocional: (id: number) => Promise<void>;
   registrarEntregaBulk: (entregas: Omit<EntregaDevocional, 'id'>[]) => Promise<void>;
   deleteEntrega: (id: number) => Promise<void>;
+  updateEntrega: (entrega: EntregaDevocional) => Promise<void>;
 }
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
@@ -429,6 +430,11 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       await api.deleteEntrega(id);
       await fetchData();
   };
+  
+  const updateEntrega = async (entrega: EntregaDevocional) => {
+      await api.updateEntregaDevocional(entrega);
+      await fetchData();
+  }
 
 
   return (
@@ -447,7 +453,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       addInscripcion, updateInscripcion, deleteInscripcion, addPago, deletePago, addParticipante, removeParticipante,
       addCelebracionCumpleanos,
       clearTable,
-      addDevocional, updateDevocional, deleteDevocional, registrarEntregaBulk, deleteEntrega
+      addDevocional, updateDevocional, deleteDevocional, registrarEntregaBulk, deleteEntrega, updateEntrega
     }}>
       {children}
     </DataContext.Provider>

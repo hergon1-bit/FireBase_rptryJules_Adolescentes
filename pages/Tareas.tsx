@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useData } from '../contexts/DataContext';
 import { useAuth } from '../contexts/AuthContext';
 import { Devocional, EntregaDevocional, Adolescente } from '../types';
@@ -6,12 +6,12 @@ import Modal from '../components/ui/Modal';
 import ConfirmationModal from '../components/ui/ConfirmationModal';
 import { useForm } from '../hooks/useForm';
 import { formatDate } from '../utils/helpers';
-import { BookOpenIcon, CheckCircleIcon, TrashIcon } from '../components/ui/Icons';
+import { BookOpenIcon, CheckCircleIcon, TrashIcon, PencilIcon, RefreshIcon } from '../components/ui/Icons';
 
 type Tab = 'gestion' | 'registro' | 'historial';
 
 const Tareas: React.FC = () => {
-    const { devocionales, entregasDevocionales, adolescentes, addDevocional, updateDevocional, deleteDevocional, registrarEntregaBulk, deleteEntrega } = useData();
+    const { devocionales, entregasDevocionales, adolescentes, addDevocional, updateDevocional, deleteDevocional, registrarEntregaBulk, deleteEntrega, updateEntrega } = useData();
     const { hasPermission } = useAuth();
     
     const [activeTab, setActiveTab] = useState<Tab>('registro');
@@ -29,6 +29,23 @@ const Tareas: React.FC = () => {
     const [observaciones, setObservaciones] = useState('');
     const [successMessage, setSuccessMessage] = useState('');
 
+    // --- State for Tab Historial (Filters & Table) ---
+    const [filterAdo, setFilterAdo] = useState<string>('');
+    const [filterDev, setFilterDev] = useState<string>('');
+    const [filterDateStart, setFilterDateStart] = useState<string>('');
+    const [filterDateEnd, setFilterDateEnd] = useState<string>('');
+    
+    const [isDeleteEntregaConfirmOpen, setIsDeleteEntregaConfirmOpen] = useState(false);
+    const [entregaToDelete, setEntregaToDelete] = useState<EntregaDevocional | null>(null);
+    const [isEditEntregaModalOpen, setIsEditEntregaModalOpen] = useState(false);
+    const [editingEntrega, setEditingEntrega] = useState<EntregaDevocional | null>(null);
+    const [editSubmissionValues, setEditSubmissionValues] = useState({
+        adolescenteId: '',
+        devocionalId: '',
+        fechaEntrega: '',
+        observaciones: ''
+    });
+
     const initialFormState: Omit<Devocional, 'id'> = {
         numeroSemana: 0,
         tema: '',
@@ -38,7 +55,7 @@ const Tareas: React.FC = () => {
 
     const { values, handleInputChange, setValues, resetForm } = useForm(initialFormState);
 
-    // --- Handlers for Gestion ---
+    // --- Handlers for Gestion (Devocionales Definition) ---
     const openModalForCreate = () => {
         setEditingDevocional(null);
         resetForm();
@@ -76,7 +93,7 @@ const Tareas: React.FC = () => {
         }
     }
 
-    // --- Handlers for Registro ---
+    // --- Handlers for Registro (New Submissions) ---
     const handleToggleDevocional = (id: number) => {
         setSelectedDevocionalIds(prev => {
             const next = new Set(prev);
@@ -115,23 +132,78 @@ const Tareas: React.FC = () => {
         }
     };
     
-    // --- Handlers for Historial ---
-    const handleDeleteEntrega = async (id: number) => {
-        if(window.confirm("¿Eliminar este registro de entrega?")) {
-            await deleteEntrega(id);
+    // --- Handlers for Historial (Filters, Delete, Edit) ---
+    const clearFilters = () => {
+        setFilterAdo('');
+        setFilterDev('');
+        setFilterDateStart('');
+        setFilterDateEnd('');
+    };
+
+    const handleDeleteEntrega = (entrega: EntregaDevocional) => {
+        setEntregaToDelete(entrega);
+        setIsDeleteEntregaConfirmOpen(true);
+    }
+
+    const handleConfirmDeleteEntrega = async () => {
+        if (entregaToDelete) {
+            await deleteEntrega(entregaToDelete.id);
+            setIsDeleteEntregaConfirmOpen(false);
+            setEntregaToDelete(null);
         }
     }
 
+    const handleEditEntrega = (entrega: EntregaDevocional) => {
+        setEditingEntrega(entrega);
+        setEditSubmissionValues({
+            adolescenteId: String(entrega.adolescenteId),
+            devocionalId: String(entrega.devocionalId),
+            fechaEntrega: entrega.fechaEntrega,
+            observaciones: entrega.observaciones || ''
+        });
+        setIsEditEntregaModalOpen(true);
+    }
 
+    const handleSaveEditedEntrega = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (editingEntrega) {
+            const updated: EntregaDevocional = {
+                id: editingEntrega.id,
+                adolescenteId: Number(editSubmissionValues.adolescenteId),
+                devocionalId: Number(editSubmissionValues.devocionalId),
+                fechaEntrega: editSubmissionValues.fechaEntrega,
+                observaciones: editSubmissionValues.observaciones
+            };
+            await updateEntrega(updated);
+            setIsEditEntregaModalOpen(false);
+            setEditingEntrega(null);
+        }
+    }
+
+    // --- Computed Data ---
     const sortedDevocionales = useMemo(() => 
         [...devocionales].sort((a,b) => b.numeroSemana - a.numeroSemana), 
     [devocionales]);
     
-    const sortedEntregas = useMemo(() => {
-        return [...entregasDevocionales].sort((a, b) => new Date(b.fechaEntrega).getTime() - new Date(a.fechaEntrega).getTime());
-    }, [entregasDevocionales]);
+    const filteredEntregas = useMemo(() => {
+        return entregasDevocionales
+            .filter(ent => {
+                const matchAdo = filterAdo === '' || ent.adolescenteId === Number(filterAdo);
+                const matchDev = filterDev === '' || ent.devocionalId === Number(filterDev);
+                
+                let matchDate = true;
+                if (filterDateStart) {
+                    matchDate = matchDate && new Date(ent.fechaEntrega) >= new Date(filterDateStart);
+                }
+                if (filterDateEnd) {
+                    matchDate = matchDate && new Date(ent.fechaEntrega) <= new Date(filterDateEnd);
+                }
+                
+                return matchAdo && matchDev && matchDate;
+            })
+            .sort((a, b) => new Date(b.fechaEntrega).getTime() - new Date(a.fechaEntrega).getTime());
+    }, [entregasDevocionales, filterAdo, filterDev, filterDateStart, filterDateEnd]);
 
-    // Calcular devocionales pendientes (opcional para UX avanzada, por ahora listamos todos)
     
     return (
         <div className="space-y-6">
@@ -143,19 +215,19 @@ const Tareas: React.FC = () => {
             <div className="flex border-b border-border overflow-x-auto">
                 <button 
                     onClick={() => setActiveTab('registro')} 
-                    className={`px-4 py-2 font-medium transition-colors ${activeTab === 'registro' ? 'border-b-2 border-primary text-primary' : 'text-text-secondary hover:text-text-primary'}`}
+                    className={`px-4 py-2 font-medium transition-colors whitespace-nowrap ${activeTab === 'registro' ? 'border-b-2 border-primary text-primary' : 'text-text-secondary hover:text-text-primary'}`}
                 >
                     Registrar Entregas
                 </button>
                 <button 
                     onClick={() => setActiveTab('gestion')} 
-                    className={`px-4 py-2 font-medium transition-colors ${activeTab === 'gestion' ? 'border-b-2 border-primary text-primary' : 'text-text-secondary hover:text-text-primary'}`}
+                    className={`px-4 py-2 font-medium transition-colors whitespace-nowrap ${activeTab === 'gestion' ? 'border-b-2 border-primary text-primary' : 'text-text-secondary hover:text-text-primary'}`}
                 >
                     Definir Devocionales
                 </button>
                 <button 
                     onClick={() => setActiveTab('historial')} 
-                    className={`px-4 py-2 font-medium transition-colors ${activeTab === 'historial' ? 'border-b-2 border-primary text-primary' : 'text-text-secondary hover:text-text-primary'}`}
+                    className={`px-4 py-2 font-medium transition-colors whitespace-nowrap ${activeTab === 'historial' ? 'border-b-2 border-primary text-primary' : 'text-text-secondary hover:text-text-primary'}`}
                 >
                     Historial de Entregas
                 </button>
@@ -163,7 +235,7 @@ const Tareas: React.FC = () => {
 
             {/* TAB: REGISTRO DE ENTREGAS */}
             {activeTab === 'registro' && (
-                <div className="bg-surface p-6 rounded-lg shadow-lg">
+                <div className="bg-surface p-6 rounded-lg shadow-lg animate-fade-in">
                     {successMessage && (
                         <div className="mb-4 bg-green-500/20 text-green-300 p-3 rounded flex items-center gap-2">
                             <CheckCircleIcon className="w-5 h-5"/> {successMessage}
@@ -207,7 +279,7 @@ const Tareas: React.FC = () => {
                                 </div>
                                 <button 
                                     onClick={handleRegistrarEntrega}
-                                    className="w-full bg-primary text-white py-2 rounded-md hover:bg-indigo-700 transition font-bold"
+                                    className="w-full bg-primary text-white py-2 rounded-md hover:bg-indigo-700 transition font-bold shadow-lg"
                                 >
                                     Guardar Entrega
                                 </button>
@@ -216,7 +288,7 @@ const Tareas: React.FC = () => {
 
                         <div>
                             <h2 className="text-lg font-semibold mb-4 text-text-primary">2. Seleccionar Hojas Entregadas</h2>
-                            <div className="bg-background rounded-md border border-border overflow-hidden h-96 overflow-y-auto">
+                            <div className="bg-background rounded-md border border-border overflow-hidden h-96 overflow-y-auto custom-scrollbar">
                                 {sortedDevocionales.length === 0 ? (
                                     <p className="p-4 text-text-secondary text-center">No hay devocionales definidos.</p>
                                 ) : (
@@ -257,13 +329,13 @@ const Tareas: React.FC = () => {
 
             {/* TAB: GESTION DE DEVOCIONALES */}
             {activeTab === 'gestion' && (
-                <div className="space-y-4">
+                <div className="space-y-4 animate-fade-in">
                     <div className="flex justify-end">
-                        <button onClick={openModalForCreate} className="bg-primary text-white px-4 py-2 rounded-lg hover:bg-indigo-700">
+                        <button onClick={openModalForCreate} className="bg-primary text-white px-4 py-2 rounded-lg hover:bg-indigo-700 shadow-md">
                             + Nuevo Devocional
                         </button>
                     </div>
-                    <div className="bg-surface shadow-lg rounded-lg overflow-x-auto">
+                    <div className="bg-surface shadow-lg rounded-lg overflow-x-auto border border-border">
                         <table className="min-w-full divide-y divide-border">
                             <thead className="bg-background">
                                 <tr>
@@ -276,7 +348,7 @@ const Tareas: React.FC = () => {
                             </thead>
                             <tbody className="divide-y divide-border">
                                 {sortedDevocionales.map(dev => (
-                                    <tr key={dev.id} className="hover:bg-background/50">
+                                    <tr key={dev.id} className="hover:bg-background/50 transition-colors">
                                         <td className="px-6 py-4">{dev.numeroSemana}</td>
                                         <td className="px-6 py-4 font-bold">{dev.tema}</td>
                                         <td className="px-6 py-4 text-sm">{formatDate(dev.fechaDistribucion)}</td>
@@ -295,44 +367,105 @@ const Tareas: React.FC = () => {
 
             {/* TAB: HISTORIAL */}
             {activeTab === 'historial' && (
-                <div className="bg-surface shadow-lg rounded-lg overflow-x-auto">
-                     <table className="min-w-full divide-y divide-border">
-                            <thead className="bg-background">
-                                <tr>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-text-secondary uppercase">Fecha Devolución</th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-text-secondary uppercase">Adolescente</th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-text-secondary uppercase">Devocional</th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-text-secondary uppercase">Observación</th>
-                                    <th className="px-6 py-3 text-right text-xs font-medium text-text-secondary uppercase"></th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-border">
-                                {sortedEntregas.map(ent => {
-                                    const ado = adolescentes.find(a => a.id === ent.adolescenteId);
-                                    const dev = devocionales.find(d => d.id === ent.devocionalId);
-                                    return (
-                                        <tr key={ent.id} className="hover:bg-background/50">
-                                            <td className="px-6 py-4 whitespace-nowrap">{formatDate(ent.fechaEntrega)}</td>
-                                            <td className="px-6 py-4 whitespace-nowrap font-medium">{ado ? `${ado.nombre} ${ado.apellido}` : 'Desconocido'}</td>
-                                            <td className="px-6 py-4 whitespace-nowrap">{dev ? `Sem ${dev.numeroSemana}: ${dev.tema}` : 'Borrado'}</td>
-                                            <td className="px-6 py-4 text-sm text-text-secondary">{ent.observaciones || '-'}</td>
-                                            <td className="px-6 py-4 text-right">
-                                                <button onClick={() => handleDeleteEntrega(ent.id)} className="text-red-500 hover:text-red-300" title="Eliminar registro">
-                                                    <TrashIcon className="w-4 h-4"/>
-                                                </button>
-                                            </td>
-                                        </tr>
-                                    );
-                                })}
-                                {sortedEntregas.length === 0 && (
-                                    <tr><td colSpan={5} className="p-4 text-center text-text-secondary">No hay entregas registradas aún.</td></tr>
-                                )}
-                            </tbody>
-                        </table>
+                <div className="space-y-4 animate-fade-in">
+                    {/* Barra de Filtros */}
+                    <div className="bg-surface p-4 rounded-lg shadow-lg border border-border grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 items-end">
+                        <div>
+                            <label className="block text-xs font-medium text-text-secondary mb-1">Adolescente</label>
+                            <select 
+                                value={filterAdo} 
+                                onChange={(e) => setFilterAdo(e.target.value)}
+                                className="w-full bg-background border border-border rounded-md p-2 text-sm"
+                            >
+                                <option value="">Todos</option>
+                                {adolescentes.map(a => (
+                                    <option key={a.id} value={a.id}>{a.nombre} {a.apellido}</option>
+                                ))}
+                            </select>
+                        </div>
+                        <div>
+                            <label className="block text-xs font-medium text-text-secondary mb-1">Devocional</label>
+                            <select 
+                                value={filterDev} 
+                                onChange={(e) => setFilterDev(e.target.value)}
+                                className="w-full bg-background border border-border rounded-md p-2 text-sm"
+                            >
+                                <option value="">Todos</option>
+                                {sortedDevocionales.map(d => (
+                                    <option key={d.id} value={d.id}>Sem {d.numeroSemana}: {d.tema}</option>
+                                ))}
+                            </select>
+                        </div>
+                        <div>
+                            <label className="block text-xs font-medium text-text-secondary mb-1">Desde</label>
+                            <input 
+                                type="date" 
+                                value={filterDateStart}
+                                onChange={(e) => setFilterDateStart(e.target.value)}
+                                className="w-full bg-background border border-border rounded-md p-2 text-sm"
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-xs font-medium text-text-secondary mb-1">Hasta</label>
+                            <input 
+                                type="date" 
+                                value={filterDateEnd}
+                                onChange={(e) => setFilterDateEnd(e.target.value)}
+                                className="w-full bg-background border border-border rounded-md p-2 text-sm"
+                            />
+                        </div>
+                        <div>
+                            <button 
+                                onClick={clearFilters}
+                                className="w-full bg-gray-700 text-text-primary hover:bg-gray-600 p-2 rounded-md text-sm flex items-center justify-center gap-2 transition-colors"
+                            >
+                                <RefreshIcon className="w-4 h-4"/> Limpiar
+                            </button>
+                        </div>
+                    </div>
+
+                    <div className="bg-surface shadow-lg rounded-lg overflow-x-auto border border-border">
+                         <table className="min-w-full divide-y divide-border">
+                                <thead className="bg-background">
+                                    <tr>
+                                        <th className="px-6 py-3 text-left text-xs font-medium text-text-secondary uppercase">Fecha Devolución</th>
+                                        <th className="px-6 py-3 text-left text-xs font-medium text-text-secondary uppercase">Adolescente</th>
+                                        <th className="px-6 py-3 text-left text-xs font-medium text-text-secondary uppercase">Devocional</th>
+                                        <th className="px-6 py-3 text-left text-xs font-medium text-text-secondary uppercase">Observación</th>
+                                        <th className="px-6 py-3 text-right text-xs font-medium text-text-secondary uppercase">Acciones</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-border">
+                                    {filteredEntregas.map(ent => {
+                                        const ado = adolescentes.find(a => a.id === ent.adolescenteId);
+                                        const dev = devocionales.find(d => d.id === ent.devocionalId);
+                                        return (
+                                            <tr key={ent.id} className="hover:bg-background/50 transition-colors">
+                                                <td className="px-6 py-4 whitespace-nowrap">{formatDate(ent.fechaEntrega)}</td>
+                                                <td className="px-6 py-4 whitespace-nowrap font-medium text-text-primary">{ado ? `${ado.nombre} ${ado.apellido}` : 'Desconocido'}</td>
+                                                <td className="px-6 py-4 whitespace-nowrap">{dev ? `Sem ${dev.numeroSemana}: ${dev.tema}` : 'Borrado'}</td>
+                                                <td className="px-6 py-4 text-sm text-text-secondary">{ent.observaciones || '-'}</td>
+                                                <td className="px-6 py-4 text-right space-x-2 whitespace-nowrap">
+                                                    <button onClick={() => handleEditEntrega(ent)} className="text-primary hover:text-indigo-300 p-1" title="Editar registro">
+                                                        <PencilIcon className="w-4 h-4 inline" />
+                                                    </button>
+                                                    <button onClick={() => handleDeleteEntrega(ent)} className="text-red-500 hover:text-red-300 p-1" title="Eliminar registro">
+                                                        <TrashIcon className="w-4 h-4 inline"/>
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        );
+                                    })}
+                                    {filteredEntregas.length === 0 && (
+                                        <tr><td colSpan={5} className="p-12 text-center text-text-secondary italic">No se encontraron entregas con los filtros actuales.</td></tr>
+                                    )}
+                                </tbody>
+                            </table>
+                    </div>
                 </div>
             )}
 
-            {/* Modal para Crear/Editar Devocional */}
+            {/* Modal para Crear/Editar Definición de Devocional */}
             <Modal isOpen={isDevocionalModalOpen} onClose={() => setIsDevocionalModalOpen(false)} title={editingDevocional ? 'Editar Tarea' : 'Nueva Tarea'}>
                 <form onSubmit={handleSubmitDevocional} className="space-y-4">
                     <div className="grid grid-cols-2 gap-4">
@@ -382,19 +515,86 @@ const Tareas: React.FC = () => {
                             />
                         </div>
                     </div>
-                    <div className="flex justify-end gap-2 pt-4">
-                        <button type="button" onClick={() => setIsDevocionalModalOpen(false)} className="bg-gray-600 text-white px-4 py-2 rounded-lg">Cancelar</button>
-                        <button type="submit" className="bg-primary text-white px-4 py-2 rounded-lg">Guardar</button>
+                    <div className="flex justify-end gap-2 pt-4 border-t border-border mt-4">
+                        <button type="button" onClick={() => setIsDevocionalModalOpen(false)} className="bg-gray-600 text-white px-4 py-2 rounded-lg hover:bg-gray-700 transition-colors">Cancelar</button>
+                        <button type="submit" className="bg-primary text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition-colors shadow-lg">Guardar</button>
                     </div>
                 </form>
             </Modal>
             
+            {/* Modal para Editar Entrega (Historial) */}
+            <Modal isOpen={isEditEntregaModalOpen} onClose={() => setIsEditEntregaModalOpen(false)} title="Editar Registro de Entrega">
+                <form onSubmit={handleSaveEditedEntrega} className="space-y-4">
+                    <div>
+                        <label className="block text-sm font-medium text-text-secondary mb-1">Adolescente</label>
+                        <select 
+                            value={editSubmissionValues.adolescenteId}
+                            onChange={(e) => setEditSubmissionValues({...editSubmissionValues, adolescenteId: e.target.value})}
+                            className="w-full bg-background border border-border rounded-md p-2"
+                            required
+                        >
+                            {adolescentes.map(a => (
+                                <option key={a.id} value={a.id}>{a.nombre} {a.apellido}</option>
+                            ))}
+                        </select>
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-text-secondary mb-1">Devocional / Hoja</label>
+                        <select 
+                            value={editSubmissionValues.devocionalId}
+                            onChange={(e) => setEditSubmissionValues({...editSubmissionValues, devocionalId: e.target.value})}
+                            className="w-full bg-background border border-border rounded-md p-2"
+                            required
+                        >
+                            {sortedDevocionales.map(d => (
+                                <option key={d.id} value={d.id}>Sem {d.numeroSemana}: {d.tema}</option>
+                            ))}
+                        </select>
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-text-secondary mb-1">Fecha de Entrega</label>
+                        <input 
+                            type="date" 
+                            value={editSubmissionValues.fechaEntrega}
+                            onChange={(e) => setEditSubmissionValues({...editSubmissionValues, fechaEntrega: e.target.value})}
+                            className="w-full bg-background border border-border rounded-md p-2"
+                            required
+                        />
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-text-secondary mb-1">Observaciones</label>
+                        <textarea 
+                            value={editSubmissionValues.observaciones}
+                            onChange={(e) => setEditSubmissionValues({...editSubmissionValues, observaciones: e.target.value})}
+                            className="w-full bg-background border border-border rounded-md p-2"
+                            rows={3}
+                        />
+                    </div>
+                    <div className="flex justify-end gap-2 pt-4 border-t border-border mt-4">
+                        <button type="button" onClick={() => setIsEditEntregaModalOpen(false)} className="bg-gray-600 text-white px-4 py-2 rounded-lg hover:bg-gray-700 transition-colors">Cancelar</button>
+                        <button type="submit" className="bg-primary text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition-colors shadow-lg">Guardar Cambios</button>
+                    </div>
+                </form>
+            </Modal>
+
+             {/* Confirmation for Definition Deletion */}
              <ConfirmationModal
                 isOpen={isDeleteConfirmOpen}
                 onClose={() => setIsDeleteConfirmOpen(false)}
                 onConfirm={handleConfirmDelete}
                 title="Eliminar Devocional"
                 message={<>¿Estás seguro de que deseas eliminar el devocional <strong>{devocionalToDelete?.tema}</strong>? Se eliminarán también todas las entregas asociadas a este tema.</>}
+                confirmText="Eliminar"
+                confirmButtonClassName="bg-red-600 text-white hover:bg-red-700"
+            />
+
+            {/* Confirmation for Submission Deletion (Historial) */}
+            <ConfirmationModal
+                isOpen={isDeleteEntregaConfirmOpen}
+                onClose={() => setIsDeleteEntregaConfirmOpen(false)}
+                onConfirm={handleConfirmDeleteEntrega}
+                title="Eliminar Registro"
+                message="¿Estás seguro de que deseas eliminar este registro de entrega? Esta acción no se puede deshacer."
                 confirmText="Eliminar"
                 confirmButtonClassName="bg-red-600 text-white hover:bg-red-700"
             />

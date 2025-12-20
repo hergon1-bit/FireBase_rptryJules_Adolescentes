@@ -66,8 +66,6 @@ export const api = {
   },
   
   updateLastSignIn: async (id: string): Promise<void> => {
-    // Intentamos actualizar la columna last_sign_in_at. 
-    // Si el error es que la columna no existe, lo capturamos para no romper el flujo.
     try {
         const { error } = await supabase
             .from('usuarios')
@@ -339,7 +337,6 @@ export const api = {
             observaciones: e.observaciones
         }));
     } catch (e) {
-        // Ignorar si tabla no existe
         return [];
     }
   },
@@ -409,6 +406,17 @@ export const api = {
 
   deleteEntrega: async (id: number): Promise<void> => {
     const { error } = await supabase.from('entregas_devocionales').delete().eq('id', id);
+    if (error) throw new Error(error.message);
+  },
+  
+  updateEntregaDevocional: async (entrega: EntregaDevocional): Promise<void> => {
+    const dbPayload = {
+        devocional_id: entrega.devocionalId,
+        adolescente_id: entrega.adolescenteId,
+        fecha_entrega: entrega.fechaEntrega,
+        observaciones: entrega.observaciones
+    };
+    const { error } = await supabase.from('entregas_devocionales').update(dbPayload).eq('id', entrega.id);
     if (error) throw new Error(error.message);
   },
 
