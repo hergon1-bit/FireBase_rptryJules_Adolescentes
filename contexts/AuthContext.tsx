@@ -43,6 +43,11 @@ export const AuthProvider: React.FC<{children: React.ReactNode}> = ({ children }
     let mounted = true;
 
     const checkSession = async () => {
+      // Timeout de seguridad: si Supabase tarda más de 4s, liberamos la carga
+      const timeoutId = setTimeout(() => {
+          if (mounted) setLoading(false);
+      }, 4000);
+
       try {
         const { data: { session } } = await supabase.auth.getSession();
         if (session?.user && mounted) {
@@ -53,6 +58,7 @@ export const AuthProvider: React.FC<{children: React.ReactNode}> = ({ children }
       } finally {
         if (mounted) {
           setLoading(false);
+          clearTimeout(timeoutId);
         }
       }
     };
@@ -68,13 +74,7 @@ export const AuthProvider: React.FC<{children: React.ReactNode}> = ({ children }
       }
 
       if (session?.user) {
-        // Si es un inicio de sesión explícito, podemos mostrar carga si lo deseamos,
-        // pero para evitar parpadeos al volver a la pestaña, lo hacemos en background
-        // a menos que sea un SIGNED_IN inicial donde el usuario es null.
         if (event === 'SIGNED_IN') {
-             // Solo cargamos si el usuario no está ya establecido para evitar parpadeos
-             // Como no tenemos acceso seguro al estado 'user' aquí dentro sin dependencias,
-             // simplemente ejecutamos la carga sin bloquear la UI con setLoading(true).
              await loadUserProfile(session.user.id);
         }
       } else if (event === 'SIGNED_OUT') {
@@ -91,7 +91,11 @@ export const AuthProvider: React.FC<{children: React.ReactNode}> = ({ children }
   }, []);
 
   const login = async (email: string, pass: string) => {
-    setLoading(true);
+    // NOTA: No activamos setLoading(true) aquí. 
+    // Si lo hacemos, App.tsx mostrará el spinner global, desmontando LoginPage 
+    // y borrando cualquier mensaje de error si la promesa falla.
+    // Dejamos que LoginPage maneje su propio estado de 'isLoading'.
+    
     try {
       const { data, error } = await supabase.auth.signInWithPassword({
         email,
@@ -99,23 +103,33 @@ export const AuthProvider: React.FC<{children: React.ReactNode}> = ({ children }
       });
 
       if (error) {
-        if (error.message.includes('Invalid login credentials')) {
-          throw new Error('Credenciales inválidas. Por favor, revisa tu correo y contraseña.');
+        console.error("Supabase Login Error:", error);
+        let msg = error.message;
+
+        // Traducción de errores comunes de Supabase
+        if (msg.includes('Invalid login credentials') || msg.includes('invalid_grant')) {
+          msg = 'Credenciales inválidas. Verifica tu correo y contraseña.';
+        } else if (msg.includes('Email not confirmed')) {
+          msg = 'El correo electrónico aún no ha sido confirmado. Revisa tu bandeja de entrada.';
+        } else if (msg.includes('Network request failed') || msg.includes('fetch failed')) {
+            msg = 'Error de conexión. Por favor verifica tu internet.';
+        } else if (msg.includes('Too many requests')) {
+            msg = 'Demasiados intentos fallidos. Por favor espera unos minutos.';
         }
-        if (error.message.includes('Email not confirmed')) {
-          throw new Error('El correo electrónico aún no ha sido confirmado.');
-        }
-        throw error;
+
+        throw new Error(msg);
       }
 
       if (data.user) {
         const success = await loadUserProfile(data.user.id);
         if (!success) {
-          throw new Error('Sesión iniciada correctamente, pero no se encontró tu perfil de usuario en el sistema. Contacta al administrador.');
+          // Si el login fue exitoso pero no hay perfil, cerramos la sesión de supabase para que no quede en el limbo
+          await supabase.auth.signOut(); 
+          throw new Error('Tu usuario no tiene un perfil asignado en el sistema. Contacta al administrador.');
         }
       }
-    } finally {
-      setLoading(false);
+    } catch (error) {
+        throw error; // Re-lanzar para que lo atrape LoginPage
     }
   };
 

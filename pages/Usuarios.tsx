@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo } from 'react';
 import { useData } from '../contexts/DataContext';
 import { useAuth } from '../contexts/AuthContext';
@@ -5,7 +6,7 @@ import { Usuario } from '../types';
 import Modal from '../components/ui/Modal';
 import ConfirmationModal from '../components/ui/ConfirmationModal';
 import { useForm } from '../hooks/useForm';
-import { KeyIcon, EyeIcon, EyeOffIcon, UsersIcon } from '../components/ui/Icons';
+import { KeyIcon, EyeIcon, EyeOffIcon, UsersIcon, RefreshIcon } from '../components/ui/Icons';
 import { formatRelativeTime, formatDate } from '../utils/helpers';
 
 // Helper Components
@@ -47,15 +48,21 @@ const RoleBadge: React.FC<{ roleName?: string }> = ({ roleName }) => {
 
 // Main Component
 const Usuarios: React.FC = () => {
-    const { usuarios, roles, addUser, updateUser, deleteUser, sendPasswordReset } = useData();
+    const { usuarios, roles, addUser, updateUser, deleteUser, sendPasswordReset, fetchData } = useData();
     const { user: currentUser, hasPermission } = useAuth();
     
     const [isUserModalOpen, setIsUserModalOpen] = useState(false);
     const [editingUser, setEditingUser] = useState<Usuario | null>(null);
+    
+    // Delete States
     const [isUserConfirmOpen, setIsUserConfirmOpen] = useState(false);
     const [userToDelete, setUserToDelete] = useState<Usuario | null>(null);
+    const [isDeleting, setIsDeleting] = useState(false);
+    
+    // UI States
     const [searchTerm, setSearchTerm] = useState('');
     const [showPassword, setShowPassword] = useState(false);
+    const [actionError, setActionError] = useState('');
     
     const initialFormState = {
         nombre: '',
@@ -84,17 +91,20 @@ const Usuarios: React.FC = () => {
         setEditingUser(null);
         resetForm();
         setShowPassword(false);
+        setActionError('');
         setIsUserModalOpen(true);
     };
 
     const openModalForEditUser = (user: Usuario) => {
         setEditingUser(user);
         setValues({ ...user, password: '' });
+        setActionError('');
         setIsUserModalOpen(true);
     };
     
     const handleSubmitUser = async (e: React.FormEvent) => {
         e.preventDefault();
+        setActionError('');
 
         const isEmailDuplicate = usuarios.some(u => {
             if (editingUser) {
@@ -104,7 +114,7 @@ const Usuarios: React.FC = () => {
         });
 
         if (isEmailDuplicate) {
-            alert('Error: El correo electrónico ingresado ya existe.');
+            setActionError('Error: El correo electrónico ingresado ya existe.');
             return;
         }
 
@@ -114,8 +124,8 @@ const Usuarios: React.FC = () => {
             if (editingUser) {
                 await updateUser({ ...userData, id: editingUser.id });
             } else {
-                if (!userData.password) { alert('La contraseña es obligatoria para nuevos usuarios.'); return; }
-                if (userData.password.length < 6) { alert('La contraseña debe tener al menos 6 caracteres.'); return; }
+                if (!userData.password) { setActionError('La contraseña es obligatoria para nuevos usuarios.'); return; }
+                if (userData.password.length < 6) { setActionError('La contraseña debe tener al menos 6 caracteres.'); return; }
 
                 // Make sure to pass the password explicitly
                 await addUser({ ...userData, password: values.password }); 
@@ -123,25 +133,38 @@ const Usuarios: React.FC = () => {
             setIsUserModalOpen(false);
         } catch (error: any) {
             const msg = error instanceof Error ? error.message : (typeof error === 'string' ? error : JSON.stringify(error));
-            alert(msg || "Ocurrió un error al guardar el usuario.");
+            setActionError(msg || "Ocurrió un error al guardar el usuario.");
         }
     };
 
     const handleDeleteUserClick = (user: Usuario) => {
         setUserToDelete(user);
+        setActionError('');
         setIsUserConfirmOpen(true);
     };
 
     const handleConfirmUserDelete = async () => {
-        if (userToDelete) {
-            try {
-                await deleteUser(userToDelete.id);
-                setIsUserConfirmOpen(false);
-                setUserToDelete(null);
-            } catch (error: any) {
-                const msg = error instanceof Error ? error.message : (typeof error === 'string' ? error : JSON.stringify(error));
-                alert(msg || "Error al eliminar usuario.");
-            }
+        if (!userToDelete) return;
+        
+        setIsDeleting(true);
+        setActionError('');
+        
+        try {
+            await deleteUser(userToDelete.id);
+            // Si tiene éxito, cerramos modal y limpiamos estado
+            setIsUserConfirmOpen(false);
+            setUserToDelete(null);
+        } catch (error: any) {
+            console.error("Delete error:", error);
+            const msg = error instanceof Error ? error.message : (typeof error === 'string' ? error : JSON.stringify(error));
+            
+            // Intentamos refrescar los datos de todas formas, por si el borrado parcial ocurrió
+            await fetchData();
+            
+            setActionError(`Error al eliminar: ${msg}`);
+            setIsUserConfirmOpen(false); 
+        } finally {
+            setIsDeleting(false);
         }
     };
 
@@ -152,7 +175,7 @@ const Usuarios: React.FC = () => {
                 await sendPasswordReset(email);
                 alert(`Correo enviado a ${email}.`);
             } catch (error: any) {
-                alert(`Error: ${error.message}`);
+                setActionError(`Error al enviar correo: ${error.message}`);
             }
         }
     }
@@ -175,6 +198,14 @@ const Usuarios: React.FC = () => {
                     </button>
                 )}
             </div>
+
+            {/* Error Banner */}
+            {actionError && (
+                <div className="bg-red-900/30 border border-red-500 text-red-200 px-4 py-3 rounded-lg flex items-center shadow-md animate-pulse">
+                    <span className="font-bold mr-2">Atención:</span> {actionError}
+                    <button onClick={() => setActionError('')} className="ml-auto text-red-200 hover:text-white">&times;</button>
+                </div>
+            )}
             
             <div className="bg-surface p-4 rounded-lg border border-border flex items-center gap-4">
                 <div className="flex-1 max-w-sm">
@@ -331,10 +362,12 @@ const Usuarios: React.FC = () => {
             
             <ConfirmationModal
                 isOpen={isUserConfirmOpen}
-                onClose={() => setIsUserConfirmOpen(false)}
+                onClose={() => !isDeleting && setIsUserConfirmOpen(false)}
                 onConfirm={handleConfirmUserDelete}
                 title="Confirmar Eliminación de Usuario"
                 message={<>¿Estás seguro de que quieres eliminar al usuario <strong>{userToDelete?.nombre}</strong>? Esta acción revocará su acceso de inmediato.</>}
+                confirmText={isDeleting ? 'Eliminando...' : 'Eliminar'}
+                confirmButtonClassName={isDeleting ? 'bg-red-800 text-gray-300 cursor-not-allowed' : 'bg-red-600 text-white hover:bg-red-700'}
             />
         </div>
     );

@@ -22,11 +22,35 @@ const LoginPage: React.FC = () => {
   const [adminName, setAdminName] = useState('');
 
   useEffect(() => {
+    let mounted = true;
+    
     const checkUsers = async () => {
-        const count = await api.countUsuarios();
-        setIsFirstRun(count === 0);
+        // Timeout de seguridad: si la comprobación tarda más de 3 segundos,
+        // asumimos que no es la primera ejecución y mostramos el login normal.
+        const timer = setTimeout(() => {
+             if (mounted && isFirstRun === null) {
+                 console.warn("User check timed out, defaulting to login screen");
+                 setIsFirstRun(false);
+             }
+        }, 3000);
+
+        try {
+            const count = await api.countUsuarios();
+            if (mounted) {
+                clearTimeout(timer);
+                setIsFirstRun(count === 0);
+            }
+        } catch (e) {
+            console.error("Error checking users", e);
+            if (mounted) {
+                clearTimeout(timer);
+                setIsFirstRun(false); // Fallback to normal login
+            }
+        }
     };
     checkUsers();
+    
+    return () => { mounted = false; };
   }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -37,8 +61,10 @@ const LoginPage: React.FC = () => {
     try {
       await login(email, password);
     } catch (err: any) {
-      console.error(err);
-      setError(err.message || 'Credenciales incorrectas o error al iniciar sesión.');
+      console.error("Error en login:", err);
+      // Aseguramos obtener el mensaje correcto ya sea objeto Error o string
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      setError(errorMessage);
     } finally {
       setIsLoading(false);
     }
@@ -62,7 +88,8 @@ const LoginPage: React.FC = () => {
           // 3. Intentar login
           await login(email, password);
       } catch (err: any) {
-          setError(err.message || 'Error durante la configuración inicial.');
+          const errorMessage = err instanceof Error ? err.message : String(err);
+          setError(errorMessage);
       } finally {
           setIsLoading(false);
       }
@@ -79,7 +106,8 @@ const LoginPage: React.FC = () => {
           setRecoveryMessage('Si el correo está registrado, recibirás un enlace para restablecer tu contraseña.');
       } catch (err: any) {
           console.error(err);
-          setError(err.message || 'Error al enviar la solicitud.');
+          const errorMessage = err instanceof Error ? err.message : String(err);
+          setError(errorMessage);
       } finally {
           setIsLoading(false);
       }
@@ -94,8 +122,9 @@ const LoginPage: React.FC = () => {
 
   if (isFirstRun === null) {
       return (
-          <div className="min-h-screen flex items-center justify-center bg-background">
-              <RefreshIcon className="w-10 h-10 animate-spin text-primary" />
+          <div className="min-h-screen flex flex-col items-center justify-center bg-background gap-4">
+              <RefreshIcon className="w-12 h-12 animate-spin text-primary" />
+              <p className="text-text-secondary text-sm animate-pulse">Cargando sistema...</p>
           </div>
       );
   }
@@ -117,9 +146,9 @@ const LoginPage: React.FC = () => {
             </p>
         </div>
 
-        {/* Alerts */}
+        {/* Alerts - Mejor visibilidad del error */}
         {error && (
-          <div className="bg-red-500/10 border border-red-500 text-red-400 px-4 py-3 rounded mb-6 text-sm text-center animate-fade-in">
+          <div className="bg-red-900/30 border border-red-500 text-red-200 px-4 py-3 rounded mb-6 text-sm text-center font-medium shadow-md animate-pulse">
             {error}
           </div>
         )}

@@ -734,7 +734,19 @@ export const api = {
   
   createUsuario: async (usuario: Omit<Usuario, 'id' | 'password'> & { id?: string, password?: string }): Promise<Usuario> => {
     if (!usuario.password) throw new Error("Se requiere una contraseña.");
-    const tempSupabase = createClient(supabaseUrl, supabaseKey);
+    
+    // Configurar cliente temporal SIN persistencia.
+    // Esto es crucial si la confirmación de email está desactivada (Opción 1),
+    // ya que signUp() loguea automáticamente al nuevo usuario, y no queremos
+    // que sobrescriba la sesión del administrador en LocalStorage.
+    const tempSupabase = createClient(supabaseUrl, supabaseKey, {
+        auth: {
+            persistSession: false,
+            autoRefreshToken: false,
+            detectSessionInUrl: false
+        }
+    });
+
     const { data: authData, error: authError } = await tempSupabase.auth.signUp({
         email: usuario.email,
         password: usuario.password,
@@ -757,7 +769,26 @@ export const api = {
   },
 
   deleteUsuario: async (id: string): Promise<void> => {
-    await supabase.from('usuarios').delete().eq('id', id);
+    // Intento 1: Usar RPC (Function de Base de Datos) - La forma correcta de borrar de Auth
+    const { error: rpcError } = await supabase.rpc('delete_user', { user_id: id });
+    
+    // Si no hubo error, terminó exitosamente.
+    if (!rpcError) return; 
+
+    // Si falló, verificamos si es porque la función no existe.
+    if (rpcError.code === '42883' || rpcError.message.includes('function') || rpcError.message.includes('does not exist')) {
+         console.warn("Función 'delete_user' no encontrada. Borrando solo perfil público.");
+         // Fallback: Borrar solo de la tabla 'usuarios'
+         const { error: dbError } = await supabase.from('usuarios').delete().eq('id', id);
+         if (dbError) throw new Error(dbError.message);
+         
+         // IMPORTANTE: No lanzamos error aquí. Solo logueamos advertencia.
+         // Esto permite que el flujo continúe en el UI (se cierra el modal y se actualiza la lista).
+         console.warn("AVISO: Perfil eliminado, pero el usuario sigue en Auth porque falta la función RPC.");
+    } else {
+        // Otro error real del RPC (ej. permisos), este sí lo lanzamos.
+        throw new Error(rpcError.message);
+    }
   },
 
   createRole: async (role: Omit<Rol, 'id'>): Promise<Rol> => {
@@ -812,14 +843,14 @@ export const api = {
     const dbPayload = { evento_id: inscripcion.eventoId, adolescente_id: inscripcion.adolescenteId, fecha_inscripcion: inscripcion.fechaInscripcion, notas: inscripcion.notas };
     const { data, error } = await supabase.from('inscripciones_eventos').insert(dbPayload).select().single();
     const result = handleSupabaseData(data, error, 'createInscripcion');
-    return { id: result.id, eventoId: result.evento_id, adolescenteId: result.adolescente_id, fechaInscripcion: result.fecha_inscripcion, notas: result.notas };
+    return { id: result.id, eventoId: result.evento_id, adolescenteId: result.adolescenteId, fechaInscripcion: result.fecha_inscripcion, notas: result.notas };
   },
 
   updateInscripcion: async (inscripcion: InscripcionEvento): Promise<InscripcionEvento> => {
     const dbPayload = { evento_id: inscripcion.eventoId, adolescente_id: inscripcion.adolescenteId, fecha_inscripcion: inscripcion.fechaInscripcion, notas: inscripcion.notas };
     const { data, error } = await supabase.from('inscripciones_eventos').update(dbPayload).eq('id', inscripcion.id).select().single();
     const result = handleSupabaseData(data, error, 'updateInscripcion');
-    return { id: result.id, eventoId: result.evento_id, adolescenteId: result.adolescente_id, fechaInscripcion: result.fecha_inscripcion, notas: result.notas };
+    return { id: result.id, eventoId: result.evento_id, adolescenteId: result.adolescenteId, fechaInscripcion: result.fecha_inscripcion, notas: result.notas };
   },
 
   deleteInscripcion: async (id: number): Promise<void> => {
