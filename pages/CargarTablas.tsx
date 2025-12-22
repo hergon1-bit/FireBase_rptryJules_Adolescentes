@@ -159,8 +159,8 @@ const CargarTablas: React.FC = () => {
         const parentescoOptions: GradoParentesco[] = ['Padre', 'Madre', 'Tío', 'Tía', 'Abuelo', 'Abuela', 'Tutor Legal'];
         return rows.map(rowStr => {
             const row = rowStr.split(';');
-            const [nombre, apellido, cedula, parentesco, barrio, ciudad, adolescenteCedulas] = row.map(field => field?.trim());
-            const rawData = { nombre, apellido, cedula, parentesco, barrio, ciudad, adolescenteCedulas };
+            const [nombre, apellido, cedula, telefono, parentesco, barrio, ciudad, adolescenteCedulas] = row.map(field => field?.trim());
+            const rawData = { nombre, apellido, cedula, telefono, parentesco, barrio, ciudad, adolescenteCedulas };
 
             if (!nombre || !apellido || !cedula || !parentesco || !adolescenteCedulas) return { data: rawData, isValid: false, error: 'Faltan campos obligatorios.' };
             if (existingCedulas.tutores.has(cedula) || cedulasInFile.has(cedula)) return { data: rawData, isValid: false, error: `Cédula '${cedula}' duplicada.` };
@@ -171,7 +171,7 @@ const CargarTablas: React.FC = () => {
             
             cedulasInFile.add(cedula);
             return {
-                data: { nombre, apellido, cedula, parentesco, barrio: barrio || '', ciudad: ciudad || '', adolescenteCedulas },
+                data: { nombre, apellido, cedula, telefono: telefono || '', parentesco, barrio: barrio || '', ciudad: ciudad || '', adolescenteCedulas },
                 isValid: true
             };
         });
@@ -380,11 +380,11 @@ const CargarTablas: React.FC = () => {
         tutores: {
             title: 'Tutores',
             instructions: <ol className="list-decimal list-inside space-y-1">
-                <li>Nombre (Requerido)</li><li>Apellido (Requerido)</li><li>Cédula (Requerido, único)</li><li>Parentesco (Requerido)</li><li>Barrio</li><li>Ciudad</li><li>Cédulas de Adolescentes (Requerido, separadas por coma)</li>
+                <li>Nombre (Requerido)</li><li>Apellido (Requerido)</li><li>Cédula (Requerido, único)</li><li>Teléfono</li><li>Parentesco (Requerido)</li><li>Barrio</li><li>Ciudad</li><li>Cédulas de Adolescentes (Requerido, separadas por coma)</li>
             </ol>,
-            previewHeaders: ['Tutor', 'Cédula', 'Adolescentes Vinculados', 'Validación', 'Observación'],
+            previewHeaders: ['Tutor', 'Cédula', 'Teléfono', 'Adolescentes Vinculados', 'Validación', 'Observación'],
             renderRow: (row: ParsedRow, index: number) => <tr key={index} className={`border-t border-border ${!row.isValid ? 'bg-red-900/40' : ''}`}>
-                <td className="p-2">{row.data.nombre || 'N/A'} {row.data.apellido || ''}</td><td className="p-2">{row.data.cedula || 'N/A'}</td><td className="p-2">{row.data.adolescenteCedulas || 'N/A'}</td><td className={`p-2 font-semibold ${!row.isValid ? 'text-red-300' : 'text-green-300'}`}>{row.isValid ? "Válido" : "Error"}</td><td className="p-2 text-yellow-400">{row.error}</td>
+                <td className="p-2">{row.data.nombre || 'N/A'} {row.data.apellido || ''}</td><td className="p-2">{row.data.cedula || 'N/A'}</td><td className="p-2">{row.data.telefono || '-'}</td><td className="p-2">{row.data.adolescenteCedulas || 'N/A'}</td><td className={`p-2 font-semibold ${!row.isValid ? 'text-red-300' : 'text-green-300'}`}>{row.isValid ? "Válido" : "Error"}</td><td className="p-2 text-yellow-400">{row.error}</td>
             </tr>
         },
         asistencias: {

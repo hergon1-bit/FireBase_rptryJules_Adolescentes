@@ -686,20 +686,42 @@ export const api = {
   },
 
   createTutor: async (tutor: Omit<Tutor, 'id'>): Promise<Tutor> => {
-    const dbPayload = { nombre: tutor.nombre, apellido: tutor.apellido, cedula: tutor.cedula, parentesco: tutor.parentesco, barrio: tutor.barrio, ciudad: tutor.ciudad };
+    const dbPayload = { 
+        nombre: tutor.nombre, 
+        apellido: tutor.apellido, 
+        cedula: tutor.cedula, 
+        telefono: tutor.telefono, // Included
+        parentesco: tutor.parentesco, 
+        barrio: tutor.barrio, 
+        ciudad: tutor.ciudad 
+    };
     const { data, error } = await supabase.from('tutores').insert(dbPayload).select().single();
     const result = handleSupabaseData(data, error, 'createTutor');
     return result;
   },
 
   updateTutor: async (tutor: Tutor): Promise<Tutor> => {
-    const dbPayload = { nombre: tutor.nombre, apellido: tutor.apellido, cedula: tutor.cedula, parentesco: tutor.parentesco, barrio: tutor.barrio, ciudad: tutor.ciudad };
+    const dbPayload = { 
+        nombre: tutor.nombre, 
+        apellido: tutor.apellido, 
+        cedula: tutor.cedula, 
+        telefono: tutor.telefono, // Included
+        parentesco: tutor.parentesco, 
+        barrio: tutor.barrio, 
+        ciudad: tutor.ciudad 
+    };
     const { data, error } = await supabase.from('tutores').update(dbPayload).eq('id', tutor.id).select().single();
     const result = handleSupabaseData(data, error, 'updateTutor');
     return result;
   },
 
   deleteTutor: async (id: number): Promise<void> => {
+    // Primero eliminamos los vínculos en tutor_adolescente para mantener la integridad referencial
+    // si no existe ON DELETE CASCADE en la base de datos.
+    const { error: linkError } = await supabase.from('tutor_adolescente').delete().eq('tutor_id', id);
+    if (linkError) throw new Error(linkError.message);
+
+    // Luego eliminamos el tutor
     const { error } = await supabase.from('tutores').delete().eq('id', id);
     if (error) throw new Error(error.message);
   },
@@ -713,7 +735,15 @@ export const api = {
   },
 
   createTutoresAndLinkBulk: async (tutores: (Omit<Tutor, 'id'> & { adolescenteCedulas: string })[]): Promise<void> => {
-    const tutoresPayload = tutores.map(t => ({ nombre: t.nombre, apellido: t.apellido, cedula: t.cedula, parentesco: t.parentesco, barrio: t.barrio, ciudad: t.ciudad }));
+    const tutoresPayload = tutores.map(t => ({ 
+        nombre: t.nombre, 
+        apellido: t.apellido, 
+        cedula: t.cedula, 
+        telefono: t.telefono, // Included
+        parentesco: t.parentesco, 
+        barrio: t.barrio, 
+        ciudad: t.ciudad 
+    }));
     const { data: createdTutores, error: tutorError } = await supabase.from('tutores').insert(tutoresPayload).select();
     if (tutorError) throw new Error(tutorError.message);
     const { data: adolescentes } = await supabase.from('adolescentes').select('id, cedula');

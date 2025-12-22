@@ -92,6 +92,7 @@ export interface Tutor {
     nombre: string;
     apellido: string;
     cedula: string;
+    telefono: string;
     parentesco: GradoParentesco;
     barrio: string;
     ciudad: string;

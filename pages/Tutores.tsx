@@ -13,6 +13,10 @@ const Tutores: React.FC = () => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingTutor, setEditingTutor] = useState<Tutor | null>(null);
     const [searchTerm, setSearchTerm] = useState('');
+    
+    // Estado para el filtro interno del modal
+    const [adolescenteModalSearch, setAdolescenteModalSearch] = useState('');
+    
     const [linkedAdolescenteIds, setLinkedAdolescenteIds] = useState<Set<number>>(new Set());
     const [originalLinkedIds, setOriginalLinkedIds] = useState<Set<number>>(new Set());
     const [isUnsavedConfirmOpen, setIsUnsavedConfirmOpen] = useState(false);
@@ -24,6 +28,7 @@ const Tutores: React.FC = () => {
         nombre: '',
         apellido: '',
         cedula: '',
+        telefono: '',
         parentesco: 'Padre',
         barrio: '',
         ciudad: '',
@@ -38,6 +43,7 @@ const Tutores: React.FC = () => {
         resetForm();
         setLinkedAdolescenteIds(new Set());
         setOriginalLinkedIds(new Set());
+        setAdolescenteModalSearch(''); // Resetear filtro del modal
         setIsModalOpen(true);
     };
 
@@ -50,6 +56,7 @@ const Tutores: React.FC = () => {
         const linksSet = new Set(currentLinks);
         setLinkedAdolescenteIds(linksSet);
         setOriginalLinkedIds(linksSet);
+        setAdolescenteModalSearch(''); // Resetear filtro del modal
         setIsModalOpen(true);
     };
 
@@ -59,6 +66,7 @@ const Tutores: React.FC = () => {
         resetForm();
         setLinkedAdolescenteIds(new Set());
         setOriginalLinkedIds(new Set());
+        setAdolescenteModalSearch('');
     };
     
     const closeModal = () => {
@@ -158,6 +166,7 @@ const Tutores: React.FC = () => {
                         <tr>
                             <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-text-secondary uppercase tracking-wider">Nombre Completo</th>
                             <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-text-secondary uppercase tracking-wider">Cédula</th>
+                            <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-text-secondary uppercase tracking-wider">Teléfono</th>
                             <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-text-secondary uppercase tracking-wider">Parentesco</th>
                             <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-text-secondary uppercase tracking-wider">Vínculos</th>
                             <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-text-secondary uppercase tracking-wider">Acciones</th>
@@ -171,6 +180,7 @@ const Tutores: React.FC = () => {
                                     <div className="text-sm text-text-secondary">{tutor.ciudad}</div>
                                 </td>
                                 <td className="px-6 py-4 whitespace-nowrap text-sm text-text-secondary">{tutor.cedula}</td>
+                                <td className="px-6 py-4 whitespace-nowrap text-sm text-text-secondary">{tutor.telefono || '-'}</td>
                                 <td className="px-6 py-4 whitespace-nowrap text-sm text-text-secondary">{tutor.parentesco}</td>
                                 <td className="px-6 py-4 whitespace-nowrap text-sm text-text-secondary">{tutor.linkedCount}</td>
                                 <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium space-x-2">
@@ -191,6 +201,7 @@ const Tutores: React.FC = () => {
                     <InputField label="Nombre" name="nombre" value={values.nombre} onChange={handleInputChange} required />
                     <InputField label="Apellido" name="apellido" value={values.apellido} onChange={handleInputChange} required />
                     <InputField label="Cédula" name="cedula" value={values.cedula} onChange={handleInputChange} required />
+                    <InputField label="Teléfono" name="telefono" value={values.telefono} onChange={handleInputChange} required />
                     <SelectField label="Parentesco" name="parentesco" value={values.parentesco} onChange={handleInputChange}>
                         {parentescoOptions.map(p => <option key={p} value={p}>{p}</option>)}
                     </SelectField>
@@ -199,18 +210,35 @@ const Tutores: React.FC = () => {
                     
                     <div className="md:col-span-2 mt-4">
                          <h3 className="text-lg font-medium text-text-primary border-b border-border pb-2 mb-4">Vincular Adolescentes</h3>
-                         <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-48 overflow-y-auto bg-background/50 p-3 rounded-md">
-                            {adolescentesActivos.map(ado => (
-                                <label key={ado.id} className="flex items-center space-x-2 p-1 rounded-md hover:bg-surface cursor-pointer">
+                         
+                         {/* Campo de búsqueda interno del modal */}
+                         <input
+                            type="text"
+                            placeholder="Filtrar lista por nombre..."
+                            value={adolescenteModalSearch}
+                            onChange={(e) => setAdolescenteModalSearch(e.target.value)}
+                            className="w-full mb-3 px-3 py-2 bg-background border border-border rounded-md text-sm focus:ring-primary focus:border-primary transition placeholder-gray-500"
+                        />
+
+                         <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-48 overflow-y-auto bg-background/50 p-3 rounded-md border border-border">
+                            {adolescentesActivos
+                                .filter(ado => `${ado.nombre} ${ado.apellido}`.toLowerCase().includes(adolescenteModalSearch.toLowerCase()))
+                                .map(ado => (
+                                <label key={ado.id} className="flex items-center space-x-2 p-1 rounded-md hover:bg-surface cursor-pointer select-none">
                                     <input
                                         type="checkbox"
                                         checked={linkedAdolescenteIds.has(ado.id)}
                                         onChange={() => handleLinkChange(ado.id)}
-                                        className="h-4 w-4 rounded border-gray-500 text-primary focus:ring-primary"
+                                        className="h-4 w-4 rounded border-gray-500 text-primary focus:ring-primary bg-background"
                                     />
                                     <span className="text-sm text-text-secondary">{ado.nombre} {ado.apellido}</span>
                                 </label>
                             ))}
+                            {adolescentesActivos.filter(ado => `${ado.nombre} ${ado.apellido}`.toLowerCase().includes(adolescenteModalSearch.toLowerCase())).length === 0 && (
+                                <div className="col-span-full text-center text-xs text-text-secondary py-2">
+                                    No se encontraron adolescentes con ese nombre.
+                                </div>
+                            )}
                          </div>
                     </div>
 

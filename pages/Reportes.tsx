@@ -346,11 +346,33 @@ const Reportes: React.FC = () => {
                 );
             case 'tutores':
                  return (
-                    <ReportTable headers={['Adolescente', 'Tutores']}>
+                    <ReportTable headers={['Adolescente', 'Tutores Asignados (Nombre - Parentesco - Teléfono)']}>
                         {(reportData as any[]).map(item => (
-                            <tr key={item.id}>
-                                <td className="p-2">{item.nombre} {item.apellido}</td>
-                                <td className="p-2">{item.tutores.map((t: any) => `${t.nombre} ${t.apellido} (${t.parentesco})`).join(', ')}</td>
+                            <tr key={item.id} className="border-b border-border/50">
+                                <td className="p-3 align-top font-medium text-text-primary">{item.nombre} {item.apellido}</td>
+                                <td className="p-3 align-top">
+                                    {item.tutores && item.tutores.length > 0 ? (
+                                        <ul className="space-y-1">
+                                            {item.tutores.map((t: any) => (
+                                                <li key={t.id} className="flex flex-wrap items-center gap-2 text-sm">
+                                                    <span className="text-text-primary font-medium">{t.nombre} {t.apellido}</span>
+                                                    <span className="text-text-secondary text-xs bg-surface px-2 py-0.5 rounded-full border border-border">
+                                                        {t.parentesco}
+                                                    </span>
+                                                    {t.telefono ? (
+                                                        <span className="text-green-400 font-mono text-xs flex items-center gap-1">
+                                                            <span>📞</span> {t.telefono}
+                                                        </span>
+                                                    ) : (
+                                                        <span className="text-text-secondary text-xs italic">Sin teléfono</span>
+                                                    )}
+                                                </li>
+                                            ))}
+                                        </ul>
+                                    ) : (
+                                        <span className="text-text-secondary italic text-sm">No tiene tutores registrados.</span>
+                                    )}
+                                </td>
                             </tr>
                         ))}
                     </ReportTable>

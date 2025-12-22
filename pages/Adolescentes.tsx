@@ -66,13 +66,24 @@ const Adolescentes: React.FC = () => {
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
 
+        // Limpieza de datos: Eliminar espacios accidentales al inicio/final
+        const cleanValues = {
+            ...values,
+            nombre: values.nombre.trim(),
+            apellido: values.apellido.trim(),
+            cedula: values.cedula.trim(),
+            barrio: values.barrio.trim(),
+            ciudad: values.ciudad.trim(),
+            telefono: values.telefono.trim(),
+        };
+
         const isCedulaDuplicate = adolescentes.some(a => {
             if (editingAdolescente) {
                 // In edit mode, check against other adolescentes
-                return a.cedula === values.cedula && a.id !== editingAdolescente.id;
+                return a.cedula === cleanValues.cedula && a.id !== editingAdolescente.id;
             }
             // In create mode, check against all adolescentes
-            return a.cedula === values.cedula;
+            return a.cedula === cleanValues.cedula;
         });
 
         if (isCedulaDuplicate) {
@@ -80,12 +91,17 @@ const Adolescentes: React.FC = () => {
             return; // Stop form submission
         }
 
-        if (editingAdolescente) {
-            await updateAdolescente({ ...values, id: editingAdolescente.id });
-        } else {
-            await addAdolescente(values);
+        try {
+            if (editingAdolescente) {
+                await updateAdolescente({ ...cleanValues, id: editingAdolescente.id });
+            } else {
+                await addAdolescente(cleanValues);
+            }
+            forceCloseModal();
+        } catch (error) {
+            console.error("Error al guardar adolescente:", error);
+            alert("Hubo un error al guardar los datos. Por favor intente nuevamente.");
         }
-        forceCloseModal();
     };
 
     const handleDeleteClick = (adolescente: Adolescente) => {
