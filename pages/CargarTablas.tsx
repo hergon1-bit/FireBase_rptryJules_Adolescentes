@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo, useRef, useCallback } from 'react';
 import { useData } from '../contexts/DataContext';
 import { Adolescente, Encargado, Reunion, Tutor, Asistencia, TipoAsistencia, AsistenciaDetalle, GradoParentesco } from '../types';
@@ -181,8 +182,9 @@ const CargarTablas: React.FC = () => {
         const validDetalles = ['Regular', 'Primera Vez', 'Regresa'];
 
         // Helper maps for ID lookup
-        const adolescentesMap = new Map(adolescentes.map(a => [a.cedula, a]));
-        const reunionesMap = new Map(reuniones.map(r => [r.id, r]));
+        // Added explicit type casting to provide type safety and avoid "unknown" property access errors
+        const adolescentesMap = new Map<string, Adolescente>((adolescentes as Adolescente[]).map(a => [a.cedula, a]));
+        const reunionesMap = new Map<number, Reunion>((reuniones as Reunion[]).map(r => [r.id, r]));
 
         return rows.map(rowStr => {
             const row = rowStr.split(';');
@@ -403,8 +405,9 @@ const CargarTablas: React.FC = () => {
             ),
             previewHeaders: ['ID Reunión', 'Adolescente CI', 'Estado', 'Detalle', 'Validación', 'Observación'],
             renderRow: (row: ParsedRow, index: number) => {
-                 const ado = adolescentes.find(a => a.id === row.data.adolescenteId);
-                 const reu = reuniones.find(r => r.id === row.data.reunionId);
+                 // Explicitly cast context arrays to their expected types to ensure property accessibility and fix "unknown" type errors
+                 const ado = (adolescentes as Adolescente[]).find((a: Adolescente) => a.id === row.data.adolescenteId);
+                 const reu = (reuniones as Reunion[]).find((r: Reunion) => r.id === row.data.reunionId);
                  
                  const adoDisplay = ado ? `${ado.nombre} ${ado.apellido} (${ado.cedula})` : (row.data.adolescenteCedula || row.data.adolescenteId || 'N/A');
                  const reuDisplay = reu ? `${reu.tema} (ID:${reu.id})` : (row.data.reunionId || 'N/A');

@@ -16,7 +16,8 @@ export interface Rol {
     tutores: Permisos;
     eventos: Permisos;
     usuarios: Permisos;
-    tareas?: Permisos; // Nuevo módulo opcional
+    devocionales: Permisos; // Gestión de temas de la semana
+    entregas: Permisos;      // Registro de entregas de los chicos
   };
 }
 

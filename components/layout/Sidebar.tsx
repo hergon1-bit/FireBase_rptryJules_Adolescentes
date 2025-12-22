@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { HomeIcon, UsersIcon, UserCheckIcon, ClipboardListIcon, HeartHandshakeIcon, CalendarDaysIcon, BarChartIcon, SettingsIcon, ChevronDownIcon, ShieldIcon, TrashIcon, UploadCloudIcon, BookOpenIcon } from '../ui/Icons';
@@ -45,7 +46,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, navigateTo, isOpen, setO
     { page: 'adolescentes', label: 'Adolescentes', icon: <UsersIcon />, requiredPermission: hasPermission('adolescentes', 'read') },
     { page: 'encargados', label: 'Encargados', icon: <UserCheckIcon />, requiredPermission: hasPermission('encargados', 'read') },
     { page: 'reuniones', label: 'Reuniones', icon: <ClipboardListIcon />, requiredPermission: hasPermission('reuniones', 'read') },
-    { page: 'tareas', label: 'Tareas / Devocional', icon: <BookOpenIcon />, requiredPermission: hasPermission('tareas', 'read') || hasPermission('reuniones', 'read') },
+    { page: 'tareas', label: 'Tareas / Devocional', icon: <BookOpenIcon />, requiredPermission: hasPermission('devocionales', 'read') || hasPermission('entregas', 'read') },
     { page: 'tutores', label: 'Tutores', icon: <HeartHandshakeIcon />, requiredPermission: hasPermission('tutores', 'read') },
     { page: 'eventos', label: 'Eventos', icon: <CalendarDaysIcon />, requiredPermission: hasPermission('eventos', 'read') },
     { page: 'reportes', label: 'Reportes', icon: <BarChartIcon />, requiredPermission: true },
@@ -53,10 +54,13 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, navigateTo, isOpen, setO
 
   return (
     <>
-      <aside className={`fixed top-0 left-0 z-40 w-64 h-screen transition-transform ${isOpen ? 'translate-x-0' : '-translate-x-full'} bg-surface border-r border-border`} aria-label="Sidebar">
+      <aside className={`fixed top-0 left-0 z-40 w-64 h-screen transition-transform ${isOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'} bg-surface border-r border-border`} aria-label="Sidebar">
         <div className="h-full px-3 py-4 overflow-y-auto">
-          <div className="flex items-center pl-2.5 mb-5">
-            <h1 className="text-xl font-semibold text-text-primary">Seguimiento</h1>
+          <div className="flex items-center pl-2.5 mb-5 border-b border-border pb-4">
+            <div className="bg-primary p-2 rounded-lg mr-2">
+                <UsersIcon className="w-6 h-6 text-white" />
+            </div>
+            <h1 className="text-xl font-bold text-text-primary">Seguimiento</h1>
           </div>
           <ul className="space-y-2">
             {menuItems.filter(item => item.requiredPermission).map((item) => (
@@ -74,8 +78,8 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, navigateTo, isOpen, setO
                   onClick={() => setIsAdminOpen(!isAdminOpen)}
                   className={`flex items-center justify-between w-full p-2 text-base font-normal rounded-lg transition-all duration-200 ${
                     adminSubPages.includes(currentPage)
-                      ? 'bg-primary text-white shadow-lg'
-                      : 'text-text-secondary hover:bg-surface hover:text-text-primary transform hover:scale-105'
+                      ? 'bg-primary/20 text-primary'
+                      : 'text-text-secondary hover:bg-surface hover:text-text-primary'
                   }`}
                 >
                   <div className="flex items-center">
@@ -85,7 +89,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, navigateTo, isOpen, setO
                   <ChevronDownIcon className={`w-5 h-5 transition-transform ${isAdminOpen ? 'rotate-180' : ''}`} />
                 </button>
                 {isAdminOpen && (
-                  <ul className="pl-4 mt-2 space-y-2">
+                  <ul className="pl-4 mt-2 space-y-2 border-l border-border ml-4">
                     <NavItem
                       icon={<UsersIcon className="w-5 h-5" />}
                       label="Usuarios"
@@ -117,7 +121,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, navigateTo, isOpen, setO
           </ul>
         </div>
       </aside>
-       {isOpen && <div className="fixed inset-0 z-30 bg-black/50 sm:hidden" onClick={() => setOpen(false)}></div>}
+       {isOpen && <div className="fixed inset-0 z-30 bg-black/50 lg:hidden" onClick={() => setOpen(false)}></div>}
     </>
   );
 };

@@ -53,34 +53,36 @@ const RoleEditorModal: React.FC<RoleEditorModalProps> = ({ role, isOpen, onClose
             <form onSubmit={handleSubmit} className="space-y-4">
                 <InputField label="Nombre del Rol" value={currentRole.nombre} onChange={handleNameChange} required />
                 
-                <table className="min-w-full text-center text-sm">
-                    <thead>
-                        <tr className="border-b border-border">
-                            <th className="py-2 text-left font-medium text-text-secondary">Módulo</th>
-                            <th className="py-2 font-medium text-text-secondary">Leer</th>
-                            <th className="py-2 font-medium text-text-secondary">Crear</th>
-                            <th className="py-2 font-medium text-text-secondary">Editar</th>
-                            <th className="py-2 font-medium text-text-secondary">Borrar</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {Object.keys(currentRole.permisos).map((module) => (
-                            <tr key={module} className="border-b border-border">
-                                <td className="py-2 text-left capitalize text-text-primary">{module}</td>
-                                {Object.keys(currentRole.permisos[module as keyof Rol['permisos']]).map(action => (
-                                    <td key={action} className="py-2">
-                                        <input
-                                            type="checkbox"
-                                            className="h-4 w-4 text-primary bg-gray-700 border-gray-600 rounded focus:ring-primary"
-                                            checked={currentRole.permisos[module as keyof Rol['permisos']][action as keyof Permisos]}
-                                            onChange={() => handlePermissionChange(module as keyof Rol['permisos'], action as keyof Permisos)}
-                                        />
-                                    </td>
-                                ))}
+                <div className="overflow-x-auto">
+                    <table className="min-w-full text-center text-sm">
+                        <thead>
+                            <tr className="border-b border-border">
+                                <th className="py-2 text-left font-medium text-text-secondary">Módulo</th>
+                                <th className="py-2 font-medium text-text-secondary">Leer</th>
+                                <th className="py-2 font-medium text-text-secondary">Crear</th>
+                                <th className="py-2 font-medium text-text-secondary">Editar</th>
+                                <th className="py-2 font-medium text-text-secondary">Borrar</th>
                             </tr>
-                        ))}
-                    </tbody>
-                </table>
+                        </thead>
+                        <tbody>
+                            {Object.keys(currentRole.permisos).map((module) => (
+                                <tr key={module} className="border-b border-border">
+                                    <td className="py-2 text-left capitalize text-text-primary">{module.replace('_', ' ')}</td>
+                                    {Object.keys(currentRole.permisos[module as keyof Rol['permisos']]).map(action => (
+                                        <td key={action} className="py-2">
+                                            <input
+                                                type="checkbox"
+                                                className="h-4 w-4 text-primary bg-gray-700 border-gray-600 rounded focus:ring-primary"
+                                                checked={currentRole.permisos[module as keyof Rol['permisos']][action as keyof Permisos]}
+                                                onChange={() => handlePermissionChange(module as keyof Rol['permisos'], action as keyof Permisos)}
+                                            />
+                                        </td>
+                                    ))}
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
                 <div className="flex justify-end space-x-2 pt-4">
                     <button type="button" onClick={onClose} className="bg-gray-600 text-white px-4 py-2 rounded-lg hover:bg-gray-700">Cancelar</button>
                     <button type="submit" className="bg-primary text-white px-4 py-2 rounded-lg hover:bg-indigo-700">Guardar</button>
@@ -118,6 +120,8 @@ const Roles: React.FC = () => {
             tutores: { read: false, create: false, update: false, delete: false },
             eventos: { read: false, create: false, update: false, delete: false },
             usuarios: { read: false, create: false, update: false, delete: false },
+            devocionales: { read: false, create: false, update: false, delete: false },
+            entregas: { read: false, create: false, update: false, delete: false },
         };
         setEditingRole({ id: 0, nombre: '', permisos: defaultPermissions });
         setIsRoleModalOpen(true);
@@ -196,13 +200,13 @@ const Roles: React.FC = () => {
                             <tbody className="divide-y divide-border">
                                 {Object.keys(selectedRole.permisos).map((module) => (
                                     <tr key={module} className="hover:bg-background/50">
-                                        <td className="py-3 px-4 text-left capitalize text-text-primary font-medium">{module}</td>
+                                        <td className="py-3 px-4 text-left capitalize text-text-primary font-medium">{module.replace('_', ' ')}</td>
                                         {Object.keys(selectedRole.permisos[module as keyof Rol['permisos']]).map(action => (
                                             <td key={action} className="py-3 px-4">
                                                 <input
                                                     type="checkbox"
                                                     className="h-4 w-4 text-primary bg-gray-700 border-gray-600 rounded focus:ring-primary disabled:opacity-70"
-                                                    checked={selectedRole.permisos[module as keyof Rol['permisos']][action as keyof Permisos]}
+                                                    checked={(selectedRole.permisos as any)[module][action]}
                                                     disabled
                                                 />
                                             </td>

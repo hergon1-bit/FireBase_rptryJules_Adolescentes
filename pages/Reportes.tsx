@@ -1,22 +1,22 @@
+
 import React, { useState, useMemo, useEffect } from 'react';
 import { useData } from '../contexts/DataContext';
 import { formatDate, formatCurrency } from '../utils/helpers';
 import { Adolescente, AsistenciaDetalle } from '../types';
-import { RefreshIcon, PrinterIcon } from '../components/ui/Icons';
+import { RefreshIcon, PrinterIcon, BookOpenIcon } from '../components/ui/Icons';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
-type ReportType = 'cumpleanos' | 'asistenciaReunion' | 'resumenAsistencia' | 'ausencias' | 'activos' | 'tutores' | 'pagosEvento';
+type ReportType = 'cumpleanos' | 'asistenciaReunion' | 'resumenAsistencia' | 'ausencias' | 'activos' | 'tutores' | 'pagosEvento' | 'entregasDevocionales';
 
 const Reportes: React.FC = () => {
-    const { adolescentes, reuniones, asistencias, encargados, tutores, tutoresAdolescentes, eventos, inscripciones, pagos, participantes, fetchData } = useData();
+    const { adolescentes, reuniones, asistencias, encargados, tutores, tutoresAdolescentes, eventos, inscripciones, pagos, devocionales, entregasDevocionales, fetchData } = useData();
     const [activeReport, setActiveReport] = useState<ReportType>('cumpleanos');
     const [selectedReunionId, setSelectedReunionId] = useState<number | null>(null);
     const [selectedEventoId, setSelectedEventoId] = useState<number | null>(null);
     const [dateRange, setDateRange] = useState({ start: '', end: '' });
     const [isRefreshing, setIsRefreshing] = useState(false);
 
-    // Actualizar datos al entrar a reportes para asegurar consistencia con la DB
     useEffect(() => {
         const loadFreshData = async () => {
             setIsRefreshing(true);
@@ -33,28 +33,48 @@ const Reportes: React.FC = () => {
     }
 
     const reportData = useMemo(() => {
+        const currentYear = new Date().getFullYear();
+
         switch (activeReport) {
+            case 'entregasDevocionales':
+                const entregasEsteAno = entregasDevocionales.filter(e => 
+                    new Date(e.fechaEntrega).getFullYear() === currentYear
+                );
+
+                const conteoEntregas: { [key: number]: number } = {};
+                entregasEsteAno.forEach(e => {
+                    conteoEntregas[e.adolescenteId] = (conteoEntregas[e.adolescenteId] || 0) + 1;
+                });
+
+                return Object.entries(conteoEntregas)
+                    .map(([id, total]) => {
+                        const ado = adolescentes.find(a => a.id === Number(id));
+                        return {
+                            id: Number(id),
+                            nombre: ado ? `${ado.nombre} ${ado.apellido}` : 'Desconocido',
+                            cedula: ado?.cedula || 'N/A',
+                            totalEntregas: total
+                        };
+                    })
+                    .sort((a, b) => b.totalEntregas - a.totalEntregas);
+
             case 'cumpleanos':
                 const currentMonth = new Date().getMonth();
                 return adolescentes.filter(a => new Date(a.fechaNacimiento).getMonth() === currentMonth);
             
             case 'asistenciaReunion':
                 if (!selectedReunionId) return [];
-                // Virtual Join: Asistencias -> Adolescentes with Detail
                 const asistentesData = asistencias
                     .filter(a => Number(a.reunionId) === Number(selectedReunionId) && a.estado === 'Presente')
                     .map(a => {
                         const adolescente = adolescentes.find(ado => ado.id === a.adolescenteId);
                         return adolescente ? { ...adolescente, asistenciaDetalle: a.detalle } : null;
                     })
-                    .filter(Boolean); // Remove nulls
+                    .filter(Boolean);
                 return asistentesData as (Adolescente & { asistenciaDetalle?: AsistenciaDetalle })[];
 
             case 'resumenAsistencia':
-                // Calcular total de activos para usar como base del 100%
                 const totalAdolescentesActivos = adolescentes.filter(a => a.estado === 'Activo').length;
-
-                // Filtramos las reuniones según el rango de fecha
                 const filteredReuniones = reuniones.filter(r => {
                      if (!dateRange.start && !dateRange.end) return true;
                      const reunionDate = new Date(r.fecha);
@@ -63,32 +83,17 @@ const Reportes: React.FC = () => {
                      return reunionDate >= start && reunionDate <= end;
                 });
 
-                // Generar resumen consolidado
                 return filteredReuniones.map(r => {
                     const asisPorReunion = asistencias.filter(a => Number(a.reunionId) === Number(r.id));
                     const presentes = asisPorReunion.filter(a => a.estado === 'Presente').length;
-                    
-                    // Lógica ajustada: Usamos el total de activos como base si es mayor que los registros en DB.
-                    // Esto corrige casos donde no se guardaron explícitamente los 'Ausentes' en la BD.
-                    const dbTotalRegistros = asisPorReunion.length;
-                    const totalBase = Math.max(dbTotalRegistros, totalAdolescentesActivos);
-                    
-                    // Calculamos ausentes basándonos en la base total real
+                    const totalBase = Math.max(asisPorReunion.length, totalAdolescentesActivos);
                     const ausentes = totalBase - presentes;
-                    
                     const porcentaje = totalBase > 0 ? ((presentes / totalBase) * 100).toFixed(1) : '0.0';
-                    
                     const encargado = encargados.find(e => e.id === r.encargadoId);
-                    
                     return {
-                        id: r.id,
-                        fecha: r.fecha,
-                        tema: r.tema,
+                        id: r.id, fecha: r.fecha, tema: r.tema,
                         encargadoNombre: encargado ? `${encargado.nombre} ${encargado.apellido}` : 'N/A',
-                        presentes,
-                        ausentes,
-                        totalRegistrados: totalBase,
-                        porcentaje
+                        presentes, ausentes, totalRegistrados: totalBase, porcentaje
                     };
                 }).sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime());
 
@@ -100,7 +105,6 @@ const Reportes: React.FC = () => {
                     const fechaReunion = new Date(r.fecha);
                     return fechaReunion >= startDate && fechaReunion <= endDate;
                 }).map(r => Number(r.id));
-                
                 const adolescentesPresentes = new Set(
                     asistencias
                         .filter(a => reunionesEnRangoIds.includes(Number(a.reunionId)) && a.estado === 'Presente')
@@ -122,23 +126,14 @@ const Reportes: React.FC = () => {
             
             case 'pagosEvento':
                 if (!selectedEventoId) return [];
-
-                // 1. Obtener inscripciones del evento seleccionado
                 const inscripcionesEvento = inscripciones.filter(i => i.eventoId === Number(selectedEventoId));
                 const inscripcionIds = inscripcionesEvento.map(i => i.id);
-
-                // 2. Obtener los pagos correspondientes a esas inscripciones
                 const pagosEvento = pagos.filter(p => inscripcionIds.includes(p.inscripcionId));
-
-                // 3. Mapear datos para mostrar (Fecha, Adolescente, Monto)
                 return pagosEvento.map(p => {
                     const inscripcion = inscripcionesEvento.find(i => i.id === p.inscripcionId);
                     const adolescente = adolescentes.find(a => a.id === inscripcion?.adolescenteId);
-                    
                     return {
-                        id: p.id,
-                        fecha: p.fecha,
-                        monto: p.monto,
+                        id: p.id, fecha: p.fecha, monto: p.monto,
                         adolescenteNombre: adolescente ? `${adolescente.nombre} ${adolescente.apellido}` : 'Desconocido',
                         adolescenteCedula: adolescente?.cedula || 'N/A'
                     };
@@ -147,74 +142,112 @@ const Reportes: React.FC = () => {
             default:
                 return [];
         }
-    }, [activeReport, adolescentes, reuniones, asistencias, encargados, tutores, tutoresAdolescentes, eventos, inscripciones, pagos, participantes, selectedReunionId, selectedEventoId, dateRange]);
+    }, [activeReport, adolescentes, reuniones, asistencias, encargados, tutores, tutoresAdolescentes, eventos, inscripciones, pagos, devocionales, entregasDevocionales, selectedReunionId, selectedEventoId, dateRange]);
 
     const generarPDFAsistencia = () => {
         if (!selectedReunionId) return;
-        
         const reunion = reuniones.find(r => r.id === selectedReunionId);
         if (!reunion) return;
-        
         const encargado = encargados.find(e => e.id === reunion.encargadoId);
+        const encargadoNombre = encargado ? `${encargado.nombre} ${encargado.apellido}` : 'No asignado';
         const data = reportData as (Adolescente & { asistenciaDetalle?: AsistenciaDetalle })[];
         
         const doc = new jsPDF();
-        const now = new Date().toLocaleString('es-PY');
-
-        // Header
+        
+        // Configuración de Título y Fecha de Generación
+        doc.setFont("helvetica", "bold");
         doc.setFontSize(18);
-        doc.text("Lista de Asistentes", 105, 15, { align: "center" });
+        doc.text("LISTA DE ASISTENTES", 105, 15, { align: "center" });
         
-        doc.setFontSize(10);
-        doc.text(`Generado: ${now}`, 200, 15, { align: "right" });
-
-        // Reunion Info Box
-        doc.setDrawColor(0);
-        doc.setFillColor(240, 240, 240);
-        doc.rect(14, 25, 182, 30, 'F');
-        
-        doc.setFontSize(12);
-        doc.setFont("helvetica", "bold");
-        doc.text("Datos de la Reunión", 105, 32, { align: "center" });
-
-        doc.setFontSize(10);
+        doc.setFontSize(9);
         doc.setFont("helvetica", "normal");
+        doc.text(`Generado el: ${new Date().toLocaleString()}`, 200, 15, { align: "right" });
         
-        // Col 1
-        doc.text(`Nro Reunión: ${reunion.id}`, 20, 40);
-        doc.text(`Fecha: ${formatDate(reunion.fecha)}`, 20, 48);
-        
-        // Col 2
-        doc.text(`Tema: ${reunion.tema}`, 100, 40);
-        doc.text(`Dirigido por: ${encargado ? `${encargado.nombre} ${encargado.apellido}` : 'N/A'}`, 100, 48);
+        // Bloque de Información del Encabezado (Información de la Reunión)
+        doc.setDrawColor(200, 200, 200);
+        doc.line(15, 20, 195, 20); // Línea superior
 
-        // Stats
+        doc.setFontSize(10);
+        
+        // Primera Fila
         doc.setFont("helvetica", "bold");
-        doc.text(`Total Presentes: ${data.length}`, 20, 60);
+        doc.text("Nro. Reunión:", 15, 30);
+        doc.setFont("helvetica", "normal");
+        doc.text(String(reunion.id), 45, 30);
+        
+        doc.setFont("helvetica", "bold");
+        doc.text("Fecha:", 110, 30);
+        doc.setFont("helvetica", "normal");
+        doc.text(formatDate(reunion.fecha), 135, 30);
+        
+        // Segunda Fila
+        doc.setFont("helvetica", "bold");
+        doc.text("Tema:", 15, 38);
+        doc.setFont("helvetica", "normal");
+        doc.text(reunion.tema, 45, 38);
+        
+        // Tercera Fila
+        doc.setFont("helvetica", "bold");
+        doc.text("Encargado:", 15, 46);
+        doc.setFont("helvetica", "normal");
+        doc.text(encargadoNombre, 45, 46);
+        
+        // Cuarta Fila (Resumen de Participación)
+        doc.setFont("helvetica", "bold");
+        doc.text("Participantes:", 15, 54);
+        doc.setFont("helvetica", "normal");
+        doc.text(`${data.length} personas presentes`, 45, 54);
 
-        // Table
-        const tableBody = data.map(ado => [
-            ado.nombre,
-            ado.apellido,
-            ado.cedula,
-            ado.asistenciaDetalle || 'Regular'
-        ]);
+        doc.line(15, 60, 195, 60); // Línea inferior
 
+        // Generación de la Tabla de Asistentes
         autoTable(doc, {
             startY: 65,
-            head: [['Nombre', 'Apellido', 'Cédula', 'Detalle']],
-            body: tableBody,
+            head: [['Nombre', 'Apellido', 'Cédula', 'Tipo de Asistencia']],
+            body: data.map(ado => [
+                ado.nombre, 
+                ado.apellido, 
+                ado.cedula, 
+                ado.asistenciaDetalle || 'Regular'
+            ]),
             theme: 'grid',
-            headStyles: { fillColor: [79, 70, 229] }, // Primary color match
-            styles: { fontSize: 10, cellPadding: 3 },
-            alternateRowStyles: { fillColor: [245, 245, 245] }
+            headStyles: { fillColor: [79, 70, 229], halign: 'center' },
+            columnStyles: {
+                // Se reducen ligeramente los anchos para asegurar que quepan en la página con márgenes (total 175mm < 180mm disponible)
+                0: { cellWidth: 45 },
+                1: { cellWidth: 45 },
+                2: { cellWidth: 40, halign: 'center' },
+                3: { cellWidth: 45, halign: 'center' }
+            },
+            styles: { fontSize: 9 },
+            margin: { left: 15, right: 15 } // Se definen márgenes explícitos
         });
-
-        doc.save(`Asistentes_Reunion_${reunion.id}.pdf`);
+        
+        doc.save(`Asistentes_Reunion_${reunion.id}_${reunion.fecha}.pdf`);
     };
 
     const renderReportContent = () => {
         switch (activeReport) {
+            case 'entregasDevocionales':
+                return (
+                    <ReportTable headers={['Posición', 'Adolescente', 'Cédula', 'Total Entregas']}>
+                        {(reportData as any[]).map((row, idx) => (
+                            <tr key={row.id}>
+                                <td className="p-2 text-center font-bold text-primary">{idx + 1}°</td>
+                                <td className="p-2 font-medium text-white">{row.nombre}</td>
+                                <td className="p-2 text-text-secondary">{row.cedula}</td>
+                                <td className="p-2 text-center">
+                                    <span className="bg-secondary/20 text-secondary px-3 py-1 rounded-full font-bold">
+                                        {row.totalEntregas} entregados
+                                    </span>
+                                </td>
+                            </tr>
+                        ))}
+                        {(reportData as any[]).length === 0 && (
+                            <tr><td colSpan={4} className="p-8 text-center text-text-secondary italic">No se han registrado entregas de devocionales en el presente año.</td></tr>
+                        )}
+                    </ReportTable>
+                );
             case 'cumpleanos':
                 return (
                     <ReportTable headers={['Nombre', 'Teléfono', 'Fecha Cumpleaños']}>
@@ -232,21 +265,16 @@ const Reportes: React.FC = () => {
                      <div>
                         <div className="flex flex-col md:flex-row md:items-end gap-4 mb-4 justify-between">
                             <div className="w-full md:w-auto">
-                                <label className="block text-sm font-medium text-text-secondary mb-1">Seleccionar Reunión para ver lista detallada:</label>
+                                <label className="block text-sm font-medium text-text-secondary mb-1">Seleccionar Reunión:</label>
                                 <select onChange={(e) => setSelectedReunionId(Number(e.target.value))} className="bg-background border border-border p-2 rounded-md w-full md:w-96">
                                     <option value="">-- Seleccione una reunión --</option>
                                     {reuniones.map(r => (
-                                        <option key={r.id} value={r.id}>
-                                            Nro. {r.id} - {r.tema} - {formatDate(r.fecha)}
-                                        </option>
+                                        <option key={r.id} value={r.id}>Nro. {r.id} - {r.tema} - {formatDate(r.fecha)}</option>
                                     ))}
                                 </select>
                             </div>
                             {selectedReunionId && (reportData as any[]).length > 0 && (
-                                <button 
-                                    onClick={generarPDFAsistencia}
-                                    className="flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-md transition-colors shadow-md"
-                                >
+                                <button onClick={generarPDFAsistencia} className="flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-md transition-colors shadow-md">
                                     <PrinterIcon className="w-5 h-5" />
                                     <span>Imprimir PDF</span>
                                 </button>
@@ -270,9 +298,6 @@ const Reportes: React.FC = () => {
                                         </td>
                                     </tr>
                                 ))}
-                                {(reportData as any[]).length === 0 && (
-                                    <tr><td colSpan={4} className="p-4 text-center text-text-secondary">No hay asistentes registrados para esta reunión.</td></tr>
-                                )}
                             </ReportTable>
                         )}
                     </div>
@@ -301,24 +326,6 @@ const Reportes: React.FC = () => {
                                             <span className="text-xs">{row.porcentaje}%</span>
                                         </div>
                                     </td>
-                                </tr>
-                            ))}
-                        </ReportTable>
-                    </div>
-                );
-            case 'ausencias':
-                return (
-                     <div>
-                        <div className="flex gap-4 mb-4">
-                            <input type="date" value={dateRange.start} onChange={e => setDateRange(prev => ({...prev, start: e.target.value}))} className="bg-background border border-border p-2 rounded-md"/>
-                            <input type="date" value={dateRange.end} onChange={e => setDateRange(prev => ({...prev, end: e.target.value}))} className="bg-background border border-border p-2 rounded-md"/>
-                        </div>
-                        <ReportTable headers={['Nombre', 'Apellido', 'Teléfono']}>
-                            {(reportData as Adolescente[]).map(a => (
-                                <tr key={a.id}>
-                                    <td className="p-2">{a.nombre}</td>
-                                    <td className="p-2">{a.apellido}</td>
-                                    <td className="p-2">{a.telefono}</td>
                                 </tr>
                             ))}
                         </ReportTable>
@@ -353,18 +360,11 @@ const Reportes: React.FC = () => {
                     <div>
                          <div className="mb-4">
                             <label className="block text-sm font-medium text-text-secondary mb-1">Seleccionar Evento:</label>
-                            <select
-                                value={selectedEventoId || ''}
-                                onChange={(e) => setSelectedEventoId(Number(e.target.value))}
-                                className="bg-background border border-border p-2 rounded-md w-full md:w-96"
-                            >
+                            <select value={selectedEventoId || ''} onChange={(e) => setSelectedEventoId(Number(e.target.value))} className="bg-background border border-border p-2 rounded-md w-full md:w-96">
                                 <option value="">-- Seleccione un evento --</option>
-                                {eventos.map(e => (
-                                    <option key={e.id} value={e.id}>{e.tema} ({formatDate(e.fechaInicio)})</option>
-                                ))}
+                                {eventos.map(e => <option key={e.id} value={e.id}>{e.tema} ({formatDate(e.fechaInicio)})</option>)}
                             </select>
                          </div>
-
                          {selectedEventoId && (
                              <ReportTable headers={['Fecha Pago', 'Adolescente', 'Cédula', 'Monto']}>
                                 {(reportData as any[]).map(p => (
@@ -375,17 +375,6 @@ const Reportes: React.FC = () => {
                                         <td className="p-2 text-right font-mono text-green-400">{formatCurrency(p.monto)}</td>
                                     </tr>
                                 ))}
-                                {(reportData as any[]).length === 0 && (
-                                    <tr><td colSpan={4} className="p-4 text-center text-text-secondary">No hay pagos registrados para este evento.</td></tr>
-                                )}
-                                {(reportData as any[]).length > 0 && (
-                                     <tr className="border-t-2 border-border bg-background/50 font-bold">
-                                        <td colSpan={3} className="p-2 text-right">Total Recaudado:</td>
-                                        <td className="p-2 text-right text-green-400">
-                                            {formatCurrency((reportData as any[]).reduce((sum, p) => sum + p.monto, 0))}
-                                        </td>
-                                     </tr>
-                                )}
                              </ReportTable>
                          )}
                     </div>
@@ -398,17 +387,14 @@ const Reportes: React.FC = () => {
         <div className="space-y-6">
             <div className="flex justify-between items-center">
                 <h1 className="text-3xl font-bold">Reportes</h1>
-                <button 
-                    onClick={handleRefresh} 
-                    disabled={isRefreshing}
-                    className="flex items-center gap-2 bg-surface hover:bg-gray-700 text-text-secondary px-3 py-2 rounded-lg transition-colors"
-                >
+                <button onClick={handleRefresh} disabled={isRefreshing} className="flex items-center gap-2 bg-surface hover:bg-gray-700 text-text-secondary px-3 py-2 rounded-lg transition-colors">
                     <RefreshIcon className={`w-5 h-5 ${isRefreshing ? 'animate-spin' : ''}`} />
                     <span>{isRefreshing ? 'Sincronizando...' : 'Refrescar Datos'}</span>
                 </button>
             </div>
             
             <div className="flex flex-wrap gap-2">
+                <TabButton name="Entregas Devocionales" id="entregasDevocionales" active={activeReport} setActive={setActiveReport} />
                 <TabButton name="Resumen de Asistencia" id="resumenAsistencia" active={activeReport} setActive={setActiveReport} />
                 <TabButton name="Cumpleaños del Mes" id="cumpleanos" active={activeReport} setActive={setActiveReport} />
                 <TabButton name="Lista de Asistentes" id="asistenciaReunion" active={activeReport} setActive={setActiveReport} />
@@ -419,6 +405,12 @@ const Reportes: React.FC = () => {
             </div>
 
             <div className="bg-surface p-6 rounded-lg shadow-lg">
+                <div className="mb-6 border-b border-border pb-4 flex items-center justify-between">
+                    <h2 className="text-xl font-bold text-text-primary flex items-center gap-2">
+                        {activeReport === 'entregasDevocionales' && <BookOpenIcon className="text-secondary w-6 h-6" />}
+                        {activeReport === 'entregasDevocionales' ? 'Entregas de Devocionales (Año Actual)' : 'Detalle del Reporte'}
+                    </h2>
+                </div>
                 {renderReportContent()}
             </div>
         </div>
@@ -426,7 +418,7 @@ const Reportes: React.FC = () => {
 };
 
 const TabButton: React.FC<{name: string, id: ReportType, active: ReportType, setActive: (id: ReportType) => void}> = ({name, id, active, setActive}) => (
-    <button onClick={() => setActive(id)} className={`px-4 py-2 rounded-md text-sm font-medium transition ${active === id ? 'bg-primary text-white' : 'bg-background hover:bg-gray-700'}`}>
+    <button onClick={() => setActive(id)} className={`px-4 py-2 rounded-md text-sm font-medium transition ${active === id ? 'bg-primary text-white shadow-lg' : 'bg-background hover:bg-gray-700 text-text-secondary'}`}>
         {name}
     </button>
 );
@@ -436,7 +428,7 @@ const ReportTable: React.FC<{headers: string[], children: React.ReactNode}> = ({
         <table className="w-full text-sm text-left text-text-secondary">
             <thead className="text-xs text-text-primary uppercase bg-background">
                 <tr>
-                    {headers.map(h => <th key={h} scope="col" className={`px-2 py-3 ${h.startsWith('N°') || h.startsWith('Total') || h.startsWith('Presentes') || h.startsWith('Ausentes') || h.startsWith('%') || h.startsWith('Monto') ? 'text-center' : 'text-left'} ${h.startsWith('Monto') || h.startsWith('Total') ? 'text-right' : ''}`}>{h}</th>)}
+                    {headers.map(h => <th key={h} scope="col" className={`px-4 py-3 ${h.includes('Total') || h.includes('Posición') || h.includes('%') ? 'text-center' : 'text-left'}`}>{h}</th>)}
                 </tr>
             </thead>
             <tbody className="divide-y divide-border">

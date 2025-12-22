@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo, useEffect } from 'react';
 import { useData } from '../contexts/DataContext';
 import { useAuth } from '../contexts/AuthContext';
@@ -6,15 +7,16 @@ import Modal from '../components/ui/Modal';
 import ConfirmationModal from '../components/ui/ConfirmationModal';
 import { useForm } from '../hooks/useForm';
 import { formatDate } from '../utils/helpers';
-import { BookOpenIcon, CheckCircleIcon, TrashIcon, PencilIcon, RefreshIcon } from '../components/ui/Icons';
+import { BookOpenIcon, CheckCircleIcon, TrashIcon, PencilIcon, RefreshIcon, BarChartIcon, TrophyIcon, UsersIcon } from '../components/ui/Icons';
 
-type Tab = 'gestion' | 'registro' | 'historial';
+type Tab = 'dashboard' | 'registro' | 'gestion' | 'historial';
 
 const Tareas: React.FC = () => {
-    const { devocionales, entregasDevocionales, adolescentes, addDevocional, updateDevocional, deleteDevocional, registrarEntregaBulk, deleteEntrega, updateEntrega } = useData();
+    const { devocionales, entregasDevocionales, adolescentes, addDevocional, updateDevocional, deleteDevocional, registrarEntregaBulk, deleteEntrega, updateEntrega, fetchData } = useData();
     const { hasPermission } = useAuth();
     
-    const [activeTab, setActiveTab] = useState<Tab>('registro');
+    const [activeTab, setActiveTab] = useState<Tab>('dashboard');
+    const [isRefreshing, setIsRefreshing] = useState(false);
     
     // --- State for Tab Gestion (Definitions) ---
     const [isDevocionalModalOpen, setIsDevocionalModalOpen] = useState(false);
@@ -46,6 +48,9 @@ const Tareas: React.FC = () => {
         observaciones: ''
     });
 
+    // --- State for Tab Dashboard ---
+    const [searchDashboard, setSearchDashboard] = useState('');
+
     const initialFormState: Omit<Devocional, 'id'> = {
         numeroSemana: 0,
         tema: '',
@@ -54,6 +59,53 @@ const Tareas: React.FC = () => {
     };
 
     const { values, handleInputChange, setValues, resetForm } = useForm(initialFormState);
+
+    const handleRefresh = async () => {
+        setIsRefreshing(true);
+        await fetchData();
+        setIsRefreshing(false);
+    };
+
+    // --- Computed Data for Dashboard ---
+    const currentYear = new Date().getFullYear();
+    
+    const statsAnuales = useMemo(() => {
+        const devsEsteAno = devocionales.filter(d => new Date(d.fechaDistribucion).getFullYear() === currentYear);
+        const totalDevs = devsEsteAno.length;
+        
+        const entregasEsteAno = entregasDevocionales.filter(e => new Date(e.fechaEntrega).getFullYear() === currentYear);
+        
+        const ranking = adolescentes
+            .filter(a => a.estado === 'Activo')
+            .map(ado => {
+                const misEntregas = entregasEsteAno.filter(e => e.adolescenteId === ado.id);
+                const count = misEntregas.length;
+                const porcentaje = totalDevs > 0 ? (count / totalDevs) * 100 : 0;
+                return {
+                    ...ado,
+                    count,
+                    porcentaje
+                };
+            })
+            .sort((a, b) => b.count - a.count);
+
+        const totalEntregasPosibles = ranking.length * totalDevs;
+        const totalEntregasReales = ranking.reduce((acc, curr) => acc + curr.count, 0);
+        const cumplimientoGlobal = totalEntregasPosibles > 0 ? (totalEntregasReales / totalEntregasPosibles) * 100 : 0;
+
+        return {
+            totalDevs,
+            ranking,
+            cumplimientoGlobal,
+            topLider: ranking[0] || null
+        };
+    }, [devocionales, entregasDevocionales, adolescentes, currentYear]);
+
+    const filteredRanking = useMemo(() => {
+        return statsAnuales.ranking.filter(item => 
+            `${item.nombre} ${item.apellido}`.toLowerCase().includes(searchDashboard.toLowerCase())
+        );
+    }, [statsAnuales.ranking, searchDashboard]);
 
     // --- Handlers for Gestion (Devocionales Definition) ---
     const openModalForCreate = () => {
@@ -180,7 +232,7 @@ const Tareas: React.FC = () => {
         }
     }
 
-    // --- Computed Data ---
+    // --- Computed Data Sorting ---
     const sortedDevocionales = useMemo(() => 
         [...devocionales].sort((a,b) => b.numeroSemana - a.numeroSemana), 
     [devocionales]);
@@ -207,51 +259,191 @@ const Tareas: React.FC = () => {
     
     return (
         <div className="space-y-6">
-            <h1 className="text-3xl font-bold flex items-center gap-2">
-                <BookOpenIcon className="w-8 h-8 text-primary" />
-                Gestión de Tareas y Devocionales
-            </h1>
-
-            <div className="flex border-b border-border overflow-x-auto">
+            <div className="flex justify-between items-center">
+                <h1 className="text-3xl font-bold flex items-center gap-2">
+                    <BookOpenIcon className="w-8 h-8 text-primary" />
+                    Devocionales
+                </h1>
                 <button 
-                    onClick={() => setActiveTab('registro')} 
-                    className={`px-4 py-2 font-medium transition-colors whitespace-nowrap ${activeTab === 'registro' ? 'border-b-2 border-primary text-primary' : 'text-text-secondary hover:text-text-primary'}`}
+                    onClick={handleRefresh} 
+                    disabled={isRefreshing}
+                    className="p-2 text-text-secondary hover:text-primary transition-colors disabled:opacity-50"
                 >
-                    Registrar Entregas
-                </button>
-                <button 
-                    onClick={() => setActiveTab('gestion')} 
-                    className={`px-4 py-2 font-medium transition-colors whitespace-nowrap ${activeTab === 'gestion' ? 'border-b-2 border-primary text-primary' : 'text-text-secondary hover:text-text-primary'}`}
-                >
-                    Definir Devocionales
-                </button>
-                <button 
-                    onClick={() => setActiveTab('historial')} 
-                    className={`px-4 py-2 font-medium transition-colors whitespace-nowrap ${activeTab === 'historial' ? 'border-b-2 border-primary text-primary' : 'text-text-secondary hover:text-text-primary'}`}
-                >
-                    Historial de Entregas
+                    <RefreshIcon className={`w-5 h-5 ${isRefreshing ? 'animate-spin' : ''}`} />
                 </button>
             </div>
 
+            <div className="flex border-b border-border overflow-x-auto">
+                <button 
+                    onClick={() => setActiveTab('dashboard')} 
+                    className={`px-4 py-2 font-medium transition-colors whitespace-nowrap ${activeTab === 'dashboard' ? 'border-b-2 border-primary text-primary' : 'text-text-secondary hover:text-text-primary'}`}
+                >
+                    Dashboard Anual
+                </button>
+                {(hasPermission('entregas', 'create') || hasPermission('entregas', 'read')) && (
+                    <button 
+                        onClick={() => setActiveTab('registro')} 
+                        className={`px-4 py-2 font-medium transition-colors whitespace-nowrap ${activeTab === 'registro' ? 'border-b-2 border-primary text-primary' : 'text-text-secondary hover:text-text-primary'}`}
+                    >
+                        Registrar Entregas
+                    </button>
+                )}
+                {(hasPermission('devocionales', 'read') || hasPermission('devocionales', 'update')) && (
+                    <button 
+                        onClick={() => setActiveTab('gestion')} 
+                        className={`px-4 py-2 font-medium transition-colors whitespace-nowrap ${activeTab === 'gestion' ? 'border-b-2 border-primary text-primary' : 'text-text-secondary hover:text-text-primary'}`}
+                    >
+                        Definir Temas
+                    </button>
+                )}
+                {hasPermission('entregas', 'read') && (
+                    <button 
+                        onClick={() => setActiveTab('historial')} 
+                        className={`px-4 py-2 font-medium transition-colors whitespace-nowrap ${activeTab === 'historial' ? 'border-b-2 border-primary text-primary' : 'text-text-secondary hover:text-text-primary'}`}
+                    >
+                        Historial Completo
+                    </button>
+                )}
+            </div>
+
+            {/* TAB: DASHBOARD ANUAL */}
+            {activeTab === 'dashboard' && (
+                <div className="space-y-6 animate-fade-in">
+                    {/* Tarjetas de Resumen */}
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div className="bg-surface p-6 rounded-xl border border-border shadow-lg flex items-center gap-4">
+                            <div className="p-3 bg-primary/20 rounded-lg text-primary">
+                                <BookOpenIcon className="w-8 h-8" />
+                            </div>
+                            <div>
+                                <p className="text-sm text-text-secondary">Meta del Año {currentYear}</p>
+                                <p className="text-2xl font-bold">{statsAnuales.totalDevs} Temas</p>
+                            </div>
+                        </div>
+                        <div className="bg-surface p-6 rounded-xl border border-border shadow-lg flex items-center gap-4">
+                            <div className="p-3 bg-secondary/20 rounded-lg text-secondary">
+                                <BarChartIcon className="w-8 h-8" />
+                            </div>
+                            <div>
+                                <p className="text-sm text-text-secondary">Cumplimiento Global</p>
+                                <p className="text-2xl font-bold">{statsAnuales.cumplimientoGlobal.toFixed(1)}%</p>
+                            </div>
+                        </div>
+                        <div className="bg-surface p-6 rounded-xl border border-border shadow-lg flex items-center gap-4">
+                            <div className="p-3 bg-yellow-500/20 rounded-lg text-yellow-500">
+                                <TrophyIcon className="w-8 h-8" />
+                            </div>
+                            <div>
+                                <p className="text-sm text-text-secondary">Líder de Entregas</p>
+                                <p className="text-2xl font-bold truncate">
+                                    {statsAnuales.topLider ? `${statsAnuales.topLider.nombre}` : 'Sin datos'}
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="bg-surface p-6 rounded-xl border border-border shadow-lg space-y-6">
+                        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                            <h2 className="text-xl font-bold flex items-center gap-2">
+                                <UsersIcon className="w-6 h-6 text-primary" />
+                                Seguimiento por Adolescente
+                            </h2>
+                            <div className="relative w-full md:w-80">
+                                <input 
+                                    type="text" 
+                                    placeholder="Buscar chico..." 
+                                    value={searchDashboard}
+                                    onChange={(e) => setSearchDashboard(e.target.value)}
+                                    className="w-full bg-background border border-border rounded-lg pl-4 pr-4 py-2 focus:ring-2 focus:ring-primary focus:border-transparent outline-none"
+                                />
+                            </div>
+                        </div>
+
+                        <div className="overflow-x-auto">
+                            <table className="min-w-full">
+                                <thead>
+                                    <tr className="text-left text-xs font-bold text-text-secondary uppercase tracking-widest border-b border-border">
+                                        <th className="pb-4 px-2">#</th>
+                                        <th className="pb-4 px-2">Adolescente</th>
+                                        <th className="pb-4 px-2">Progreso Anual</th>
+                                        <th className="pb-4 px-2 text-center">Entregas</th>
+                                        <th className="pb-4 px-2 text-right">% Éxito</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-border">
+                                    {filteredRanking.map((item, index) => {
+                                        return (
+                                            <tr key={item.id} className="hover:bg-background/50 transition-colors group">
+                                                <td className="py-4 px-2">
+                                                    {index === 0 ? <span className="text-xl">🥇</span> : 
+                                                     index === 1 ? <span className="text-xl">🥈</span> :
+                                                     index === 2 ? <span className="text-xl">🥉</span> :
+                                                     <span className="text-sm font-bold text-text-secondary">{index + 1}</span>}
+                                                </td>
+                                                <td className="py-4 px-2">
+                                                    <p className="font-bold text-text-primary group-hover:text-primary transition-colors">{item.nombre} {item.apellido}</p>
+                                                    <p className="text-[10px] text-text-secondary font-mono">{item.cedula}</p>
+                                                </td>
+                                                <td className="py-4 px-2 min-w-[150px] md:min-w-[300px]">
+                                                    <div className="w-full bg-background rounded-full h-3 border border-border overflow-hidden">
+                                                        <div 
+                                                            className={`h-full transition-all duration-1000 ${
+                                                                item.porcentaje >= 80 ? 'bg-secondary' : 
+                                                                item.porcentaje >= 50 ? 'bg-primary' : 
+                                                                'bg-red-500/60'
+                                                            }`}
+                                                            style={{ width: `${item.porcentaje}%` }}
+                                                        ></div>
+                                                    </div>
+                                                </td>
+                                                <td className="py-4 px-2 text-center font-bold text-lg">
+                                                    {item.count} <span className="text-xs text-text-secondary">/ {statsAnuales.totalDevs}</span>
+                                                </td>
+                                                <td className="py-4 px-2 text-right">
+                                                    <span className={`px-2 py-1 rounded-md text-xs font-bold ${
+                                                        item.porcentaje >= 80 ? 'bg-secondary/20 text-secondary border border-secondary/30' : 
+                                                        item.porcentaje >= 50 ? 'bg-primary/20 text-primary border border-primary/30' : 
+                                                        'bg-red-500/10 text-red-400 border border-red-500/20'
+                                                    }`}>
+                                                        {item.porcentaje.toFixed(0)}%
+                                                    </span>
+                                                </td>
+                                            </tr>
+                                        );
+                                    })}
+                                    {filteredRanking.length === 0 && (
+                                        <tr>
+                                            <td colSpan={5} className="py-12 text-center text-text-secondary italic">
+                                                No se encontraron resultados para "{searchDashboard}"
+                                            </td>
+                                        </tr>
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/* TAB: REGISTRO DE ENTREGAS */}
             {activeTab === 'registro' && (
-                <div className="bg-surface p-6 rounded-lg shadow-lg animate-fade-in">
+                <div className="bg-surface p-6 rounded-lg shadow-lg animate-fade-in border border-border">
                     {successMessage && (
-                        <div className="mb-4 bg-green-500/20 text-green-300 p-3 rounded flex items-center gap-2">
+                        <div className="mb-4 bg-green-500/20 text-green-300 p-3 rounded flex items-center gap-2 border border-green-500/30">
                             <CheckCircleIcon className="w-5 h-5"/> {successMessage}
                         </div>
                     )}
                     
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                         <div>
-                            <h2 className="text-lg font-semibold mb-4 text-text-primary">1. Seleccionar Datos</h2>
+                            <h2 className="text-lg font-semibold mb-6 text-text-primary border-b border-border pb-2">1. Datos de la Entrega</h2>
                             <div className="space-y-4">
                                 <div>
                                     <label className="block text-sm font-medium text-text-secondary mb-1">Adolescente</label>
                                     <select 
                                         value={selectedAdolescenteId} 
                                         onChange={(e) => setSelectedAdolescenteId(e.target.value)}
-                                        className="w-full bg-background border border-border rounded-md p-2"
+                                        className="w-full bg-background border border-border rounded-md p-2 outline-none focus:ring-2 focus:ring-primary"
                                     >
                                         <option value="">-- Seleccionar --</option>
                                         {adolescentes.filter(a => a.estado === 'Activo').map(a => (
@@ -265,7 +457,7 @@ const Tareas: React.FC = () => {
                                         type="date" 
                                         value={fechaEntrega} 
                                         onChange={(e) => setFechaEntrega(e.target.value)}
-                                        className="w-full bg-background border border-border rounded-md p-2"
+                                        className="w-full bg-background border border-border rounded-md p-2 outline-none focus:ring-2 focus:ring-primary"
                                     />
                                 </div>
                                 <div>
@@ -273,48 +465,52 @@ const Tareas: React.FC = () => {
                                     <textarea 
                                         value={observaciones}
                                         onChange={(e) => setObservaciones(e.target.value)}
-                                        className="w-full bg-background border border-border rounded-md p-2"
+                                        className="w-full bg-background border border-border rounded-md p-2 outline-none focus:ring-2 focus:ring-primary"
                                         rows={3}
+                                        placeholder="Ej: Entregó fuera de fecha..."
                                     />
                                 </div>
-                                <button 
-                                    onClick={handleRegistrarEntrega}
-                                    className="w-full bg-primary text-white py-2 rounded-md hover:bg-indigo-700 transition font-bold shadow-lg"
-                                >
-                                    Guardar Entrega
-                                </button>
+                                {hasPermission('entregas', 'create') ? (
+                                    <button 
+                                        onClick={handleRegistrarEntrega}
+                                        className="w-full bg-primary text-white py-3 rounded-lg hover:bg-indigo-700 transition font-bold shadow-lg"
+                                    >
+                                        Guardar Entrega
+                                    </button>
+                                ) : (
+                                    <p className="text-xs text-red-400 italic text-center">No tienes permiso para registrar entregas.</p>
+                                )}
                             </div>
                         </div>
 
                         <div>
-                            <h2 className="text-lg font-semibold mb-4 text-text-primary">2. Seleccionar Hojas Entregadas</h2>
-                            <div className="bg-background rounded-md border border-border overflow-hidden h-96 overflow-y-auto custom-scrollbar">
+                            <h2 className="text-lg font-semibold mb-6 text-text-primary border-b border-border pb-2">2. Seleccionar Temas Entregados</h2>
+                            <div className="bg-background rounded-lg border border-border overflow-hidden h-[400px] overflow-y-auto custom-scrollbar">
                                 {sortedDevocionales.length === 0 ? (
                                     <p className="p-4 text-text-secondary text-center">No hay devocionales definidos.</p>
                                 ) : (
                                     <div className="divide-y divide-border">
                                         {sortedDevocionales.map(dev => {
                                             const isSelected = selectedDevocionalIds.has(dev.id);
-                                            // Check if this specific teen already submitted this specific devotional
                                             const alreadySubmitted = selectedAdolescenteId ? entregasDevocionales.some(e => e.devocionalId === dev.id && e.adolescenteId === Number(selectedAdolescenteId)) : false;
 
                                             return (
                                                 <div 
                                                     key={dev.id} 
-                                                    onClick={() => !alreadySubmitted && handleToggleDevocional(dev.id)}
-                                                    className={`p-3 flex items-start gap-3 cursor-pointer hover:bg-surface transition ${isSelected ? 'bg-primary/10' : ''} ${alreadySubmitted ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                                    onClick={() => !alreadySubmitted && hasPermission('entregas', 'create') && handleToggleDevocional(dev.id)}
+                                                    className={`p-3 flex items-start gap-3 cursor-pointer hover:bg-surface transition ${isSelected ? 'bg-primary/10' : ''} ${alreadySubmitted ? 'opacity-50 cursor-not-allowed bg-green-500/5' : ''}`}
                                                 >
                                                     <input 
                                                         type="checkbox" 
                                                         checked={isSelected} 
-                                                        disabled={alreadySubmitted}
-                                                        onChange={() => {}} // handled by div click
-                                                        className="mt-1 h-4 w-4 text-primary rounded border-gray-600 focus:ring-primary bg-background"
+                                                        disabled={alreadySubmitted || !hasPermission('entregas', 'create')}
+                                                        onChange={() => {}} 
+                                                        className="mt-1 h-5 w-5 text-primary rounded border-border focus:ring-primary bg-background"
                                                     />
                                                     <div>
                                                         <p className="font-semibold text-text-primary">Semana {dev.numeroSemana}: {dev.tema}</p>
-                                                        <p className="text-xs text-text-secondary">Vence: {formatDate(dev.fechaVencimiento)}</p>
-                                                        {alreadySubmitted && <span className="text-xs text-green-400 font-bold">Ya entregado</span>}
+                                                        <p className="text-[10px] text-text-secondary uppercase tracking-widest">Meta: {formatDate(dev.fechaVencimiento)}</p>
+                                                        {alreadySubmitted && <span className="text-[10px] bg-secondary/20 text-secondary px-1.5 py-0.5 rounded font-bold">✅ YA ENTREGADO</span>}
                                                     </div>
                                                 </div>
                                             );
@@ -331,31 +527,37 @@ const Tareas: React.FC = () => {
             {activeTab === 'gestion' && (
                 <div className="space-y-4 animate-fade-in">
                     <div className="flex justify-end">
-                        <button onClick={openModalForCreate} className="bg-primary text-white px-4 py-2 rounded-lg hover:bg-indigo-700 shadow-md">
-                            + Nuevo Devocional
-                        </button>
+                        {hasPermission('devocionales', 'create') && (
+                            <button onClick={openModalForCreate} className="bg-primary text-white px-4 py-2 rounded-lg hover:bg-indigo-700 shadow-md font-bold">
+                                + Definir Nuevo Tema
+                            </button>
+                        )}
                     </div>
                     <div className="bg-surface shadow-lg rounded-lg overflow-x-auto border border-border">
                         <table className="min-w-full divide-y divide-border">
                             <thead className="bg-background">
                                 <tr>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-text-secondary uppercase">Semana</th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-text-secondary uppercase">Tema</th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-text-secondary uppercase">Entregado el</th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-text-secondary uppercase">Vence el</th>
-                                    <th className="px-6 py-3 text-right text-xs font-medium text-text-secondary uppercase">Acciones</th>
+                                    <th className="px-6 py-3 text-left text-xs font-bold text-text-secondary uppercase tracking-widest">Semana</th>
+                                    <th className="px-6 py-3 text-left text-xs font-bold text-text-secondary uppercase tracking-widest">Tema / Título</th>
+                                    <th className="px-6 py-3 text-left text-xs font-bold text-text-secondary uppercase tracking-widest">Distribución</th>
+                                    <th className="px-6 py-3 text-left text-xs font-bold text-text-secondary uppercase tracking-widest">Vencimiento</th>
+                                    <th className="px-6 py-3 text-right text-xs font-bold text-text-secondary uppercase tracking-widest">Acciones</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-border">
                                 {sortedDevocionales.map(dev => (
                                     <tr key={dev.id} className="hover:bg-background/50 transition-colors">
-                                        <td className="px-6 py-4">{dev.numeroSemana}</td>
+                                        <td className="px-6 py-4 font-mono font-bold text-primary">S{dev.numeroSemana.toString().padStart(2, '0')}</td>
                                         <td className="px-6 py-4 font-bold">{dev.tema}</td>
-                                        <td className="px-6 py-4 text-sm">{formatDate(dev.fechaDistribucion)}</td>
-                                        <td className="px-6 py-4 text-sm">{formatDate(dev.fechaVencimiento)}</td>
+                                        <td className="px-6 py-4 text-sm text-text-secondary">{formatDate(dev.fechaDistribucion)}</td>
+                                        <td className="px-6 py-4 text-sm text-text-secondary">{formatDate(dev.fechaVencimiento)}</td>
                                         <td className="px-6 py-4 text-right space-x-2">
-                                            <button onClick={() => openModalForEdit(dev)} className="text-primary hover:text-indigo-300">Editar</button>
-                                            <button onClick={() => handleDeleteClick(dev)} className="text-red-500 hover:text-red-300">Eliminar</button>
+                                            {hasPermission('devocionales', 'update') && (
+                                                <button onClick={() => openModalForEdit(dev)} className="text-primary hover:text-indigo-300 p-1"><PencilIcon className="w-5 h-5"/></button>
+                                            )}
+                                            {hasPermission('devocionales', 'delete') && (
+                                                <button onClick={() => handleDeleteClick(dev)} className="text-red-500 hover:text-red-300 p-1"><TrashIcon className="w-5 h-5"/></button>
+                                            )}
                                         </td>
                                     </tr>
                                 ))}
@@ -375,7 +577,7 @@ const Tareas: React.FC = () => {
                             <select 
                                 value={filterAdo} 
                                 onChange={(e) => setFilterAdo(e.target.value)}
-                                className="w-full bg-background border border-border rounded-md p-2 text-sm"
+                                className="w-full bg-background border border-border rounded-md p-2 text-sm outline-none"
                             >
                                 <option value="">Todos</option>
                                 {adolescentes.map(a => (
@@ -384,15 +586,15 @@ const Tareas: React.FC = () => {
                             </select>
                         </div>
                         <div>
-                            <label className="block text-xs font-medium text-text-secondary mb-1">Devocional</label>
+                            <label className="block text-xs font-medium text-text-secondary mb-1">Tema</label>
                             <select 
                                 value={filterDev} 
                                 onChange={(e) => setFilterDev(e.target.value)}
-                                className="w-full bg-background border border-border rounded-md p-2 text-sm"
+                                className="w-full bg-background border border-border rounded-md p-2 text-sm outline-none"
                             >
                                 <option value="">Todos</option>
                                 {sortedDevocionales.map(d => (
-                                    <option key={d.id} value={d.id}>Sem {d.numeroSemana}: {d.tema}</option>
+                                    <option key={d.id} value={d.id}>S{d.numeroSemana}: {d.tema}</option>
                                 ))}
                             </select>
                         </div>
@@ -402,7 +604,7 @@ const Tareas: React.FC = () => {
                                 type="date" 
                                 value={filterDateStart}
                                 onChange={(e) => setFilterDateStart(e.target.value)}
-                                className="w-full bg-background border border-border rounded-md p-2 text-sm"
+                                className="w-full bg-background border border-border rounded-md p-2 text-sm outline-none"
                             />
                         </div>
                         <div>
@@ -411,13 +613,13 @@ const Tareas: React.FC = () => {
                                 type="date" 
                                 value={filterDateEnd}
                                 onChange={(e) => setFilterDateEnd(e.target.value)}
-                                className="w-full bg-background border border-border rounded-md p-2 text-sm"
+                                className="w-full bg-background border border-border rounded-md p-2 text-sm outline-none"
                             />
                         </div>
                         <div>
                             <button 
                                 onClick={clearFilters}
-                                className="w-full bg-gray-700 text-text-primary hover:bg-gray-600 p-2 rounded-md text-sm flex items-center justify-center gap-2 transition-colors"
+                                className="w-full bg-gray-700 text-text-primary hover:bg-gray-600 p-2 rounded-md text-sm flex items-center justify-center gap-2 transition-colors border border-border"
                             >
                                 <RefreshIcon className="w-4 h-4"/> Limpiar
                             </button>
@@ -428,11 +630,11 @@ const Tareas: React.FC = () => {
                          <table className="min-w-full divide-y divide-border">
                                 <thead className="bg-background">
                                     <tr>
-                                        <th className="px-6 py-3 text-left text-xs font-medium text-text-secondary uppercase">Fecha Devolución</th>
-                                        <th className="px-6 py-3 text-left text-xs font-medium text-text-secondary uppercase">Adolescente</th>
-                                        <th className="px-6 py-3 text-left text-xs font-medium text-text-secondary uppercase">Devocional</th>
-                                        <th className="px-6 py-3 text-left text-xs font-medium text-text-secondary uppercase">Observación</th>
-                                        <th className="px-6 py-3 text-right text-xs font-medium text-text-secondary uppercase">Acciones</th>
+                                        <th className="px-6 py-3 text-left text-xs font-bold text-text-secondary uppercase tracking-widest">Fecha Entrega</th>
+                                        <th className="px-6 py-3 text-left text-xs font-bold text-text-secondary uppercase tracking-widest">Adolescente</th>
+                                        <th className="px-6 py-3 text-left text-xs font-bold text-text-secondary uppercase tracking-widest">Semana / Tema</th>
+                                        <th className="px-6 py-3 text-left text-xs font-bold text-text-secondary uppercase tracking-widest">Observación</th>
+                                        <th className="px-6 py-3 text-right text-xs font-bold text-text-secondary uppercase tracking-widest">Acciones</th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-border">
@@ -441,165 +643,123 @@ const Tareas: React.FC = () => {
                                         const dev = devocionales.find(d => d.id === ent.devocionalId);
                                         return (
                                             <tr key={ent.id} className="hover:bg-background/50 transition-colors">
-                                                <td className="px-6 py-4 whitespace-nowrap">{formatDate(ent.fechaEntrega)}</td>
-                                                <td className="px-6 py-4 whitespace-nowrap font-medium text-text-primary">{ado ? `${ado.nombre} ${ado.apellido}` : 'Desconocido'}</td>
-                                                <td className="px-6 py-4 whitespace-nowrap">{dev ? `Sem ${dev.numeroSemana}: ${dev.tema}` : 'Borrado'}</td>
-                                                <td className="px-6 py-4 text-sm text-text-secondary">{ent.observaciones || '-'}</td>
+                                                <td className="px-6 py-4 whitespace-nowrap text-sm">{formatDate(ent.fechaEntrega)}</td>
+                                                <td className="px-6 py-4 whitespace-nowrap font-bold text-text-primary">{ado ? `${ado.nombre} ${ado.apellido}` : 'Desconocido'}</td>
+                                                <td className="px-6 py-4 whitespace-nowrap text-sm">{dev ? `Sem ${dev.numeroSemana}: ${dev.tema}` : 'Borrado'}</td>
+                                                <td className="px-6 py-4 text-sm text-text-secondary italic">{ent.observaciones || '-'}</td>
                                                 <td className="px-6 py-4 text-right space-x-2 whitespace-nowrap">
-                                                    <button onClick={() => handleEditEntrega(ent)} className="text-primary hover:text-indigo-300 p-1" title="Editar registro">
-                                                        <PencilIcon className="w-4 h-4 inline" />
-                                                    </button>
-                                                    <button onClick={() => handleDeleteEntrega(ent)} className="text-red-500 hover:text-red-300 p-1" title="Eliminar registro">
-                                                        <TrashIcon className="w-4 h-4 inline"/>
-                                                    </button>
+                                                    {hasPermission('entregas', 'update') && (
+                                                        <button onClick={() => handleEditEntrega(ent)} className="text-primary hover:text-indigo-400 p-1" title="Editar registro">
+                                                            <PencilIcon className="w-5 h-5 inline" />
+                                                        </button>
+                                                    )}
+                                                    {hasPermission('entregas', 'delete') && (
+                                                        <button onClick={() => handleDeleteEntrega(ent)} className="text-red-500 hover:text-red-400 p-1" title="Eliminar registro">
+                                                            <TrashIcon className="w-5 h-5 inline" />
+                                                        </button>
+                                                    )}
                                                 </td>
                                             </tr>
                                         );
                                     })}
-                                    {filteredEntregas.length === 0 && (
-                                        <tr><td colSpan={5} className="p-12 text-center text-text-secondary italic">No se encontraron entregas con los filtros actuales.</td></tr>
-                                    )}
                                 </tbody>
                             </table>
                     </div>
                 </div>
             )}
 
-            {/* Modal para Crear/Editar Definición de Devocional */}
-            <Modal isOpen={isDevocionalModalOpen} onClose={() => setIsDevocionalModalOpen(false)} title={editingDevocional ? 'Editar Tarea' : 'Nueva Tarea'}>
+            {/* MODALS */}
+            <Modal isOpen={isDevocionalModalOpen} onClose={() => setIsDevocionalModalOpen(false)} title={editingDevocional ? "Editar Tema" : "Nuevo Tema"}>
                 <form onSubmit={handleSubmitDevocional} className="space-y-4">
+                    <div>
+                        <label className="block text-sm font-medium text-text-secondary">Número de Semana</label>
+                        <input type="number" name="numeroSemana" value={values.numeroSemana} onChange={handleInputChange} required className="mt-1 block w-full px-3 py-2 bg-background border border-border rounded-md shadow-sm focus:outline-none focus:ring-primary focus:border-primary sm:text-sm" />
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-text-secondary">Tema / Título</label>
+                        <input type="text" name="tema" value={values.tema} onChange={handleInputChange} required className="mt-1 block w-full px-3 py-2 bg-background border border-border rounded-md shadow-sm focus:outline-none focus:ring-primary focus:border-primary sm:text-sm" />
+                    </div>
                     <div className="grid grid-cols-2 gap-4">
                         <div>
-                            <label className="block text-sm font-medium text-text-secondary mb-1">Número de Semana</label>
-                            <input 
-                                type="number" 
-                                name="numeroSemana" 
-                                value={values.numeroSemana} 
-                                onChange={handleInputChange} 
-                                required
-                                className="w-full bg-background border border-border rounded-md px-3 py-2"
-                            />
+                            <label className="block text-sm font-medium text-text-secondary">Fecha Distribución</label>
+                            <input type="date" name="fechaDistribucion" value={values.fechaDistribucion} onChange={handleInputChange} required className="mt-1 block w-full px-3 py-2 bg-background border border-border rounded-md shadow-sm focus:outline-none focus:ring-primary focus:border-primary sm:text-sm" />
                         </div>
                         <div>
-                            <label className="block text-sm font-medium text-text-secondary mb-1">Tema</label>
-                            <input 
-                                type="text" 
-                                name="tema" 
-                                value={values.tema} 
-                                onChange={handleInputChange} 
-                                required
-                                className="w-full bg-background border border-border rounded-md px-3 py-2"
-                            />
+                            <label className="block text-sm font-medium text-text-secondary">Fecha Vencimiento</label>
+                            <input type="date" name="fechaVencimiento" value={values.fechaVencimiento} onChange={handleInputChange} required className="mt-1 block w-full px-3 py-2 bg-background border border-border rounded-md shadow-sm focus:outline-none focus:ring-primary focus:border-primary sm:text-sm" />
                         </div>
                     </div>
-                    <div className="grid grid-cols-2 gap-4">
-                         <div>
-                            <label className="block text-sm font-medium text-text-secondary mb-1">Fecha Distribución</label>
-                            <input 
-                                type="date" 
-                                name="fechaDistribucion" 
-                                value={values.fechaDistribucion} 
-                                onChange={handleInputChange} 
-                                required
-                                className="w-full bg-background border border-border rounded-md px-3 py-2"
-                            />
-                        </div>
-                        <div>
-                            <label className="block text-sm font-medium text-text-secondary mb-1">Fecha Vencimiento (Opcional)</label>
-                            <input 
-                                type="date" 
-                                name="fechaVencimiento" 
-                                value={values.fechaVencimiento || ''} 
-                                onChange={handleInputChange} 
-                                className="w-full bg-background border border-border rounded-md px-3 py-2"
-                            />
-                        </div>
-                    </div>
-                    <div className="flex justify-end gap-2 pt-4 border-t border-border mt-4">
-                        <button type="button" onClick={() => setIsDevocionalModalOpen(false)} className="bg-gray-600 text-white px-4 py-2 rounded-lg hover:bg-gray-700 transition-colors">Cancelar</button>
-                        <button type="submit" className="bg-primary text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition-colors shadow-lg">Guardar</button>
-                    </div>
-                </form>
-            </Modal>
-            
-            {/* Modal para Editar Entrega (Historial) */}
-            <Modal isOpen={isEditEntregaModalOpen} onClose={() => setIsEditEntregaModalOpen(false)} title="Editar Registro de Entrega">
-                <form onSubmit={handleSaveEditedEntrega} className="space-y-4">
-                    <div>
-                        <label className="block text-sm font-medium text-text-secondary mb-1">Adolescente</label>
-                        <select 
-                            value={editSubmissionValues.adolescenteId}
-                            onChange={(e) => setEditSubmissionValues({...editSubmissionValues, adolescenteId: e.target.value})}
-                            className="w-full bg-background border border-border rounded-md p-2"
-                            required
-                        >
-                            {adolescentes.map(a => (
-                                <option key={a.id} value={a.id}>{a.nombre} {a.apellido}</option>
-                            ))}
-                        </select>
-                    </div>
-                    <div>
-                        <label className="block text-sm font-medium text-text-secondary mb-1">Devocional / Hoja</label>
-                        <select 
-                            value={editSubmissionValues.devocionalId}
-                            onChange={(e) => setEditSubmissionValues({...editSubmissionValues, devocionalId: e.target.value})}
-                            className="w-full bg-background border border-border rounded-md p-2"
-                            required
-                        >
-                            {sortedDevocionales.map(d => (
-                                <option key={d.id} value={d.id}>Sem {d.numeroSemana}: {d.tema}</option>
-                            ))}
-                        </select>
-                    </div>
-                    <div>
-                        <label className="block text-sm font-medium text-text-secondary mb-1">Fecha de Entrega</label>
-                        <input 
-                            type="date" 
-                            value={editSubmissionValues.fechaEntrega}
-                            onChange={(e) => setEditSubmissionValues({...editSubmissionValues, fechaEntrega: e.target.value})}
-                            className="w-full bg-background border border-border rounded-md p-2"
-                            required
-                        />
-                    </div>
-                    <div>
-                        <label className="block text-sm font-medium text-text-secondary mb-1">Observaciones</label>
-                        <textarea 
-                            value={editSubmissionValues.observaciones}
-                            onChange={(e) => setEditSubmissionValues({...editSubmissionValues, observaciones: e.target.value})}
-                            className="w-full bg-background border border-border rounded-md p-2"
-                            rows={3}
-                        />
-                    </div>
-                    <div className="flex justify-end gap-2 pt-4 border-t border-border mt-4">
-                        <button type="button" onClick={() => setIsEditEntregaModalOpen(false)} className="bg-gray-600 text-white px-4 py-2 rounded-lg hover:bg-gray-700 transition-colors">Cancelar</button>
-                        <button type="submit" className="bg-primary text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition-colors shadow-lg">Guardar Cambios</button>
+                    <div className="flex justify-end space-x-2 pt-4">
+                        <button type="button" onClick={() => setIsDevocionalModalOpen(false)} className="bg-gray-600 text-white px-4 py-2 rounded-lg hover:bg-gray-700">Cancelar</button>
+                        <button type="submit" className="bg-primary text-white px-4 py-2 rounded-lg hover:bg-indigo-700">Guardar</button>
                     </div>
                 </form>
             </Modal>
 
-             {/* Confirmation for Definition Deletion */}
-             <ConfirmationModal
+            <Modal isOpen={isEditEntregaModalOpen} onClose={() => setIsEditEntregaModalOpen(false)} title="Editar Entrega">
+                <form onSubmit={handleSaveEditedEntrega} className="space-y-4">
+                    <div>
+                        <label className="block text-sm font-medium text-text-secondary">Adolescente</label>
+                        <select 
+                            value={editSubmissionValues.adolescenteId} 
+                            onChange={(e) => setEditSubmissionValues({...editSubmissionValues, adolescenteId: e.target.value})}
+                            className="w-full bg-background border border-border rounded-md p-2 outline-none focus:ring-2 focus:ring-primary"
+                        >
+                            {adolescentes.map(a => <option key={a.id} value={a.id}>{a.nombre} {a.apellido}</option>)}
+                        </select>
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-text-secondary">Tema</label>
+                        <select 
+                            value={editSubmissionValues.devocionalId} 
+                            onChange={(e) => setEditSubmissionValues({...editSubmissionValues, devocionalId: e.target.value})}
+                            className="w-full bg-background border border-border rounded-md p-2 outline-none focus:ring-2 focus:ring-primary"
+                        >
+                            {devocionales.map(d => <option key={d.id} value={d.id}>S{d.numeroSemana}: {d.tema}</option>)}
+                        </select>
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-text-secondary">Fecha Entrega</label>
+                        <input 
+                            type="date" 
+                            value={editSubmissionValues.fechaEntrega} 
+                            onChange={(e) => setEditSubmissionValues({...editSubmissionValues, fechaEntrega: e.target.value})}
+                            className="w-full bg-background border border-border rounded-md p-2 outline-none focus:ring-2 focus:ring-primary"
+                        />
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-text-secondary">Observaciones</label>
+                        <textarea 
+                            value={editSubmissionValues.observaciones}
+                            onChange={(e) => setEditSubmissionValues({...editSubmissionValues, observaciones: e.target.value})}
+                            className="w-full bg-background border border-border rounded-md p-2 outline-none focus:ring-2 focus:ring-primary"
+                            rows={3}
+                        />
+                    </div>
+                    <div className="flex justify-end space-x-2 pt-4">
+                        <button type="button" onClick={() => setIsEditEntregaModalOpen(false)} className="bg-gray-600 text-white px-4 py-2 rounded-lg hover:bg-gray-700">Cancelar</button>
+                        <button type="submit" className="bg-primary text-white px-4 py-2 rounded-lg hover:bg-indigo-700">Guardar Cambios</button>
+                    </div>
+                </form>
+            </Modal>
+
+            <ConfirmationModal
                 isOpen={isDeleteConfirmOpen}
                 onClose={() => setIsDeleteConfirmOpen(false)}
                 onConfirm={handleConfirmDelete}
                 title="Eliminar Devocional"
-                message={<>¿Estás seguro de que deseas eliminar el devocional <strong>{devocionalToDelete?.tema}</strong>? Se eliminarán también todas las entregas asociadas a este tema.</>}
-                confirmText="Eliminar"
-                confirmButtonClassName="bg-red-600 text-white hover:bg-red-700"
+                message={<>¿Estás seguro de que quieres eliminar el devocional <strong>{devocionalToDelete?.tema}</strong>? Se eliminarán también todas las entregas asociadas.</>}
             />
 
-            {/* Confirmation for Submission Deletion (Historial) */}
             <ConfirmationModal
                 isOpen={isDeleteEntregaConfirmOpen}
                 onClose={() => setIsDeleteEntregaConfirmOpen(false)}
                 onConfirm={handleConfirmDeleteEntrega}
-                title="Eliminar Registro"
-                message="¿Estás seguro de que deseas eliminar este registro de entrega? Esta acción no se puede deshacer."
-                confirmText="Eliminar"
-                confirmButtonClassName="bg-red-600 text-white hover:bg-red-700"
+                title="Eliminar Registro de Entrega"
+                message="¿Estás seguro de que quieres eliminar este registro de entrega?"
             />
         </div>
     );
-}
+};
 
 export default Tareas;

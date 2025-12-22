@@ -1,129 +1,93 @@
-import React, { useState, useCallback, useEffect } from 'react';
+
+import React, { useState } from 'react';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { DataProvider } from './contexts/DataContext';
+import { Page } from './types';
+
+// Páginas
 import Dashboard from './pages/Dashboard';
 import Sidebar from './components/layout/Sidebar';
 import Header from './components/layout/Header';
 import Adolescentes from './pages/Adolescentes';
 import Encargados from './pages/Encargados';
 import Reuniones from './pages/Reuniones';
+import Asistencia from './pages/Asistencia';
+import Tareas from './pages/Tareas';
 import Tutores from './pages/Tutores';
 import Eventos from './pages/Eventos';
 import Reportes from './pages/Reportes';
 import Usuarios from './pages/Usuarios';
 import Roles from './pages/Roles';
-import Asistencia from './pages/Asistencia';
 import LimpiarTablas from './pages/LimpiarTablas';
 import CargarTablas from './pages/CargarTablas';
 import UpdatePassword from './pages/UpdatePassword';
 import LoginPage from './pages/LoginPage';
-import Tareas from './pages/Tareas';
-import { Page } from './types';
-import { supabase } from './services/supabase';
 
 const AppContent: React.FC = () => {
-    const { user, loading } = useAuth();
-    const [currentPage, setCurrentPage] = useState<Page>('dashboard');
-    const [selectedReunionId, setSelectedReunionId] = useState<number | null>(null);
-    const [isSidebarOpen, setSidebarOpen] = useState(true);
+  const { user, loading } = useAuth();
+  const [currentPage, setCurrentPage] = useState<Page>('dashboard');
+  const [pageParams, setPageParams] = useState<any>(null);
+  const [isSidebarOpen, setSidebarOpen] = useState(false);
 
-    useEffect(() => {
-        // Listen for password recovery event
-        const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
-            if (event === 'PASSWORD_RECOVERY') {
-                setCurrentPage('update-password');
-            }
-        });
+  const navigateTo = (page: Page, params?: any) => {
+    setCurrentPage(page);
+    setPageParams(params);
+    setSidebarOpen(false);
+    window.scrollTo(0, 0);
+  };
 
-        return () => {
-            authListener.subscription.unsubscribe();
-        };
-    }, []);
+  if (loading) return (
+    <div className="flex h-screen items-center justify-center bg-background">
+      <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary"></div>
+    </div>
+  );
 
-    const navigateTo = useCallback((page: Page, params?: { reunionId?: number }) => {
-        setCurrentPage(page);
-        if (params?.reunionId) {
-            setSelectedReunionId(params.reunionId);
-        }
-    }, []);
+  if (!user) return <LoginPage />;
 
-    // 1. Show Loading Screen
-    if (loading) {
-        return (
-            <div className="flex h-screen items-center justify-center bg-background">
-                <div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-primary"></div>
-            </div>
-        );
+  const renderPage = () => {
+    switch (currentPage) {
+      case 'dashboard': return <Dashboard navigateTo={navigateTo} />;
+      case 'adolescentes': return <Adolescentes />;
+      case 'encargados': return <Encargados />;
+      case 'reuniones': return <Reuniones navigateTo={navigateTo} />;
+      case 'asistencia': return <Asistencia reunionId={pageParams?.reunionId} navigateTo={navigateTo} />;
+      case 'tareas': return <Tareas />;
+      case 'tutores': return <Tutores />;
+      case 'eventos': return <Eventos />;
+      case 'reportes': return <Reportes />;
+      case 'usuarios': return <Usuarios />;
+      case 'roles': return <Roles />;
+      case 'limpiar-tablas': return <LimpiarTablas />;
+      case 'cargar-tablas': return <CargarTablas />;
+      case 'update-password': return <UpdatePassword navigateTo={navigateTo} />;
+      default: return <Dashboard navigateTo={navigateTo} />;
     }
+  };
 
-    // 2. Show Login Page if not authenticated
-    if (!user && currentPage !== 'update-password') {
-        return <LoginPage />;
-    }
-
-    const renderPage = () => {
-        if (currentPage === 'update-password') {
-            return <UpdatePassword navigateTo={navigateTo} />;
-        }
-        if (currentPage === 'asistencia' && selectedReunionId) {
-            return <Asistencia reunionId={selectedReunionId} navigateTo={navigateTo} />;
-        }
-        switch (currentPage) {
-            case 'dashboard':
-                return <Dashboard navigateTo={navigateTo} />;
-            case 'adolescentes':
-                return <Adolescentes />;
-            case 'encargados':
-                return <Encargados />;
-            case 'reuniones':
-                return <Reuniones navigateTo={navigateTo} />;
-            case 'tutores':
-                return <Tutores />;
-            case 'eventos':
-                return <Eventos />;
-            case 'reportes':
-                return <Reportes />;
-            case 'usuarios':
-                return <Usuarios />;
-            case 'roles':
-                return <Roles />;
-            case 'limpiar-tablas':
-                return <LimpiarTablas />;
-            case 'cargar-tablas':
-                return <CargarTablas />;
-            case 'tareas':
-                return <Tareas />;
-            default:
-                return <Dashboard navigateTo={navigateTo} />;
-        }
-    };
-
-    if (currentPage === 'update-password') {
-        return renderPage();
-    }
-
-    return (
-        <div className="flex h-screen bg-background">
-            <Sidebar currentPage={currentPage} navigateTo={navigateTo} isOpen={isSidebarOpen} setOpen={setSidebarOpen} />
-            <div className={`flex-1 flex flex-col overflow-hidden transition-all duration-300 ease-in-out ${isSidebarOpen ? 'sm:ml-64' : 'sm:ml-0'}`}>
-                <Header toggleSidebar={() => setSidebarOpen(!isSidebarOpen)} />
-                <main className="flex-1 overflow-x-hidden overflow-y-auto bg-background p-4 md:p-6 lg:p-8">
-                    {renderPage()}
-                </main>
-            </div>
-        </div>
-    );
+  return (
+    <div className="flex h-screen bg-background overflow-hidden">
+      <Sidebar 
+        currentPage={currentPage} 
+        navigateTo={navigateTo} 
+        isOpen={isSidebarOpen} 
+        setOpen={setSidebarOpen} 
+      />
+      <div className="flex-1 flex flex-col min-w-0 overflow-hidden ml-0 lg:ml-64">
+        <Header toggleSidebar={() => setSidebarOpen(!isSidebarOpen)} />
+        <main className="flex-1 overflow-x-hidden overflow-y-auto p-4 md:p-6 lg:p-8">
+          {renderPage()}
+        </main>
+      </div>
+    </div>
+  );
 };
 
-
-const App: React.FC = () => {
-    return (
-        <AuthProvider>
-            <DataProvider>
-                <AppContent />
-            </DataProvider>
-        </AuthProvider>
-    );
-};
+const App: React.FC = () => (
+  <AuthProvider>
+    <DataProvider>
+      <AppContent />
+    </DataProvider>
+  </AuthProvider>
+);
 
 export default App;

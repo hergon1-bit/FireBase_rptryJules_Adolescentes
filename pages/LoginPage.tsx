@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../services/api';
-import { KeyIcon, UsersIcon, EyeIcon, EyeOffIcon, MailIcon, ArrowLeftIcon } from '../components/ui/Icons';
+import { KeyIcon, UsersIcon, EyeIcon, EyeOffIcon, MailIcon, ArrowLeftIcon, RefreshIcon } from '../components/ui/Icons';
 
 const LoginPage: React.FC = () => {
   const { login } = useAuth();
@@ -16,6 +17,18 @@ const LoginPage: React.FC = () => {
   const [recoveryEmail, setRecoveryEmail] = useState('');
   const [recoveryMessage, setRecoveryMessage] = useState('');
 
+  // Initial Setup State
+  const [isFirstRun, setIsFirstRun] = useState<boolean | null>(null);
+  const [adminName, setAdminName] = useState('');
+
+  useEffect(() => {
+    const checkUsers = async () => {
+        const count = await api.countUsuarios();
+        setIsFirstRun(count === 0);
+    };
+    checkUsers();
+  }, []);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
@@ -29,6 +42,30 @@ const LoginPage: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleInitialSetup = async (e: React.FormEvent) => {
+      e.preventDefault();
+      setError('');
+      setIsLoading(true);
+
+      try {
+          // 1. Asegurar roles
+          await api.ensureDefaultRoles();
+          // 2. Crear admin
+          await api.createUsuario({
+              nombre: adminName,
+              email: email,
+              password: password,
+              rolId: 1 // Admin
+          });
+          // 3. Intentar login
+          await login(email, password);
+      } catch (err: any) {
+          setError(err.message || 'Error durante la configuración inicial.');
+      } finally {
+          setIsLoading(false);
+      }
   };
 
   const handleRecoverySubmit = async (e: React.FormEvent) => {
@@ -55,6 +92,14 @@ const LoginPage: React.FC = () => {
       setRecoveryEmail('');
   };
 
+  if (isFirstRun === null) {
+      return (
+          <div className="min-h-screen flex items-center justify-center bg-background">
+              <RefreshIcon className="w-10 h-10 animate-spin text-primary" />
+          </div>
+      );
+  }
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-background px-4">
       <div className="bg-surface p-8 rounded-lg shadow-2xl max-w-md w-full border border-border">
@@ -65,9 +110,11 @@ const LoginPage: React.FC = () => {
                 <UsersIcon className="w-8 h-8 text-primary" />
             </div>
             <h2 className="text-3xl font-bold text-text-primary">
-                {isRecovering ? 'Recuperar Cuenta' : 'Iniciar Sesión'}
+                {isFirstRun ? 'Configuración Inicial' : isRecovering ? 'Recuperar Cuenta' : 'Iniciar Sesión'}
             </h2>
-            <p className="text-text-secondary mt-2">Sistema de Seguimiento de Adolescentes</p>
+            <p className="text-text-secondary mt-2">
+                {isFirstRun ? 'Crea la primera cuenta de administrador' : 'Sistema de Seguimiento de Adolescentes'}
+            </p>
         </div>
 
         {/* Alerts */}
@@ -83,8 +130,55 @@ const LoginPage: React.FC = () => {
              </div>
         )}
 
+        {/* Initial Setup Form */}
+        {isFirstRun && (
+            <form onSubmit={handleInitialSetup} className="space-y-6">
+                <div>
+                    <label className="block text-sm font-medium text-text-secondary mb-2">Tu Nombre</label>
+                    <input
+                        type="text"
+                        value={adminName}
+                        onChange={(e) => setAdminName(e.target.value)}
+                        required
+                        className="w-full px-4 py-3 bg-background border border-border rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent text-text-primary placeholder-gray-500 transition-all"
+                        placeholder="Administrador"
+                    />
+                </div>
+                <div>
+                    <label className="block text-sm font-medium text-text-secondary mb-2">Correo Electrónico</label>
+                    <input
+                        type="email"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        required
+                        className="w-full px-4 py-3 bg-background border border-border rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent text-text-primary placeholder-gray-500 transition-all"
+                        placeholder="admin@ejemplo.com"
+                    />
+                </div>
+                <div>
+                    <label className="block text-sm font-medium text-text-secondary mb-2">Contraseña (Mín. 6 caracteres)</label>
+                    <input
+                        type="password"
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        required
+                        minLength={6}
+                        className="w-full px-4 py-3 bg-background border border-border rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent text-text-primary placeholder-gray-500 transition-all"
+                        placeholder="••••••••"
+                    />
+                </div>
+                <button
+                    type="submit"
+                    disabled={isLoading}
+                    className="w-full flex justify-center items-center bg-primary text-white py-3 px-4 rounded-lg hover:bg-indigo-600 transition-colors font-bold disabled:opacity-50"
+                >
+                    {isLoading ? <RefreshIcon className="w-5 h-5 animate-spin mr-2" /> : 'Crear Admin e Iniciar'}
+                </button>
+            </form>
+        )}
+
         {/* Login Form */}
-        {!isRecovering && (
+        {!isRecovering && !isFirstRun && (
             <form onSubmit={handleSubmit} className="space-y-6">
             <div>
                 <label className="block text-sm font-medium text-text-secondary mb-2">Correo Electrónico</label>
@@ -128,10 +222,7 @@ const LoginPage: React.FC = () => {
             >
                 {isLoading ? (
                     <>
-                        <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                        </svg>
+                        <RefreshIcon className="w-5 h-5 animate-spin mr-2" />
                         Ingresando...
                     </>
                 ) : (
@@ -145,7 +236,7 @@ const LoginPage: React.FC = () => {
         )}
 
         {/* Recovery Form */}
-        {isRecovering && (
+        {isRecovering && !isFirstRun && (
              <form onSubmit={handleRecoverySubmit} className="space-y-6">
                 <p className="text-sm text-text-secondary text-center mb-4">
                     Ingresa tu correo electrónico y te enviaremos un enlace para restablecer tu contraseña.
@@ -170,10 +261,7 @@ const LoginPage: React.FC = () => {
                 >
                     {isLoading ? (
                         <>
-                             <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                            </svg>
+                             <RefreshIcon className="w-5 h-5 animate-spin mr-2" />
                             Enviando...
                         </>
                     ) : (
@@ -186,24 +274,26 @@ const LoginPage: React.FC = () => {
              </form>
         )}
         
-        <div className="mt-6 text-center">
-            {!isRecovering ? (
-                <button 
-                    onClick={toggleView}
-                    className="text-sm text-primary hover:text-indigo-400 font-medium transition-colors focus:outline-none"
-                >
-                    ¿Olvidaste tu contraseña?
-                </button>
-            ) : (
-                <button 
-                    onClick={toggleView}
-                    className="text-sm text-text-secondary hover:text-text-primary font-medium transition-colors focus:outline-none flex items-center justify-center mx-auto"
-                >
-                    <ArrowLeftIcon className="w-4 h-4 mr-1" />
-                    Volver al inicio de sesión
-                </button>
-            )}
-        </div>
+        {!isFirstRun && (
+            <div className="mt-6 text-center">
+                {!isRecovering ? (
+                    <button 
+                        onClick={toggleView}
+                        className="text-sm text-primary hover:text-indigo-400 font-medium transition-colors focus:outline-none"
+                    >
+                        ¿Olvidaste tu contraseña?
+                    </button>
+                ) : (
+                    <button 
+                        onClick={toggleView}
+                        className="text-sm text-text-secondary hover:text-text-primary font-medium transition-colors focus:outline-none flex items-center justify-center mx-auto"
+                    >
+                        <ArrowLeftIcon className="w-4 h-4 mr-1" />
+                        Volver al inicio de sesión
+                    </button>
+                )}
+            </div>
+        )}
       </div>
     </div>
   );

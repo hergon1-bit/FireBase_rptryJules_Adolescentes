@@ -1,3 +1,4 @@
+
 import { supabase, supabaseUrl, supabaseKey } from './supabase';
 import { createClient } from '@supabase/supabase-js';
 import { 
@@ -5,6 +6,24 @@ import {
   TutorAdolescente, InscripcionEvento, PagoEvento, ParticipanteEvento, TipoAsistencia, AsistenciaDetalle,
   CelebracionCumpleanos, ResumenReunion, Devocional, EntregaDevocional
 } from '../types';
+
+// Helper para normalizar la estructura de permisos de un rol (evita errores si faltan claves nuevas)
+const normalizeRol = (rol: any): Rol => {
+  const defaultPerms = { read: false, create: false, update: false, delete: false };
+  return {
+    ...rol,
+    permisos: {
+      adolescentes: rol.permisos?.adolescentes || { ...defaultPerms },
+      encargados: rol.permisos?.encargados || { ...defaultPerms },
+      reuniones: rol.permisos?.reuniones || { ...defaultPerms },
+      tutores: rol.permisos?.tutores || { ...defaultPerms },
+      eventos: rol.permisos?.eventos || { ...defaultPerms },
+      usuarios: rol.permisos?.usuarios || { ...defaultPerms },
+      devocionales: rol.permisos?.devocionales || rol.permisos?.tareas || { ...defaultPerms },
+      entregas: rol.permisos?.entregas || rol.permisos?.tareas || { ...defaultPerms },
+    }
+  };
+};
 
 // Helper para manejar respuestas de Supabase y lanzar errores limpios
 const handleSupabaseData = <T>(data: T | null, error: any, context: string): T => {
@@ -62,7 +81,54 @@ export const api = {
   getRolById: async (id: number): Promise<Rol | null> => {
     const { data, error } = await supabase.from('roles').select('*').eq('id', id).single();
     if (error) return null;
-    return data;
+    return normalizeRol(data);
+  },
+
+  countUsuarios: async (): Promise<number> => {
+    const { count, error } = await supabase.from('usuarios').select('*', { count: 'exact', head: true });
+    if (error) return 0;
+    return count || 0;
+  },
+
+  ensureDefaultRoles: async (): Promise<void> => {
+    const { data: existingRoles } = await supabase.from('roles').select('id');
+    if (existingRoles && existingRoles.length > 0) return;
+
+    const defaultPerms = { read: true, create: true, update: true, delete: true };
+    const guestPerms = { read: true, create: false, update: false, delete: false };
+
+    const roles = [
+      {
+        id: 1,
+        nombre: 'Administrador',
+        permisos: {
+          adolescentes: defaultPerms,
+          encargados: defaultPerms,
+          reuniones: defaultPerms,
+          tutores: defaultPerms,
+          eventos: defaultPerms,
+          usuarios: defaultPerms,
+          devocionales: defaultPerms,
+          entregas: defaultPerms
+        }
+      },
+      {
+        id: 2,
+        nombre: 'Encargado',
+        permisos: {
+          adolescentes: defaultPerms,
+          encargados: guestPerms,
+          reuniones: defaultPerms,
+          tutores: defaultPerms,
+          eventos: guestPerms,
+          usuarios: guestPerms,
+          devocionales: guestPerms,
+          entregas: defaultPerms
+        }
+      }
+    ];
+
+    await supabase.from('roles').insert(roles);
   },
   
   updateLastSignIn: async (id: string): Promise<void> => {
@@ -73,11 +139,7 @@ export const api = {
             .eq('id', id);
             
         if (error) {
-            if (error.code === 'PGRST204' || error.message.includes('column')) {
-                console.warn("Aviso: La columna 'last_sign_in_at' no existe en la tabla 'usuarios'. Favor crearla en Supabase (tipo timestamptz).");
-            } else {
-                console.error("Error al actualizar última conexión:", error.message);
-            }
+            console.error("Error al actualizar última conexión:", error.message);
         }
     } catch (e) {
         console.error("Error crítico en updateLastSignIn:", e);
@@ -291,7 +353,7 @@ export const api = {
   getRoles: async (): Promise<Rol[]> => {
     const { data, error } = await supabase.from('roles').select('*').order('id', { ascending: true });
     const result = handleSupabaseData(data, error, 'getRoles');
-    return result || [];
+    return (result || []).map(normalizeRol);
   },
 
   getCumpleanosCelebrados: async (): Promise<CelebracionCumpleanos[]> => {
@@ -308,10 +370,7 @@ export const api = {
   getDevocionales: async (): Promise<Devocional[]> => {
     try {
         const { data, error } = await supabase.from('devocionales').select('*').order('numero_semana', { ascending: false });
-        if (error && error.code === '42P01') {
-            console.warn("Tabla 'devocionales' no existe aún.");
-            return [];
-        }
+        if (error && error.code === '42P01') return [];
         const result = handleSupabaseData(data, error, 'getDevocionales');
         return (result || []).map((d: any) => ({
             id: d.id,
@@ -321,7 +380,6 @@ export const api = {
             fechaVencimiento: d.fecha_vencimiento
         }));
     } catch (e) {
-        console.error(e);
         return [];
     }
   },
@@ -381,17 +439,6 @@ export const api = {
     const { error } = await supabase.from('devocionales').delete().eq('id', id);
     if (error) throw new Error(error.message);
   },
-
-  registrarEntrega: async (entrega: Omit<EntregaDevocional, 'id'>): Promise<void> => {
-     const dbPayload = {
-        devocional_id: entrega.devocionalId,
-        adolescente_id: entrega.adolescenteId,
-        fecha_entrega: entrega.fechaEntrega,
-        observaciones: entrega.observaciones
-     };
-     const { error } = await supabase.from('entregas_devocionales').insert(dbPayload);
-     if (error) throw new Error(error.message);
-  },
   
   registrarEntregasBulk: async (entregas: Omit<EntregaDevocional, 'id'>[]): Promise<void> => {
       const dbPayload = entregas.map(e => ({
@@ -419,7 +466,6 @@ export const api = {
     const { error } = await supabase.from('entregas_devocionales').update(dbPayload).eq('id', entrega.id);
     if (error) throw new Error(error.message);
   },
-
 
   // --- Operaciones CRUD ---
 
@@ -489,6 +535,7 @@ export const api = {
         nombre: a.nombre,
         apellido: a.apellido,
         cedula: a.cedula,
+        // Fix: Use a.fechaNacimiento instead of a.fecha_nacimiento
         fecha_nacimiento: a.fechaNacimiento,
         barrio: a.barrio,
         ciudad: a.ciudad,
@@ -638,24 +685,6 @@ export const api = {
     if (error) throw new Error(error.message);
   },
 
-  saveAsistenciasBulk: async (asistencias: { reunionFecha: string; reunionTema: string; adolescenteCedula: string; estado: TipoAsistencia; detalle?: AsistenciaDetalle }[]) => {
-    const { data: reuniones } = await supabase.from('reuniones').select('id, fecha, tema');
-    const { data: adolescentes } = await supabase.from('adolescentes').select('id, cedula');
-    if (!reuniones || !adolescentes) throw new Error("Error cargando referencias");
-    const dbPayload = asistencias.map(a => {
-        const reunion = reuniones.find((r: any) => r.fecha === a.reunionFecha && r.tema === a.reunionTema);
-        const adolescente = adolescentes.find((ad: any) => ad.cedula === a.adolescenteCedula);
-        if (reunion && adolescente) {
-            return { reunion_id: reunion.id, adolescente_id: adolescente.id, estado: a.estado, detalle: a.detalle || 'Regular' };
-        }
-        return null;
-    }).filter(Boolean);
-    if (dbPayload.length > 0) {
-        const { error } = await supabase.from('asistencias').upsert(dbPayload, { onConflict: 'reunion_id,adolescente_id' });
-        if (error) throw new Error(error.message);
-    }
-  },
-
   createTutor: async (tutor: Omit<Tutor, 'id'>): Promise<Tutor> => {
     const dbPayload = { nombre: tutor.nombre, apellido: tutor.apellido, cedula: tutor.cedula, parentesco: tutor.parentesco, barrio: tutor.barrio, ciudad: tutor.ciudad };
     const { data, error } = await supabase.from('tutores').insert(dbPayload).select().single();
@@ -733,12 +762,12 @@ export const api = {
 
   createRole: async (role: Omit<Rol, 'id'>): Promise<Rol> => {
     const { data, error } = await supabase.from('roles').insert(role).select().single();
-    return handleSupabaseData(data, error, 'createRole');
+    return normalizeRol(handleSupabaseData(data, error, 'createRole'));
   },
 
   updateRole: async (role: Rol): Promise<Rol> => {
     const { data, error } = await supabase.from('roles').update(role).eq('id', role.id).select().single();
-    return handleSupabaseData(data, error, 'updateRole');
+    return normalizeRol(handleSupabaseData(data, error, 'updateRole'));
   },
 
   deleteRole: async (id: number): Promise<{ success: boolean; message?: string }> => {
