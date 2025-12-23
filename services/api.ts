@@ -21,6 +21,9 @@ const normalizeRol = (rol: any): Rol => {
       usuarios: rol.permisos?.usuarios || { ...defaultPerms },
       devocionales: rol.permisos?.devocionales || rol.permisos?.tareas || { ...defaultPerms },
       entregas: rol.permisos?.entregas || rol.permisos?.tareas || { ...defaultPerms },
+      inscripciones: rol.permisos?.inscripciones || { ...defaultPerms },
+      pagos: rol.permisos?.pagos || { ...defaultPerms },
+      participantes: rol.permisos?.participantes || { ...defaultPerms },
     }
   };
 };
@@ -109,7 +112,10 @@ export const api = {
           eventos: defaultPerms,
           usuarios: defaultPerms,
           devocionales: defaultPerms,
-          entregas: defaultPerms
+          entregas: defaultPerms,
+          inscripciones: defaultPerms,
+          pagos: defaultPerms,
+          participantes: defaultPerms
         }
       },
       {
@@ -123,7 +129,10 @@ export const api = {
           eventos: guestPerms,
           usuarios: guestPerms,
           devocionales: guestPerms,
-          entregas: defaultPerms
+          entregas: defaultPerms,
+          inscripciones: defaultPerms,
+          pagos: defaultPerms,
+          participantes: defaultPerms
         }
       }
     ];
@@ -843,14 +852,14 @@ export const api = {
   createEvento: async (evento: Omit<Evento, 'id'>): Promise<Evento> => {
     const dbPayload = { tema: evento.tema, lugar: evento.lugar, fecha_inicio: evento.fechaInicio, hora_inicio: evento.horaInicio, fecha_fin: evento.fechaFin, hora_fin: evento.horaFin, tiene_costo: evento.tieneCosto, costo_total: evento.costoTotal || null, costo_persona: evento.costoPersona || null };
     const { data, error } = await supabase.from('eventos').insert(dbPayload).select().single();
-    const result = handleSupabaseData(data, error, 'createEvento');
+    const result = handleSupabaseData(data, error, 'createEvento') as any; // Cast to any to avoid property access errors
     return { id: result.id, tema: result.tema, lugar: result.lugar, fechaInicio: result.fecha_inicio, horaInicio: result.hora_inicio, fechaFin: result.fecha_fin, horaFin: result.hora_fin, tieneCosto: result.tiene_costo, costoTotal: result.costo_total, costoPersona: result.costo_persona };
   },
 
   updateEvento: async (evento: Evento): Promise<Evento> => {
     const dbPayload = { tema: evento.tema, lugar: evento.lugar, fecha_inicio: evento.fechaInicio, hora_inicio: evento.horaInicio, fecha_fin: evento.fechaFin, hora_fin: evento.horaFin, tiene_costo: evento.tieneCosto, costo_total: evento.costoTotal || null, costo_persona: evento.costoPersona || null };
     const { data, error } = await supabase.from('eventos').update(dbPayload).eq('id', evento.id).select().single();
-    const result = handleSupabaseData(data, error, 'updateEvento');
+    const result = handleSupabaseData(data, error, 'updateEvento') as any; // Cast to any to avoid property access errors
     return { id: result.id, tema: result.tema, lugar: result.lugar, fechaInicio: result.fecha_inicio, horaInicio: result.hora_inicio, fechaFin: result.fecha_fin, horaFin: result.hora_fin, tieneCosto: result.tiene_costo, costoTotal: result.costo_total, costoPersona: result.costo_persona };
   },
 

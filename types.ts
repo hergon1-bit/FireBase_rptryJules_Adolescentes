@@ -18,6 +18,9 @@ export interface Rol {
     usuarios: Permisos;
     devocionales: Permisos; // Gestión de temas de la semana
     entregas: Permisos;      // Registro de entregas de los chicos
+    inscripciones: Permisos; // Gestión de inscripciones a eventos
+    pagos: Permisos;         // Gestión de pagos de eventos
+    participantes: Permisos; // Gestión de participantes confirmados en eventos
   };
 }
 

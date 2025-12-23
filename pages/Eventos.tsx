@@ -42,9 +42,13 @@ const Eventos: React.FC = () => {
     const [isEventModalOpen, setIsEventModalOpen] = useState(false);
     const [editingEvent, setEditingEvent] = useState<Evento | null>(null);
     
-    // State for Delete Confirmation
+    // State for Delete Confirmation (Event)
     const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
     const [eventToDelete, setEventToDelete] = useState<Evento | null>(null);
+
+    // State for Delete Confirmation (Inscripción)
+    const [isInscripcionDeleteConfirmOpen, setIsInscripcionDeleteConfirmOpen] = useState(false);
+    const [inscripcionToDeleteId, setInscripcionToDeleteId] = useState<number | null>(null);
 
     const initialEventFormState: Omit<Evento, 'id'> = {
         tema: '',
@@ -154,6 +158,19 @@ const Eventos: React.FC = () => {
         if (selectedEvent && adolescenteToInscribe) {
             await addInscripcion(selectedEvent.id, Number(adolescenteToInscribe));
             setAdolescenteToInscribe('');
+        }
+    };
+
+    const handleDeleteInscripcionClick = (id: number) => {
+        setInscripcionToDeleteId(id);
+        setIsInscripcionDeleteConfirmOpen(true);
+    };
+
+    const handleConfirmDeleteInscripcion = async () => {
+        if (inscripcionToDeleteId) {
+            await deleteInscripcion(inscripcionToDeleteId);
+            setIsInscripcionDeleteConfirmOpen(false);
+            setInscripcionToDeleteId(null);
         }
     };
 
@@ -416,7 +433,14 @@ const Eventos: React.FC = () => {
                                                     )}
                                                 </td>
                                                 <td className="p-2 text-right align-top">
-                                                    {hasPermission('eventos', 'delete') && <button onClick={() => deleteInscripcion(inscrito.inscripcion.id)} className="text-red-500 hover:text-red-400 text-xs">Eliminar Inscripción</button>}
+                                                    {hasPermission('eventos', 'delete') && (
+                                                        <button 
+                                                            onClick={() => handleDeleteInscripcionClick(inscrito.inscripcion.id)} 
+                                                            className="text-red-500 hover:text-red-400 text-xs"
+                                                        >
+                                                            Eliminar Inscripción
+                                                        </button>
+                                                    )}
                                                 </td>
                                             </tr>
                                         ))}
@@ -431,6 +455,17 @@ const Eventos: React.FC = () => {
                     </div>
                 </Modal>
             )}
+
+            {/* Confirmation Modal for Inscripcion Deletion - MOVED AFTER THE MANAGEMENT MODAL */}
+            <ConfirmationModal
+                isOpen={isInscripcionDeleteConfirmOpen}
+                onClose={() => setIsInscripcionDeleteConfirmOpen(false)}
+                onConfirm={handleConfirmDeleteInscripcion}
+                title="Eliminar Inscripción"
+                message="¿Estás seguro de que deseas eliminar esta inscripción? Se eliminarán también los pagos asociados."
+                confirmText="Eliminar"
+                confirmButtonClassName="bg-red-600 text-white hover:bg-red-700"
+            />
         </div>
     );
 };

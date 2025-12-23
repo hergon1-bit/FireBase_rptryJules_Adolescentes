@@ -122,6 +122,9 @@ const Roles: React.FC = () => {
             usuarios: { read: false, create: false, update: false, delete: false },
             devocionales: { read: false, create: false, update: false, delete: false },
             entregas: { read: false, create: false, update: false, delete: false },
+            inscripciones: { read: false, create: false, update: false, delete: false },
+            pagos: { read: false, create: false, update: false, delete: false },
+            participantes: { read: false, create: false, update: false, delete: false },
         };
         setEditingRole({ id: 0, nombre: '', permisos: defaultPermissions });
         setIsRoleModalOpen(true);

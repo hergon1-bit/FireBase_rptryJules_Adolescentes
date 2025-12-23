@@ -113,7 +113,7 @@ const Reportes: React.FC = () => {
                 return adolescentes.filter(a => a.estado === 'Activo' && !adolescentesPresentes.has(a.id));
 
             case 'activos':
-                return adolescentes.filter(a => a.estado === 'Activo');
+                return adolescentes.filter(a => a.estado === 'Activo').sort((a,b) => a.nombre.localeCompare(b.nombre));
             
             case 'tutores':
                  return adolescentes.map(ado => ({
@@ -226,6 +226,106 @@ const Reportes: React.FC = () => {
         doc.save(`Asistentes_Reunion_${reunion.id}_${reunion.fecha}.pdf`);
     };
 
+    const generarPDFActivos = () => {
+        const doc = new jsPDF({ orientation: 'landscape', format: 'a4' });
+        const data = reportData as Adolescente[];
+        
+        // Format Date manually to dd/mm/yyyy for Header
+        const today = new Date();
+        const day = String(today.getDate()).padStart(2, '0');
+        const month = String(today.getMonth() + 1).padStart(2, '0');
+        const year = today.getFullYear();
+        const dateStr = `Fecha: ${day}/${month}/${year}`;
+
+        // Generate Table
+        autoTable(doc, {
+            startY: 25,
+            head: [['Ord', 'Nombres y Apellidos', 'Cédula', 'Ciudad', 'Teléfono', 'Fecha Nac.', 'Participo ____/___/__']],
+            body: data.map((a, index) => {
+                // Formatear fecha de nacimiento a dd/mm/aaaa
+                let fechaNacFmt = '';
+                if (a.fechaNacimiento) {
+                    const parts = a.fechaNacimiento.split('T')[0].split('-');
+                    if (parts.length === 3) {
+                        // asumiendo entrada YYYY-MM-DD
+                        fechaNacFmt = `${parts[2]}/${parts[1]}/${parts[0]}`; 
+                    } else {
+                        fechaNacFmt = a.fechaNacimiento;
+                    }
+                }
+
+                return [
+                    index + 1,
+                    `${a.nombre} ${a.apellido}`,
+                    a.cedula,
+                    a.ciudad,
+                    a.telefono,
+                    fechaNacFmt,
+                    '' // Casilla vacía para completar manualmente
+                ];
+            }),
+            theme: 'grid',
+            // Estilo similar al screenshot (gris claro, texto negro)
+            headStyles: { 
+                fillColor: [220, 220, 220], 
+                textColor: 0, 
+                lineWidth: 0.1, 
+                lineColor: 50,
+                fontSize: 10,
+                halign: 'center',
+                valign: 'middle'
+            },
+            styles: { 
+                fontSize: 9, 
+                cellPadding: 1.5, // Reduced padding to fit more rows
+                lineColor: 150, 
+                lineWidth: 0.1, 
+                overflow: 'linebreak',
+                valign: 'middle'
+            },
+            columnStyles: {
+                0: { cellWidth: 10, halign: 'center' }, // Ord
+                1: { cellWidth: 'auto' }, // Nombre (auto width to take available space)
+                2: { cellWidth: 25 }, // Cedula
+                3: { cellWidth: 35 }, // Ciudad
+                4: { cellWidth: 30 }, // Telefono
+                5: { cellWidth: 25, halign: 'center' }, // Fecha Nac
+                6: { cellWidth: 40 } // Participo
+            },
+            margin: { top: 25, right: 10, bottom: 10, left: 10 }, // Márgenes mínimos
+            didDrawPage: (data) => {
+                // Header Title on every page
+                doc.setFont("helvetica", "bold");
+                doc.setFontSize(14);
+                doc.text("REUNION NRO. ________", 15, 15);
+            },
+            didParseCell: (data) => {
+                // Si es el encabezado de la columna 'Ord' (índice 0), reducir la fuente
+                if (data.section === 'head' && data.column.index === 0) {
+                    data.cell.styles.fontSize = 8;
+                }
+            }
+        });
+
+        // Add Page Numbers and Date to all pages
+        const totalPages = doc.getNumberOfPages();
+
+        for (let i = 1; i <= totalPages; i++) {
+            doc.setPage(i);
+            
+            // Page Number (Smaller font, above date)
+            doc.setFont("helvetica", "normal");
+            doc.setFontSize(8);
+            doc.text(`Página: ${i}/${totalPages}`, 280, 10, { align: 'right' });
+            
+            // Date
+            doc.setFontSize(10);
+            doc.text(dateStr, 280, 15, { align: 'right' });
+        }
+
+        doc.save(`Listado_Adolescentes_Activos_${new Date().toISOString().split('T')[0]}.pdf`);
+    };
+
     const renderReportContent = () => {
         switch (activeReport) {
             case 'entregasDevocionales':
@@ -333,16 +433,24 @@ const Reportes: React.FC = () => {
                 );
              case 'activos':
                 return (
-                    <ReportTable headers={['Nombre', 'Cédula', 'Teléfono', 'Ciudad']}>
-                        {(reportData as Adolescente[]).map(a => (
-                            <tr key={a.id}>
-                                <td className="p-2">{a.nombre} {a.apellido}</td>
-                                <td className="p-2">{a.cedula}</td>
-                                <td className="p-2">{a.telefono}</td>
-                                <td className="p-2">{a.ciudad}</td>
-                            </tr>
-                        ))}
-                    </ReportTable>
+                    <div>
+                        <div className="flex justify-end mb-4">
+                            <button onClick={generarPDFActivos} className="flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-md transition-colors shadow-md">
+                                <PrinterIcon className="w-5 h-5" />
+                                <span>Imprimir PDF (Hoja de Firmas)</span>
+                            </button>
+                        </div>
+                        <ReportTable headers={['Nombre', 'Cédula', 'Teléfono', 'Ciudad']}>
+                            {(reportData as Adolescente[]).map(a => (
+                                <tr key={a.id}>
+                                    <td className="p-2">{a.nombre} {a.apellido}</td>
+                                    <td className="p-2">{a.cedula}</td>
+                                    <td className="p-2">{a.telefono}</td>
+                                    <td className="p-2">{a.ciudad}</td>
+                                </tr>
+                            ))}
+                        </ReportTable>
+                    </div>
                 );
             case 'tutores':
                  return (
