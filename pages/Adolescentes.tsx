@@ -21,7 +21,7 @@ const Adolescentes: React.FC = () => {
     const [isUnsavedConfirmOpen, setIsUnsavedConfirmOpen] = useState(false);
 
     const initialFormState: Omit<Adolescente, 'id'> = {
-        nombre: '', apellido: '', cedula: '', fechaNacimiento: '', barrio: '', 
+        nombre: '', apellido: '', cedula: '', registro: '', fechaNacimiento: '', barrio: '', 
         ciudad: '', telefono: '', sexo: 'Masculino', estado: 'Activo'
     };
 
@@ -66,29 +66,34 @@ const Adolescentes: React.FC = () => {
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
 
-        // Limpieza de datos: Eliminar espacios accidentales al inicio/final
+        // Limpieza y Validación
         const cleanValues = {
             ...values,
             nombre: values.nombre.trim(),
             apellido: values.apellido.trim(),
             cedula: values.cedula.trim(),
+            registro: values.registro.trim(),
             barrio: values.barrio.trim(),
             ciudad: values.ciudad.trim(),
             telefono: values.telefono.trim(),
         };
 
+        // Validación de registro (9 dígitos)
+        if (cleanValues.registro && !/^\d{9}$/.test(cleanValues.registro)) {
+            alert('Error: El Registro de Salud debe ser un número de exactamente 9 dígitos.');
+            return;
+        }
+
         const isCedulaDuplicate = adolescentes.some(a => {
             if (editingAdolescente) {
-                // In edit mode, check against other adolescentes
                 return a.cedula === cleanValues.cedula && a.id !== editingAdolescente.id;
             }
-            // In create mode, check against all adolescentes
             return a.cedula === cleanValues.cedula;
         });
 
         if (isCedulaDuplicate) {
             alert('Error: La cédula ingresada ya existe en la base de datos.');
-            return; // Stop form submission
+            return;
         }
 
         try {
@@ -120,7 +125,7 @@ const Adolescentes: React.FC = () => {
     const filteredAdolescentes = useMemo(() => {
         return adolescentes
             .filter(a =>
-                `${a.nombre} ${a.apellido}`.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                `${a.nombre} ${a.apellido} ${a.registro}`.toLowerCase().includes(searchTerm.toLowerCase()) ||
                 a.cedula.includes(searchTerm)
             )
             .filter(a => 
@@ -135,7 +140,7 @@ const Adolescentes: React.FC = () => {
         }
 
         const headers = [
-            "ID", "Nombre", "Apellido", "Cedula", "Fecha de Nacimiento", "Edad",
+            "ID", "Nombre", "Apellido", "Cedula", "Reg. Salud", "Fecha de Nacimiento", "Edad",
             "Barrio", "Ciudad", "Telefono", "Sexo", "Estado"
         ];
 
@@ -143,13 +148,13 @@ const Adolescentes: React.FC = () => {
             headers.join(';'),
             ...filteredAdolescentes.map(ado => {
                 const age = calcularEdad(ado.fechaNacimiento);
-                // Escape quotes and wrap fields with quotes to handle special characters
                 const sanitize = (field: string | number) => `"${String(field).replace(/"/g, '""')}"`;
                 const row = [
                     ado.id,
                     sanitize(ado.nombre),
                     sanitize(ado.apellido),
                     ado.cedula,
+                    ado.registro || 'N/A',
                     ado.fechaNacimiento,
                     age,
                     sanitize(ado.barrio),
@@ -163,7 +168,6 @@ const Adolescentes: React.FC = () => {
         ];
 
         const csvString = csvRows.join('\n');
-        // Add BOM for UTF-8 Excel compatibility
         const blob = new Blob([`\uFEFF${csvString}`], { type: 'text/csv;charset=utf-8;' }); 
 
         const link = document.createElement('a');
@@ -203,30 +207,22 @@ const Adolescentes: React.FC = () => {
             <div className="flex flex-wrap gap-4 items-center">
                 <input
                     type="text"
-                    placeholder="Buscar por nombre o cédula..."
+                    placeholder="Buscar por nombre, cédula o registro..."
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
                     className="w-full sm:w-auto flex-grow max-w-sm px-4 py-2 bg-surface border border-border rounded-md focus:ring-primary focus:border-primary transition"
-                    aria-label="Buscar por nombre o cédula"
                 />
                 <div className="relative">
                     <select
                         value={estadoFilter}
                         onChange={(e) => setEstadoFilter(e.target.value as 'Todos' | EstadoAdolescente)}
                         className="appearance-none w-full sm:w-auto bg-surface border border-border rounded-md px-4 py-2 pr-8 focus:ring-primary focus:border-primary transition"
-                        aria-label="Filtrar por estado"
                     >
                         <option value="Todos">Todos los Estados</option>
                         <option value="Activo">Activo</option>
                         <option value="Inactivo">Inactivo</option>
                         <option value="Anulado">Anulado</option>
                     </select>
-                    <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-text-secondary">
-                        <svg className="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/></svg>
-                    </div>
-                </div>
-                <div className="ml-auto text-sm text-text-secondary">
-                    Mostrando <span className="font-bold text-text-primary">{filteredAdolescentes.length}</span> de <span className="font-bold text-text-primary">{adolescentes.length}</span> registros
                 </div>
             </div>
             
@@ -236,8 +232,8 @@ const Adolescentes: React.FC = () => {
                         <tr>
                             <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-text-secondary uppercase tracking-wider">Nombre Completo</th>
                             <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-text-secondary uppercase tracking-wider">Cédula</th>
+                            <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-text-secondary uppercase tracking-wider">Reg. Salud</th>
                             <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-text-secondary uppercase tracking-wider">Edad</th>
-                            <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-text-secondary uppercase tracking-wider">Teléfono</th>
                             <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-text-secondary uppercase tracking-wider">Estado</th>
                             <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-text-secondary uppercase tracking-wider">Acciones</th>
                         </tr>
@@ -250,8 +246,8 @@ const Adolescentes: React.FC = () => {
                                     <div className="text-sm text-text-secondary">{ado.ciudad}</div>
                                 </td>
                                 <td className="px-6 py-4 whitespace-nowrap text-sm text-text-secondary">{ado.cedula}</td>
+                                <td className="px-6 py-4 whitespace-nowrap text-sm font-mono text-primary">{ado.registro || '-'}</td>
                                 <td className="px-6 py-4 whitespace-nowrap text-sm text-text-secondary">{calcularEdad(ado.fechaNacimiento)}</td>
-                                <td className="px-6 py-4 whitespace-nowrap text-sm text-text-secondary">{ado.telefono}</td>
                                 <td className="px-6 py-4 whitespace-nowrap">
                                     <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
                                         ado.estado === 'Activo' ? 'bg-green-100 text-green-800' :
@@ -277,6 +273,14 @@ const Adolescentes: React.FC = () => {
                         <InputField label="Nombre" name="nombre" value={values.nombre} onChange={handleInputChange} required />
                         <InputField label="Apellido" name="apellido" value={values.apellido} onChange={handleInputChange} required />
                         <InputField label="Cédula" name="cedula" value={values.cedula} onChange={handleInputChange} required />
+                        <InputField 
+                            label="Registro de Salud (9 dígitos)" 
+                            name="registro" 
+                            value={values.registro} 
+                            onChange={handleInputChange} 
+                            maxLength={9} 
+                            placeholder="Ej: 123456789"
+                        />
                         <InputField label="Fecha de Nacimiento" name="fechaNacimiento" type="date" value={values.fechaNacimiento} onChange={handleInputChange} required />
                         <InputField label="Barrio" name="barrio" value={values.barrio} onChange={handleInputChange} required />
                         <InputField label="Ciudad" name="ciudad" value={values.ciudad} onChange={handleInputChange} required />
@@ -303,11 +307,7 @@ const Adolescentes: React.FC = () => {
                 onClose={() => setIsConfirmModalOpen(false)}
                 onConfirm={handleConfirmDelete}
                 title="Confirmar Eliminación"
-                message={
-                    <>
-                        ¿Estás seguro de que quieres eliminar a <strong>{adolescenteToDelete?.nombre} {adolescenteToDelete?.apellido}</strong>? Esta acción no se puede deshacer.
-                    </>
-                }
+                message={<>¿Estás seguro de que quieres eliminar a <strong>{adolescenteToDelete?.nombre} {adolescenteToDelete?.apellido}</strong>? Esta acción no se puede deshacer.</>}
                 confirmText="Confirmar Eliminación"
             />
             
@@ -327,7 +327,6 @@ const Adolescentes: React.FC = () => {
     );
 };
 
-// Helper components for form fields
 const InputField: React.FC<React.InputHTMLAttributes<HTMLInputElement> & { label: string }> = ({ label, ...props }) => (
     <div>
         <label htmlFor={props.name} className="block text-sm font-medium text-text-secondary">{label}</label>
@@ -343,6 +342,5 @@ const SelectField: React.FC<React.SelectHTMLAttributes<HTMLSelectElement> & { la
         </select>
     </div>
 );
-
 
 export default Adolescentes;

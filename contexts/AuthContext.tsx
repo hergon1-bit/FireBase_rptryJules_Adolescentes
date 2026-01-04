@@ -91,11 +91,6 @@ export const AuthProvider: React.FC<{children: React.ReactNode}> = ({ children }
   }, []);
 
   const login = async (email: string, pass: string) => {
-    // NOTA: No activamos setLoading(true) aquí. 
-    // Si lo hacemos, App.tsx mostrará el spinner global, desmontando LoginPage 
-    // y borrando cualquier mensaje de error si la promesa falla.
-    // Dejamos que LoginPage maneje su propio estado de 'isLoading'.
-    
     try {
       const { data, error } = await supabase.auth.signInWithPassword({
         email,
@@ -106,7 +101,6 @@ export const AuthProvider: React.FC<{children: React.ReactNode}> = ({ children }
         console.error("Supabase Login Error:", error);
         let msg = error.message;
 
-        // Traducción de errores comunes de Supabase
         if (msg.includes('Invalid login credentials') || msg.includes('invalid_grant')) {
           msg = 'Credenciales inválidas. Verifica tu correo y contraseña.';
         } else if (msg.includes('Email not confirmed')) {
@@ -123,22 +117,32 @@ export const AuthProvider: React.FC<{children: React.ReactNode}> = ({ children }
       if (data.user) {
         const success = await loadUserProfile(data.user.id);
         if (!success) {
-          // Si el login fue exitoso pero no hay perfil, cerramos la sesión de supabase para que no quede en el limbo
           await supabase.auth.signOut(); 
           throw new Error('Tu usuario no tiene un perfil asignado en el sistema. Contacta al administrador.');
         }
       }
     } catch (error) {
-        throw error; // Re-lanzar para que lo atrape LoginPage
+        throw error;
     }
   };
 
   const logout = async () => {
-    setLoading(true);
-    await supabase.auth.signOut();
-    setUser(null);
-    setRol(null);
-    setLoading(false);
+    try {
+      // Priorizamos la experiencia de usuario limpiando el estado local inmediatamente
+      // Esto hace que App.tsx detecte que !user y muestre LoginPage sin esperar al servidor
+      setUser(null);
+      setRol(null);
+      setLoading(false);
+      
+      // Intentamos cerrar la sesión en el servidor pero no bloqueamos la UI con await largo
+      await supabase.auth.signOut();
+    } catch (error) {
+      console.error("Error signing out:", error);
+      // Forzamos estados por si acaso
+      setUser(null);
+      setRol(null);
+      setLoading(false);
+    }
   };
 
   const hasPermission = (module: keyof Rol['permisos'], action: keyof Permisos): boolean => {

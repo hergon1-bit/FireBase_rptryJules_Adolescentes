@@ -41,6 +41,7 @@ export interface Adolescente {
   nombre: string;
   apellido: string;
   cedula: string;
+  registro: string; // Nuevo campo: Registro de salud (9 dígitos)
   fechaNacimiento: string; // YYYY-MM-DD
   barrio: string;
   ciudad: string;

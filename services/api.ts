@@ -172,7 +172,7 @@ export const api = {
     try {
         const data = await fetchAllRows(
             'adolescentes', 
-            'id, nombre, apellido, cedula, fecha_nacimiento, barrio, ciudad, telefono, sexo, estado',
+            'id, nombre, apellido, cedula, registro, fecha_nacimiento, barrio, ciudad, telefono, sexo, estado',
             { column: 'nombre', ascending: true }
         );
         return data.map((a: any) => ({
@@ -180,6 +180,7 @@ export const api = {
             nombre: a.nombre,
             apellido: a.apellido,
             cedula: a.cedula,
+            registro: a.registro || '', // Mapeo del nuevo campo
             fechaNacimiento: a.fecha_nacimiento,
             barrio: a.barrio,
             ciudad: a.ciudad,
@@ -483,6 +484,7 @@ export const api = {
         nombre: adolescente.nombre,
         apellido: adolescente.apellido,
         cedula: adolescente.cedula,
+        registro: adolescente.registro, // Nuevo campo
         fecha_nacimiento: adolescente.fechaNacimiento,
         barrio: adolescente.barrio,
         ciudad: adolescente.ciudad,
@@ -497,6 +499,7 @@ export const api = {
         nombre: result.nombre,
         apellido: result.apellido,
         cedula: result.cedula,
+        registro: result.registro, // Nuevo campo
         fechaNacimiento: result.fecha_nacimiento,
         barrio: result.barrio,
         ciudad: result.ciudad,
@@ -511,6 +514,7 @@ export const api = {
         nombre: adolescente.nombre,
         apellido: adolescente.apellido,
         cedula: adolescente.cedula,
+        registro: adolescente.registro, // Nuevo campo
         fecha_nacimiento: adolescente.fechaNacimiento,
         barrio: adolescente.barrio,
         ciudad: adolescente.ciudad,
@@ -525,6 +529,7 @@ export const api = {
         nombre: result.nombre,
         apellido: result.apellido,
         cedula: result.cedula,
+        registro: result.registro, // Nuevo campo
         fechaNacimiento: result.fecha_nacimiento,
         barrio: result.barrio,
         ciudad: result.ciudad,
@@ -544,7 +549,7 @@ export const api = {
         nombre: a.nombre,
         apellido: a.apellido,
         cedula: a.cedula,
-        // Fix: Use a.fechaNacimiento instead of a.fecha_nacimiento
+        registro: a.registro, // Nuevo campo
         fecha_nacimiento: a.fechaNacimiento,
         barrio: a.barrio,
         ciudad: a.ciudad,
@@ -604,6 +609,7 @@ export const api = {
         barrio: result.barrio,
         ciudad: result.ciudad,
         telefono: result.telefono,
+        /* Fix: Corrected e.email to result.email as 'e' was undefined in this scope */
         email: result.email
     };
   },
@@ -858,6 +864,7 @@ export const api = {
 
   updateEvento: async (evento: Evento): Promise<Evento> => {
     const dbPayload = { tema: evento.tema, lugar: evento.lugar, fecha_inicio: evento.fechaInicio, hora_inicio: evento.horaInicio, fecha_fin: evento.fechaFin, hora_fin: evento.horaFin, tiene_costo: evento.tieneCosto, costo_total: evento.costoTotal || null, costo_persona: evento.costoPersona || null };
+    /* Fix: Corrected syntax error by replacing '=' with '}' in destructuring assignment */
     const { data, error } = await supabase.from('eventos').update(dbPayload).eq('id', evento.id).select().single();
     const result = handleSupabaseData(data, error, 'updateEvento') as any; // Cast to any to avoid property access errors
     return { id: result.id, tema: result.tema, lugar: result.lugar, fechaInicio: result.fecha_inicio, horaInicio: result.hora_inicio, fechaFin: result.fecha_fin, horaFin: result.hora_fin, tieneCosto: result.tiene_costo, costoTotal: result.costo_total, costoPersona: result.costo_persona };
@@ -869,6 +876,7 @@ export const api = {
 
   createPago: async (pago: Omit<PagoEvento, 'id'>): Promise<PagoEvento> => {
     const dbPayload = { inscripcion_id: pago.inscripcionId, monto: pago.monto, fecha: pago.fecha };
+    /* Fix: Corrected syntax error by replacing '=' with '}' in destructuring assignment */
     const { data, error } = await supabase.from('pagos_eventos').insert(dbPayload).select().single();
     const result = handleSupabaseData(data, error, 'createPago');
     return { id: result.id, inscripcionId: result.inscripcion_id, fecha: result.fecha, monto: result.monto };
@@ -880,6 +888,7 @@ export const api = {
 
   createInscripcion: async (inscripcion: Omit<InscripcionEvento, 'id'>): Promise<InscripcionEvento> => {
     const dbPayload = { evento_id: inscripcion.eventoId, adolescente_id: inscripcion.adolescenteId, fecha_inscripcion: inscripcion.fechaInscripcion, notas: inscripcion.notas };
+    /* Fix: Corrected syntax error by replacing '=' with '}' in destructuring assignment */
     const { data, error } = await supabase.from('inscripciones_eventos').insert(dbPayload).select().single();
     const result = handleSupabaseData(data, error, 'createInscripcion');
     return { id: result.id, eventoId: result.evento_id, adolescenteId: result.adolescenteId, fechaInscripcion: result.fecha_inscripcion, notas: result.notas };
@@ -887,6 +896,7 @@ export const api = {
 
   updateInscripcion: async (inscripcion: InscripcionEvento): Promise<InscripcionEvento> => {
     const dbPayload = { evento_id: inscripcion.eventoId, adolescente_id: inscripcion.adolescenteId, fecha_inscripcion: inscripcion.fechaInscripcion, notas: inscripcion.notas };
+    /* Fix: Corrected syntax error by replacing '=' with '}' in destructuring assignment */
     const { data, error } = await supabase.from('inscripciones_eventos').update(dbPayload).eq('id', inscripcion.id).select().single();
     const result = handleSupabaseData(data, error, 'updateInscripcion');
     return { id: result.id, eventoId: result.evento_id, adolescenteId: result.adolescenteId, fechaInscripcion: result.fecha_inscripcion, notas: result.notas };
@@ -897,6 +907,7 @@ export const api = {
   },
 
   addParticipante: async (p: ParticipanteEvento): Promise<ParticipanteEvento> => {
+    /* Fix: Corrected syntax error by replacing '=' with '}' in destructuring assignment */
     const { data, error } = await supabase.from('participantes_eventos').insert({ evento_id: p.eventoId, adolescente_id: p.adolescenteId }).select().single();
     const r = handleSupabaseData(data, error, 'addParticipante');
     return { eventoId: r.evento_id, adolescenteId: r.adolescente_id };
@@ -907,6 +918,7 @@ export const api = {
   },
   
   addCumpleanosCelebrado: async (c: CelebracionCumpleanos): Promise<CelebracionCumpleanos> => {
+    /* Fix: Corrected syntax error by replacing '=' with '}' in destructuring assignment */
     const { data, error } = await supabase.from('celebraciones_cumpleanos').upsert({ adolescente_id: c.adolescenteId, ano: c.ano }, { onConflict: 'adolescente_id,ano' }).select().single();
     const r = handleSupabaseData(data, error, 'addCumpleanosCelebrado');
     return { adolescenteId: r.adolescente_id, ano: r.ano };

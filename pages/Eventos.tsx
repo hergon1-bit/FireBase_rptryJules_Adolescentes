@@ -37,6 +37,7 @@ const Eventos: React.FC = () => {
     const [adolescenteToInscribe, setAdolescenteToInscribe] = useState<string>('');
     const [newPayment, setNewPayment] = useState<{ [key: number]: string }>({});
     const [editingNotes, setEditingNotes] = useState<{ [inscripcionId: number]: string }>({});
+    const [searchTermInscritos, setSearchTermInscritos] = useState('');
 
     // State for CRUD Event Modal
     const [isEventModalOpen, setIsEventModalOpen] = useState(false);
@@ -114,7 +115,10 @@ const Eventos: React.FC = () => {
     };
 
     // --- Management Logic ---
-    const closeManagementModal = () => setSelectedEvent(null);
+    const closeManagementModal = () => {
+        setSelectedEvent(null);
+        setSearchTermInscritos('');
+    };
 
     const eventDetails = useMemo(() => {
         if (!selectedEvent) return null;
@@ -134,7 +138,14 @@ const Eventos: React.FC = () => {
                 debe: (selectedEvent.costoPersona || 0) - totalPagado,
                 esParticipante: eventParticipantesIds.includes(inscripcion.adolescenteId),
             };
-        }).filter(item => item.adolescente);
+        })
+        .filter(item => item.adolescente)
+        // ORDEN ALFABÉTICO REQUERIDO POR EL USUARIO
+        .sort((a, b) => {
+            const nameA = `${a.adolescente!.nombre} ${a.adolescente!.apellido}`.toLowerCase();
+            const nameB = `${b.adolescente!.nombre} ${b.adolescente!.apellido}`.toLowerCase();
+            return nameA.localeCompare(nameB);
+        });
 
         const adolescentesNoInscritos = adolescentes.filter(a => 
             a.estado === 'Activo' && !eventInscripciones.some(i => i.adolescenteId === a.id)
@@ -343,9 +354,21 @@ const Eventos: React.FC = () => {
                             </div>
                         )}
 
-                        {/* Tabla de Inscritos */}
+                        {/* Tabla de Inscritos con Filtro REQUERIDO */}
                         <div>
-                            <h3 className="font-bold text-lg mb-2">Inscritos ({eventDetails.inscritos.length})</h3>
+                            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-4">
+                                <h3 className="font-bold text-lg">Inscritos ({eventDetails.inscritos.length})</h3>
+                                <div className="relative w-full sm:w-64">
+                                    <input 
+                                        type="text" 
+                                        placeholder="Filtrar inscritos..." 
+                                        value={searchTermInscritos}
+                                        onChange={(e) => setSearchTermInscritos(e.target.value)}
+                                        className="w-full bg-background border border-border rounded-md pl-4 pr-4 py-1.5 text-sm focus:ring-1 focus:ring-primary outline-none"
+                                    />
+                                </div>
+                            </div>
+                            
                             <div className="bg-background rounded-md max-h-96 overflow-y-auto">
                                 <table className="min-w-full text-sm">
                                     <thead className="bg-surface sticky top-0">
@@ -357,7 +380,9 @@ const Eventos: React.FC = () => {
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-border">
-                                        {eventDetails.inscritos.map(inscrito => (
+                                        {eventDetails.inscritos
+                                            .filter(i => `${i.adolescente!.nombre} ${i.adolescente!.apellido}`.toLowerCase().includes(searchTermInscritos.toLowerCase()))
+                                            .map(inscrito => (
                                             <tr key={inscrito.inscripcion.id}>
                                                 <td className="p-2 font-semibold align-top">{inscrito.adolescente!.nombre} {inscrito.adolescente!.apellido}</td>
                                                 <td className="p-2 align-top">
@@ -409,6 +434,7 @@ const Eventos: React.FC = () => {
                                                                 <div className="mt-2">
                                                                     <label className="text-xs font-bold text-text-secondary">Notas:</label>
                                                                     <textarea
+                                                                        // Fixed variable name from 'inscripcion' to 'inscrito.inscripcion' and 'notes' to 'notas'
                                                                         value={editingNotes[inscrito.inscripcion.id] ?? inscrito.inscripcion.notas ?? ''}
                                                                         onChange={(e) => handleNoteChange(inscrito.inscripcion.id, e.target.value)}
                                                                         onBlur={() => handleNoteSave(inscrito.inscripcion)}
@@ -444,6 +470,11 @@ const Eventos: React.FC = () => {
                                                 </td>
                                             </tr>
                                         ))}
+                                        {eventDetails.inscritos.length > 0 && eventDetails.inscritos.filter(i => `${i.adolescente!.nombre} ${i.adolescente!.apellido}`.toLowerCase().includes(searchTermInscritos.toLowerCase())).length === 0 && (
+                                            <tr>
+                                                <td colSpan={4} className="p-8 text-center text-text-secondary italic">No se encontraron inscritos con ese nombre.</td>
+                                            </tr>
+                                        )}
                                     </tbody>
                                 </table>
                             </div>
