@@ -7,7 +7,8 @@ WORKDIR /app
 COPY package*.json ./
 
 # Instalamos dependencias
-RUN npm install
+# RUN npm install
+RUN npm install && npm install -D terser
 
 # Copiamos el resto del código
 COPY . .
@@ -31,3 +32,4 @@ ENV PORT=8080
 
 # Iniciamos el servidor
 CMD ["serve", "-s", "dist", "-l", "8080"]
+
