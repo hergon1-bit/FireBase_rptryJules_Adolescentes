@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useData } from '../contexts/DataContext';
-import { Asistencia, AsistenciaDetalle, TipoAsistencia, Page } from '../types';
+import { type Asistencia, AsistenciaDetalle, TipoAsistencia, Page } from '../types';
 import { formatDate } from '../utils/helpers';
 import { RefreshIcon, CheckCircleIcon } from '../components/ui/Icons';
 import { api } from '../services/api';
