@@ -88,9 +88,13 @@ export const api = {
   },
 
   countUsuarios: async (): Promise<number> => {
-    const { count, error } = await supabase.from('usuarios').select('*', { count: 'exact', head: true });
-    if (error) return 0;
-    return count || 0;
+    try {
+      const { count, error } = await supabase.from('usuarios').select('*', { count: 'exact', head: true });
+      if (error) return 0;
+      return count || 0;
+    } catch (e) {
+      return 0;
+    }
   },
 
   ensureDefaultRoles: async (): Promise<void> => {
@@ -180,7 +184,7 @@ export const api = {
             nombre: a.nombre,
             apellido: a.apellido,
             cedula: a.cedula,
-            registro: a.registro || '', // Mapeo del nuevo campo
+            registro: a.registro || '',
             fechaNacimiento: a.fecha_nacimiento,
             barrio: a.barrio,
             ciudad: a.ciudad,
@@ -484,7 +488,7 @@ export const api = {
         nombre: adolescente.nombre,
         apellido: adolescente.apellido,
         cedula: adolescente.cedula,
-        registro: adolescente.registro, // Nuevo campo
+        registro: adolescente.registro,
         fecha_nacimiento: adolescente.fechaNacimiento,
         barrio: adolescente.barrio,
         ciudad: adolescente.ciudad,
@@ -499,7 +503,7 @@ export const api = {
         nombre: result.nombre,
         apellido: result.apellido,
         cedula: result.cedula,
-        registro: result.registro, // Nuevo campo
+        registro: result.registro,
         fechaNacimiento: result.fecha_nacimiento,
         barrio: result.barrio,
         ciudad: result.ciudad,
@@ -514,7 +518,7 @@ export const api = {
         nombre: adolescente.nombre,
         apellido: adolescente.apellido,
         cedula: adolescente.cedula,
-        registro: adolescente.registro, // Nuevo campo
+        registro: adolescente.registro,
         fecha_nacimiento: adolescente.fechaNacimiento,
         barrio: adolescente.barrio,
         ciudad: adolescente.ciudad,
@@ -529,7 +533,7 @@ export const api = {
         nombre: result.nombre,
         apellido: result.apellido,
         cedula: result.cedula,
-        registro: result.registro, // Nuevo campo
+        registro: result.registro,
         fechaNacimiento: result.fecha_nacimiento,
         barrio: result.barrio,
         ciudad: result.ciudad,
@@ -549,7 +553,7 @@ export const api = {
         nombre: a.nombre,
         apellido: a.apellido,
         cedula: a.cedula,
-        registro: a.registro, // Nuevo campo
+        registro: a.registro,
         fecha_nacimiento: a.fechaNacimiento,
         barrio: a.barrio,
         ciudad: a.ciudad,
@@ -609,7 +613,6 @@ export const api = {
         barrio: result.barrio,
         ciudad: result.ciudad,
         telefono: result.telefono,
-        /* Fix: Corrected e.email to result.email as 'e' was undefined in this scope */
         email: result.email
     };
   },
@@ -705,7 +708,7 @@ export const api = {
         nombre: tutor.nombre, 
         apellido: tutor.apellido, 
         cedula: tutor.cedula, 
-        telefono: tutor.telefono, // Included
+        telefono: tutor.telefono, 
         parentesco: tutor.parentesco, 
         barrio: tutor.barrio, 
         ciudad: tutor.ciudad 
@@ -720,7 +723,7 @@ export const api = {
         nombre: tutor.nombre, 
         apellido: tutor.apellido, 
         cedula: tutor.cedula, 
-        telefono: tutor.telefono, // Included
+        telefono: tutor.telefono, 
         parentesco: tutor.parentesco, 
         barrio: tutor.barrio, 
         ciudad: tutor.ciudad 
@@ -731,12 +734,9 @@ export const api = {
   },
 
   deleteTutor: async (id: number): Promise<void> => {
-    // Primero eliminamos los vínculos en tutor_adolescente para mantener la integridad referencial
-    // si no existe ON DELETE CASCADE en la base de datos.
     const { error: linkError } = await supabase.from('tutor_adolescente').delete().eq('tutor_id', id);
     if (linkError) throw new Error(linkError.message);
 
-    // Luego eliminamos el tutor
     const { error } = await supabase.from('tutores').delete().eq('id', id);
     if (error) throw new Error(error.message);
   },
@@ -754,7 +754,7 @@ export const api = {
         nombre: t.nombre, 
         apellido: t.apellido, 
         cedula: t.cedula, 
-        telefono: t.telefono, // Included
+        telefono: t.telefono, 
         parentesco: t.parentesco, 
         barrio: t.barrio, 
         ciudad: t.ciudad 
@@ -780,10 +780,6 @@ export const api = {
   createUsuario: async (usuario: Omit<Usuario, 'id' | 'password'> & { id?: string, password?: string }): Promise<Usuario> => {
     if (!usuario.password) throw new Error("Se requiere una contraseña.");
     
-    // Configurar cliente temporal SIN persistencia.
-    // Esto es crucial si la confirmación de email está desactivada (Opción 1),
-    // ya que signUp() loguea automáticamente al nuevo usuario, y no queremos
-    // que sobrescriba la sesión del administrador en LocalStorage.
     const tempSupabase = createClient(supabaseUrl, supabaseKey, {
         auth: {
             persistSession: false,
@@ -814,24 +810,14 @@ export const api = {
   },
 
   deleteUsuario: async (id: string): Promise<void> => {
-    // Intento 1: Usar RPC (Function de Base de Datos) - La forma correcta de borrar de Auth
     const { error: rpcError } = await supabase.rpc('delete_user', { user_id: id });
     
-    // Si no hubo error, terminó exitosamente.
     if (!rpcError) return; 
 
-    // Si falló, verificamos si es porque la función no existe.
     if (rpcError.code === '42883' || rpcError.message.includes('function') || rpcError.message.includes('does not exist')) {
-         console.warn("Función 'delete_user' no encontrada. Borrando solo perfil público.");
-         // Fallback: Borrar solo de la tabla 'usuarios'
          const { error: dbError } = await supabase.from('usuarios').delete().eq('id', id);
          if (dbError) throw new Error(dbError.message);
-         
-         // IMPORTANTE: No lanzamos error aquí. Solo logueamos advertencia.
-         // Esto permite que el flujo continúe en el UI (se cierra el modal y se actualiza la lista).
-         console.warn("AVISO: Perfil eliminado, pero el usuario sigue en Auth porque falta la función RPC.");
     } else {
-        // Otro error real del RPC (ej. permisos), este sí lo lanzamos.
         throw new Error(rpcError.message);
     }
   },
@@ -858,15 +844,14 @@ export const api = {
   createEvento: async (evento: Omit<Evento, 'id'>): Promise<Evento> => {
     const dbPayload = { tema: evento.tema, lugar: evento.lugar, fecha_inicio: evento.fechaInicio, hora_inicio: evento.horaInicio, fecha_fin: evento.fechaFin, hora_fin: evento.horaFin, tiene_costo: evento.tieneCosto, costo_total: evento.costoTotal || null, costo_persona: evento.costoPersona || null };
     const { data, error } = await supabase.from('eventos').insert(dbPayload).select().single();
-    const result = handleSupabaseData(data, error, 'createEvento') as any; // Cast to any to avoid property access errors
+    const result = handleSupabaseData(data, error, 'createEvento') as any; 
     return { id: result.id, tema: result.tema, lugar: result.lugar, fechaInicio: result.fecha_inicio, horaInicio: result.hora_inicio, fechaFin: result.fecha_fin, horaFin: result.hora_fin, tieneCosto: result.tiene_costo, costoTotal: result.costo_total, costoPersona: result.costo_persona };
   },
 
   updateEvento: async (evento: Evento): Promise<Evento> => {
     const dbPayload = { tema: evento.tema, lugar: evento.lugar, fecha_inicio: evento.fechaInicio, hora_inicio: evento.horaInicio, fecha_fin: evento.fechaFin, hora_fin: evento.horaFin, tiene_costo: evento.tieneCosto, costo_total: evento.costoTotal || null, costo_persona: evento.costoPersona || null };
-    /* Fix: Corrected syntax error by replacing '=' with '}' in destructuring assignment */
     const { data, error } = await supabase.from('eventos').update(dbPayload).eq('id', evento.id).select().single();
-    const result = handleSupabaseData(data, error, 'updateEvento') as any; // Cast to any to avoid property access errors
+    const result = handleSupabaseData(data, error, 'updateEvento') as any; 
     return { id: result.id, tema: result.tema, lugar: result.lugar, fechaInicio: result.fecha_inicio, horaInicio: result.hora_inicio, fechaFin: result.fecha_fin, horaFin: result.hora_fin, tieneCosto: result.tiene_costo, costoTotal: result.costo_total, costoPersona: result.costo_persona };
   },
 
@@ -876,7 +861,6 @@ export const api = {
 
   createPago: async (pago: Omit<PagoEvento, 'id'>): Promise<PagoEvento> => {
     const dbPayload = { inscripcion_id: pago.inscripcionId, monto: pago.monto, fecha: pago.fecha };
-    /* Fix: Corrected syntax error by replacing '=' with '}' in destructuring assignment */
     const { data, error } = await supabase.from('pagos_eventos').insert(dbPayload).select().single();
     const result = handleSupabaseData(data, error, 'createPago');
     return { id: result.id, inscripcionId: result.inscripcion_id, fecha: result.fecha, monto: result.monto };
@@ -888,7 +872,6 @@ export const api = {
 
   createInscripcion: async (inscripcion: Omit<InscripcionEvento, 'id'>): Promise<InscripcionEvento> => {
     const dbPayload = { evento_id: inscripcion.eventoId, adolescente_id: inscripcion.adolescenteId, fecha_inscripcion: inscripcion.fechaInscripcion, notas: inscripcion.notas };
-    /* Fix: Corrected syntax error by replacing '=' with '}' in destructuring assignment */
     const { data, error } = await supabase.from('inscripciones_eventos').insert(dbPayload).select().single();
     const result = handleSupabaseData(data, error, 'createInscripcion');
     return { id: result.id, eventoId: result.evento_id, adolescenteId: result.adolescenteId, fechaInscripcion: result.fecha_inscripcion, notas: result.notas };
@@ -896,7 +879,6 @@ export const api = {
 
   updateInscripcion: async (inscripcion: InscripcionEvento): Promise<InscripcionEvento> => {
     const dbPayload = { evento_id: inscripcion.eventoId, adolescente_id: inscripcion.adolescenteId, fecha_inscripcion: inscripcion.fechaInscripcion, notas: inscripcion.notas };
-    /* Fix: Corrected syntax error by replacing '=' with '}' in destructuring assignment */
     const { data, error } = await supabase.from('inscripciones_eventos').update(dbPayload).eq('id', inscripcion.id).select().single();
     const result = handleSupabaseData(data, error, 'updateInscripcion');
     return { id: result.id, eventoId: result.evento_id, adolescenteId: result.adolescenteId, fechaInscripcion: result.fecha_inscripcion, notas: result.notas };
@@ -907,7 +889,6 @@ export const api = {
   },
 
   addParticipante: async (p: ParticipanteEvento): Promise<ParticipanteEvento> => {
-    /* Fix: Corrected syntax error by replacing '=' with '}' in destructuring assignment */
     const { data, error } = await supabase.from('participantes_eventos').insert({ evento_id: p.eventoId, adolescente_id: p.adolescenteId }).select().single();
     const r = handleSupabaseData(data, error, 'addParticipante');
     return { eventoId: r.evento_id, adolescenteId: r.adolescente_id };
@@ -918,7 +899,6 @@ export const api = {
   },
   
   addCumpleanosCelebrado: async (c: CelebracionCumpleanos): Promise<CelebracionCumpleanos> => {
-    /* Fix: Corrected syntax error by replacing '=' with '}' in destructuring assignment */
     const { data, error } = await supabase.from('celebraciones_cumpleanos').upsert({ adolescente_id: c.adolescenteId, ano: c.ano }, { onConflict: 'adolescente_id,ano' }).select().single();
     const r = handleSupabaseData(data, error, 'addCumpleanosCelebrado');
     return { adolescenteId: r.adolescente_id, ano: r.ano };

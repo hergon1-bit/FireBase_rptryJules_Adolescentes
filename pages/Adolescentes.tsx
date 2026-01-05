@@ -78,9 +78,9 @@ const Adolescentes: React.FC = () => {
             telefono: values.telefono.trim(),
         };
 
-        // Validación de registro (9 dígitos)
-        if (cleanValues.registro && !/^\d{9}$/.test(cleanValues.registro)) {
-            alert('Error: El Registro de Salud debe ser un número de exactamente 9 dígitos.');
+        // Validación de registro (7 dígitos - Actualizado por requerimiento)
+        if (cleanValues.registro && !/^\d{7}$/.test(cleanValues.registro)) {
+            alert('Error: El Registro de Salud debe ser un número de exactamente 7 dígitos.');
             return;
         }
 
@@ -274,12 +274,12 @@ const Adolescentes: React.FC = () => {
                         <InputField label="Apellido" name="apellido" value={values.apellido} onChange={handleInputChange} required />
                         <InputField label="Cédula" name="cedula" value={values.cedula} onChange={handleInputChange} required />
                         <InputField 
-                            label="Registro de Salud (9 dígitos)" 
+                            label="Registro de Salud (7 dígitos)" 
                             name="registro" 
                             value={values.registro} 
                             onChange={handleInputChange} 
-                            maxLength={9} 
-                            placeholder="Ej: 123456789"
+                            maxLength={7} 
+                            placeholder="Ej: 1234567"
                         />
                         <InputField label="Fecha de Nacimiento" name="fechaNacimiento" type="date" value={values.fechaNacimiento} onChange={handleInputChange} required />
                         <InputField label="Barrio" name="barrio" value={values.barrio} onChange={handleInputChange} required />

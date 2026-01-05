@@ -101,12 +101,13 @@ export const AuthProvider: React.FC<{children: React.ReactNode}> = ({ children }
         console.error("Supabase Login Error:", error);
         let msg = error.message;
 
-        if (msg.includes('Invalid login credentials') || msg.includes('invalid_grant')) {
+        // Mapeo de errores para el usuario
+        if (msg === 'Failed to fetch' || msg.includes('fetch failed') || msg.includes('NetworkError')) {
+          msg = 'Error de conexión: No se pudo contactar con el servidor. Verifica tu internet o si el proyecto de Supabase está activo.';
+        } else if (msg.includes('Invalid login credentials') || msg.includes('invalid_grant')) {
           msg = 'Credenciales inválidas. Verifica tu correo y contraseña.';
         } else if (msg.includes('Email not confirmed')) {
           msg = 'El correo electrónico aún no ha sido confirmado. Revisa tu bandeja de entrada.';
-        } else if (msg.includes('Network request failed') || msg.includes('fetch failed')) {
-            msg = 'Error de conexión. Por favor verifica tu internet.';
         } else if (msg.includes('Too many requests')) {
             msg = 'Demasiados intentos fallidos. Por favor espera unos minutos.';
         }
@@ -128,17 +129,12 @@ export const AuthProvider: React.FC<{children: React.ReactNode}> = ({ children }
 
   const logout = async () => {
     try {
-      // Priorizamos la experiencia de usuario limpiando el estado local inmediatamente
-      // Esto hace que App.tsx detecte que !user y muestre LoginPage sin esperar al servidor
       setUser(null);
       setRol(null);
       setLoading(false);
-      
-      // Intentamos cerrar la sesión en el servidor pero no bloqueamos la UI con await largo
       await supabase.auth.signOut();
     } catch (error) {
       console.error("Error signing out:", error);
-      // Forzamos estados por si acaso
       setUser(null);
       setRol(null);
       setLoading(false);
