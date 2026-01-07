@@ -11,7 +11,11 @@ RUN npm install && npm install -D terser
 
 # Copiamos el resto del código
 COPY . .
-
+# Definimos las variables para que Vite las vea durante el build
+# Reemplaza los valores "TU_URL..." con los datos reales de tu Supabase
+ENV VITE_SUPABASE_URL="https://kjzafzuhpfvtyxlgssto.supabase.co"
+ENV VITE_SUPABASE_ANON_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtqemFmenVocGZ2dHl4bGdzc3RvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQ3MjE2MDQsImV4cCI6MjA4MDI5NzYwNH0.lnLS8KNU23f_Y28d0Hz3mvaBhe2w6ScJlRPkJCsvhVI"
+# ---------------------------------
 # Compilamos la aplicación (crea la carpeta dist)
 RUN npm run build
 
