@@ -10,6 +10,27 @@ import {
 // Helper para normalizar la estructura de permisos de un rol (evita errores si faltan claves nuevas)
 const normalizeRol = (rol: any): Rol => {
   const defaultPerms = { read: false, create: false, update: false, delete: false };
+  // Safety check if rol is null/undefined
+  if (!rol) {
+      return {
+          id: 0,
+          nombre: 'Rol Inválido',
+          permisos: {
+            adolescentes: { ...defaultPerms },
+            encargados: { ...defaultPerms },
+            reuniones: { ...defaultPerms },
+            tutores: { ...defaultPerms },
+            eventos: { ...defaultPerms },
+            usuarios: { ...defaultPerms },
+            devocionales: { ...defaultPerms },
+            entregas: { ...defaultPerms },
+            inscripciones: { ...defaultPerms },
+            pagos: { ...defaultPerms },
+            participantes: { ...defaultPerms },
+          }
+      };
+  }
+
   return {
     ...rol,
     permisos: {
@@ -73,7 +94,7 @@ export const api = {
   // --- Autenticación y Perfil de Usuario ---
   getUsuarioById: async (id: string): Promise<Usuario | null> => {
     const { data, error } = await supabase.from('usuarios').select('*').eq('id', id).single();
-    if (error) return null;
+    if (error || !data) return null;
     return {
         ...data,
         rolId: data.rol_id,
@@ -83,17 +104,21 @@ export const api = {
   
   getRolById: async (id: number): Promise<Rol | null> => {
     const { data, error } = await supabase.from('roles').select('*').eq('id', id).single();
-    if (error) return null;
+    if (error || !data) return null;
     return normalizeRol(data);
   },
 
   countUsuarios: async (): Promise<number> => {
     try {
       const { count, error } = await supabase.from('usuarios').select('*', { count: 'exact', head: true });
-      if (error) return 0;
-      return count || 0;
+      if (error) {
+          console.warn("Error counting users (likely RLS or network):", error.message);
+          return -1; // Indicate error/unknown to avoid false positive "0 users"
+      }
+      return count ?? 0;
     } catch (e) {
-      return 0;
+      console.error("Exception counting users:", e);
+      return -1;
     }
   },
 

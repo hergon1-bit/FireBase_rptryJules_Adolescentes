@@ -38,7 +38,13 @@ const LoginPage: React.FC = () => {
             const count = await api.countUsuarios();
             if (mounted) {
                 clearTimeout(timer);
-                setIsFirstRun(count === 0);
+                if (count === -1) {
+                    // Error checking users (e.g. RLS or network). Assume system is initialized to allow login attempt.
+                    console.warn("Could not verify users count (likely due to RLS). Defaulting to Login screen.");
+                    setIsFirstRun(false);
+                } else {
+                    setIsFirstRun(count === 0);
+                }
             }
         } catch (e) {
             console.error("Error checking users", e);
