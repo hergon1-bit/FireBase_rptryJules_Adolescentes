@@ -66,16 +66,16 @@ const Adolescentes: React.FC = () => {
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
 
-        // Limpieza y Validación
+        // Limpieza y Validación Segura
         const cleanValues = {
             ...values,
-            nombre: values.nombre.trim(),
-            apellido: values.apellido.trim(),
-            cedula: values.cedula.trim(),
-            registro: values.registro.trim(),
-            barrio: values.barrio.trim(),
-            ciudad: values.ciudad.trim(),
-            telefono: values.telefono.trim(),
+            nombre: (values.nombre || '').trim(),
+            apellido: (values.apellido || '').trim(),
+            cedula: (values.cedula || '').trim(),
+            registro: (values.registro || '').trim(),
+            barrio: (values.barrio || '').trim(),
+            ciudad: (values.ciudad || '').trim(),
+            telefono: (values.telefono || '').trim(),
         };
 
         // Validación de registro (7 dígitos - Actualizado por requerimiento)
@@ -270,26 +270,26 @@ const Adolescentes: React.FC = () => {
             <Modal isOpen={isModalOpen} onClose={closeModal} title={editingAdolescente ? "Editar Adolescente" : "Agregar Adolescente"}>
                 <form onSubmit={handleSubmit} className="space-y-4">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <InputField label="Nombre" name="nombre" value={values.nombre} onChange={handleInputChange} required />
-                        <InputField label="Apellido" name="apellido" value={values.apellido} onChange={handleInputChange} required />
-                        <InputField label="Cédula" name="cedula" value={values.cedula} onChange={handleInputChange} required />
+                        <InputField label="Nombre" name="nombre" value={values.nombre || ''} onChange={handleInputChange} required />
+                        <InputField label="Apellido" name="apellido" value={values.apellido || ''} onChange={handleInputChange} required />
+                        <InputField label="Cédula" name="cedula" value={values.cedula || ''} onChange={handleInputChange} required />
                         <InputField 
                             label="Registro de Salud (7 dígitos)" 
                             name="registro" 
-                            value={values.registro} 
+                            value={values.registro || ''} 
                             onChange={handleInputChange} 
                             maxLength={7} 
                             placeholder="Ej: 1234567"
                         />
-                        <InputField label="Fecha de Nacimiento" name="fechaNacimiento" type="date" value={values.fechaNacimiento} onChange={handleInputChange} required />
-                        <InputField label="Barrio" name="barrio" value={values.barrio} onChange={handleInputChange} required />
-                        <InputField label="Ciudad" name="ciudad" value={values.ciudad} onChange={handleInputChange} required />
-                        <InputField label="Teléfono" name="telefono" value={values.telefono} onChange={handleInputChange} required />
-                        <SelectField label="Sexo" name="sexo" value={values.sexo} onChange={handleInputChange}>
+                        <InputField label="Fecha de Nacimiento" name="fechaNacimiento" type="date" value={values.fechaNacimiento || ''} onChange={handleInputChange} required />
+                        <InputField label="Barrio" name="barrio" value={values.barrio || ''} onChange={handleInputChange} required />
+                        <InputField label="Ciudad" name="ciudad" value={values.ciudad || ''} onChange={handleInputChange} required />
+                        <InputField label="Teléfono" name="telefono" value={values.telefono || ''} onChange={handleInputChange} required />
+                        <SelectField label="Sexo" name="sexo" value={values.sexo || 'Masculino'} onChange={handleInputChange}>
                             <option value="Masculino">Masculino</option>
                             <option value="Femenino">Femenino</option>
                         </SelectField>
-                        <SelectField label="Estado" name="estado" value={values.estado} onChange={handleInputChange}>
+                        <SelectField label="Estado" name="estado" value={values.estado || 'Activo'} onChange={handleInputChange}>
                             <option value="Activo">Activo</option>
                             <option value="Inactivo">Inactivo</option>
                             <option value="Anulado">Anulado</option>
