@@ -6,18 +6,18 @@ WORKDIR /app
 # 1. Copiamos los archivos de configuración
 COPY package*.json ./
 
-# 2. Instalamos dependencias
+# 2. Instalamos dependencias y terser (necesario para Vite)
 RUN npm install && npm install -D terser
 
 # 3. Copiamos todo el código fuente
 COPY . .
 
 # --- SECCIÓN BLINDADA: INYECCIÓN DE VARIABLES ---
-# Usamos ARG para que las variables existan DURANTE la construcción
+# Usamos ARG para asegurar que las claves existan DURANTE la construcción
 ARG VITE_SUPABASE_URL="https://kjzafzuhpfvtyxlgssto.supabase.co"
 ARG VITE_SUPABASE_ANON_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtqemFmenVocGZ2dHl4bGdzc3RvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQ3MjE2MDQsImV4cCI6MjA4MDI5NzYwNH0.lnLS8KNU23f_Y28d0Hz3mvaBhe2w6ScJlRPkJCsvhVI"
 
-# Pasamos los argumentos a variables de entorno
+# Pasamos los argumentos a variables de entorno reales
 ENV VITE_SUPABASE_URL=$VITE_SUPABASE_URL
 ENV VITE_SUPABASE_ANON_KEY=$VITE_SUPABASE_ANON_KEY
 # ------------------------------------------------
