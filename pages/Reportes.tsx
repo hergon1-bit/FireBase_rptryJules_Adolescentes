@@ -3,7 +3,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { useData } from '../contexts/DataContext';
 import { formatDate, formatCurrency } from '../utils/helpers';
 import { Adolescente, AsistenciaDetalle } from '../types';
-import { RefreshIcon, PrinterIcon, BookOpenIcon, CalendarDaysIcon } from '../components/ui/Icons';
+import { RefreshIcon, PrinterIcon, BookOpenIcon, CalendarDaysIcon, DownloadCloudIcon } from '../components/ui/Icons';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
@@ -175,6 +175,43 @@ const Reportes: React.FC = () => {
                 return [];
         }
     }, [activeReport, adolescentes, reuniones, asistencias, encargados, tutores, tutoresAdolescentes, eventos, inscripciones, pagos, devocionales, entregasDevocionales, selectedReunionId, selectedEventoId, dateRange]);
+
+    const generarExcelBalanceEvento = () => {
+        if (!selectedEventoId) return;
+        const evento = eventos.find(e => e.id === selectedEventoId);
+        if (!evento) return;
+
+        const data = reportData as any[];
+        
+        // Crear contenido CSV similar al formato del PDF
+        const csvRows = [
+            ['Balances y Deudas de Inscriptos'],
+            [`Evento:;${evento.tema}`],
+            [`Fecha:;${formatDate(evento.fechaInicio)} - ${formatDate(evento.fechaFin)}`],
+            [`Costo por Persona:;${evento.tieneCosto ? formatCurrency(evento.costoPersona || 0) : 'Gratis'}`],
+            [`Total Inscriptos:;${data.length}`],
+            [`Impreso el:;${new Date().toLocaleString()}`],
+            [''], // Espaciador
+            ['Evento', 'Adolescente', 'Reg. Salud', 'Monto Pagado', 'Saldo Pendiente']
+        ];
+
+        data.forEach(row => {
+            csvRows.push([
+                row.eventoNombre,
+                row.adolescenteNombre,
+                row.adolescenteRegistro,
+                formatCurrency(row.pagado).replace(/\./g, ''), // Limpiar formato para Excel si es necesario o dejar como string
+                formatCurrency(row.saldo).replace(/\./g, '')
+            ]);
+        });
+
+        const csvContent = csvRows.map(row => row.join(';')).join('\n');
+        const blob = new Blob([`\uFEFF${csvContent}`], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = `Balance_Evento_${evento.tema.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.csv`;
+        link.click();
+    };
 
     const generarPDFBalanceEvento = () => {
         if (!selectedEventoId) return;
@@ -427,13 +464,22 @@ const Reportes: React.FC = () => {
                             </div>
                             
                             {selectedEventoId && (
-                                <button 
-                                    onClick={generarPDFBalanceEvento} 
-                                    className="flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg transition-all shadow-lg font-bold h-fit mb-1 animate-fade-in"
-                                >
-                                    <PrinterIcon className="w-5 h-5" />
-                                    <span>Imprimir Balance</span>
-                                </button>
+                                <div className="flex flex-wrap gap-2 h-fit mb-1 animate-fade-in">
+                                    <button 
+                                        onClick={generarExcelBalanceEvento} 
+                                        className="flex items-center gap-2 bg-secondary hover:bg-emerald-700 text-white px-4 py-2 rounded-lg transition-all shadow-lg font-bold"
+                                    >
+                                        <DownloadCloudIcon className="w-5 h-5" />
+                                        <span>Exportar Excel</span>
+                                    </button>
+                                    <button 
+                                        onClick={generarPDFBalanceEvento} 
+                                        className="flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg transition-all shadow-lg font-bold"
+                                    >
+                                        <PrinterIcon className="w-5 h-5" />
+                                        <span>Imprimir PDF</span>
+                                    </button>
+                                </div>
                             )}
                         </div>
                         <ReportTable headers={['Evento', 'Adolescente', 'Reg. Salud', 'Costo por Persona', 'Monto Pagado', 'Saldo Pendiente']}>
@@ -677,6 +723,7 @@ const Reportes: React.FC = () => {
         </div>
     );
 };
+
 
 const TabButton: React.FC<{name: string, id: ReportType, active: ReportType, setActive: (id: ReportType) => void}> = ({name, id, active, setActive}) => (
     <button onClick={() => setActive(id)} className={`px-4 py-2 rounded-md text-sm font-medium transition ${active === id ? 'bg-primary text-white shadow-lg' : 'bg-background hover:bg-gray-700 text-text-secondary'}`}>
