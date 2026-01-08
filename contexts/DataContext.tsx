@@ -1,6 +1,5 @@
 
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-// Changed Entrega to EntregaDevocional to match types.ts
 import { 
   Adolescente, Encargado, Devocional, EntregaDevocional, Reunion, 
   Asistencia, Tutor, Evento, Usuario, Rol, TutorAdolescente,
@@ -103,57 +102,106 @@ export const DataProvider: React.FC<{children: React.ReactNode}> = ({ children }
   const [celebraciones, setCelebraciones] = useState<CelebracionCumpleanos[]>([]);
 
   const fetchData = useCallback(async () => {
+    // Cargamos Adolescentes primero para asegurar que la lista principal aparezca rápido
     try {
-      const [
-        ados, encs, reus, devs, ents, asis, tuts, evs, usrs, rls, ta, ins, pgs, parts, cels
-      ] = await Promise.all([
-        api.getAdolescentes(), api.getEncargados(), api.getReuniones(),
-        api.getDevocionales(), api.getEntregasDevocionales(), api.getAsistencias(),
-        api.getTutores(), api.getEventos(), api.getUsuarios(), api.getRoles(),
-        api.getTutorAdolescente(), api.getInscripciones(), api.getPagos(),
-        api.getParticipantes(), api.getCumpleanosCelebrados()
-      ]);
-      setAdolescentes(ados);
-      setEncargados(encs);
-      setReuniones(reus);
-      setDevocionales(devs);
-      setEntregasDevocionales(ents);
-      setAsistencias(asis);
-      setTutores(tuts);
-      setEventos(evs);
-      setUsuarios(usrs);
-      setRoles(rls);
-      setTutoresAdolescentes(ta);
-      setInscripciones(ins);
-      setPagos(pgs);
-      setParticipantes(parts);
-      setCelebraciones(cels);
-    } catch (e) {
-      console.error("Error fetching data", e);
-    }
+        const ados = await api.getAdolescentes();
+        setAdolescentes(ados);
+    } catch (e) { console.error("Error loading adolescents", e); }
+
+    // El resto de las tablas se cargan de forma independiente para no bloquearse entre sí
+    const loaders = [
+        { fn: api.getEncargados, set: setEncargados },
+        { fn: api.getReuniones, set: setReuniones },
+        { fn: api.getDevocionales, set: setDevocionales },
+        { fn: api.getEntregasDevocionales, set: setEntregasDevocionales },
+        { fn: api.getAsistencias, set: setAsistencias },
+        { fn: api.getTutores, set: setTutores },
+        { fn: api.getEventos, set: setEventos },
+        { fn: api.getUsuarios, set: setUsuarios },
+        { fn: api.getRoles, set: setRoles },
+        { fn: api.getTutorAdolescente, set: setTutoresAdolescentes },
+        { fn: api.getInscripciones, set: setInscripciones },
+        { fn: api.getPagos, set: setPagos },
+        { fn: api.getParticipantes, set: setParticipantes },
+        { fn: api.getCumpleanosCelebrados, set: setCelebraciones }
+    ];
+
+    loaders.forEach(async ({ fn, set }) => {
+        try {
+            const data = await fn();
+            set(data as any);
+        } catch (e) {
+            console.warn(`Error loading table in background:`, e);
+        }
+    });
   }, []);
 
   useEffect(() => {
     fetchData();
   }, [fetchData]);
 
-  // CRUD Implementations
-  const addAdolescente = async (a: Omit<Adolescente, 'id'>) => { await api.createAdolescente(a); await fetchData(); };
-  const updateAdolescente = async (a: Adolescente) => { await api.updateAdolescente(a); await fetchData(); };
-  const deleteAdolescente = async (id: number) => { await api.deleteAdolescente(id); await fetchData(); };
-  const addAdolescentesBulk = async (a: Omit<Adolescente, 'id'>[]) => { await api.createAdolescentesBulk(a); await fetchData(); };
+  const addAdolescente = async (a: Omit<Adolescente, 'id'>) => { 
+      const newAdo = await api.createAdolescente(a); 
+      setAdolescentes(prev => [...prev, newAdo].sort((x, y) => x.nombre.localeCompare(y.nombre))); 
+  };
+  
+  const updateAdolescente = async (a: Adolescente) => { 
+      const updatedAdo = await api.updateAdolescente(a); 
+      setAdolescentes(prev => prev.map(item => item.id === a.id ? updatedAdo : item));
+      // Forzamos un refresco tras el update para asegurar que todo el grafo de datos esté sincronizado
+      setTimeout(() => fetchData(), 500);
+  };
+  
+  const deleteAdolescente = async (id: number) => { 
+      await api.deleteAdolescente(id); 
+      setAdolescentes(prev => prev.filter(item => item.id !== id)); 
+  };
+  
+  const addAdolescentesBulk = async (a: Omit<Adolescente, 'id'>[]) => { 
+      await api.createAdolescentesBulk(a); 
+      const freshAdos = await api.getAdolescentes();
+      setAdolescentes(freshAdos);
+  };
 
-  const addEncargado = async (e: Omit<Encargado, 'id'>) => { await api.createEncargado(e); await fetchData(); };
-  const updateEncargado = async (e: Encargado) => { await api.updateEncargado(e); await fetchData(); };
-  const deleteEncargado = async (id: number) => { await api.deleteEncargado(id); await fetchData(); };
+  const addEncargado = async (e: Omit<Encargado, 'id'>) => { 
+      const newEnc = await api.createEncargado(e); 
+      setEncargados(prev => [...prev, newEnc]); 
+  };
+  
+  const updateEncargado = async (e: Encargado) => { 
+      const updatedEnc = await api.updateEncargado(e); 
+      setEncargados(prev => prev.map(item => item.id === e.id ? updatedEnc : item)); 
+  };
+  
+  const deleteEncargado = async (id: number) => { 
+      await api.deleteEncargado(id); 
+      setEncargados(prev => prev.filter(item => item.id !== id)); 
+  };
+  
   const addEncargadosBulk = async (e: Omit<Encargado, 'id'>[]) => { await api.createEncargadosBulk(e); await fetchData(); };
 
-  const addReunion = async (r: Omit<Reunion, 'id'>) => { await api.createReunion(r); await fetchData(); };
-  const updateReunion = async (r: Reunion) => { await api.updateReunion(r); await fetchData(); };
-  const deleteReunion = async (id: number) => { await api.deleteReunion(id); await fetchData(); };
+  const addReunion = async (r: Omit<Reunion, 'id'>) => { 
+      const newReu = await api.createReunion(r); 
+      setReuniones(prev => [newReu, ...prev]); 
+  };
+  
+  const updateReunion = async (r: Reunion) => { 
+      const updatedReu = await api.updateReunion(r); 
+      setReuniones(prev => prev.map(item => item.id === r.id ? updatedReu : item)); 
+  };
+  
+  const deleteReunion = async (id: number) => { 
+      await api.deleteReunion(id); 
+      setReuniones(prev => prev.filter(item => item.id !== id)); 
+  };
+  
   const addReunionesBulk = async (r: any[]) => { await api.createReunionesBulk(r); await fetchData(); };
 
-  const saveAsistencias = async (a: Asistencia[]) => { await api.saveAsistencias(a); await fetchData(); };
+  const saveAsistencias = async (a: Asistencia[]) => { 
+      await api.saveAsistencias(a); 
+      const freshAsis = await api.getAsistencias();
+      setAsistencias(freshAsis);
+  };
 
   const addTutor = async (t: Omit<Tutor, 'id'>, adolescentIds: number[]) => { 
     const nt = await api.createTutor(t); 
@@ -165,30 +213,62 @@ export const DataProvider: React.FC<{children: React.ReactNode}> = ({ children }
     await api.setTutorAdolescenteLinks(t.id, adolescentIds);
     await fetchData(); 
   };
-  const deleteTutor = async (id: number) => { await api.deleteTutor(id); await fetchData(); };
+  const deleteTutor = async (id: number) => { 
+      await api.deleteTutor(id); 
+      setTutores(prev => prev.filter(t => t.id !== id));
+  };
   const addTutoresAndLinkBulk = async (t: any[]) => { await api.createTutoresAndLinkBulk(t); await fetchData(); };
 
-  const addEvento = async (e: Omit<Evento, 'id'>) => { await api.createEvento(e); await fetchData(); };
-  const updateEvento = async (e: Evento) => { await api.updateEvento(e); await fetchData(); };
-  const deleteEvento = async (id: number) => { await api.deleteEvento(id); await fetchData(); };
+  const addEvento = async (e: Omit<Evento, 'id'>) => { 
+      const newEv = await api.createEvento(e); 
+      setEventos(prev => [...prev, newEv]); 
+  };
+  const updateEvento = async (e: Evento) => { 
+      const updatedEv = await api.updateEvento(e); 
+      setEventos(prev => prev.map(item => item.id === e.id ? updatedEv : item)); 
+  };
+  const deleteEvento = async (id: number) => { 
+      await api.deleteEvento(id); 
+      setEventos(prev => prev.filter(e => e.id !== id));
+  };
 
   const addInscripcion = async (eId: number, aId: number) => { 
     await api.createInscripcion({ eventoId: eId, adolescenteId: aId, fechaInscripcion: new Date().toISOString().split('T')[0] }); 
-    await fetchData(); 
+    const freshIns = await api.getInscripciones();
+    setInscripciones(freshIns);
   };
-  const updateInscripcion = async (i: InscripcionEvento) => { await api.updateInscripcion(i); await fetchData(); };
-  const deleteInscripcion = async (id: number) => { await api.deleteInscripcion(id); await fetchData(); };
+  const updateInscripcion = async (i: InscripcionEvento) => { 
+      await api.updateInscripcion(i); 
+      setInscripciones(prev => prev.map(item => item.id === i.id ? i : item));
+  };
+  const deleteInscripcion = async (id: number) => { 
+      await api.deleteInscripcion(id); 
+      setInscripciones(prev => prev.filter(i => i.id !== id));
+  };
 
   const addPago = async (iId: number, m: number) => { 
     await api.createPago({ inscripcionId: iId, monto: m, fecha: new Date().toISOString().split('T')[0] }); 
-    await fetchData(); 
+    const freshPagos = await api.getPagos();
+    setPagos(freshPagos);
   };
-  const deletePago = async (id: number) => { await api.deletePago(id); await fetchData(); };
+  const deletePago = async (id: number) => { 
+      await api.deletePago(id); 
+      setPagos(prev => prev.filter(p => p.id !== id));
+  };
 
-  const addParticipante = async (eId: number, aId: number) => { await api.addParticipante({ eventoId: eId, adolescenteId: aId }); await fetchData(); };
-  const removeParticipante = async (eId: number, aId: number) => { await api.removeParticipante(eId, aId); await fetchData(); };
+  const addParticipante = async (eId: number, aId: number) => { 
+      await api.addParticipante({ eventoId: eId, adolescenteId: aId }); 
+      setParticipantes(prev => [...prev, { eventoId: eId, adolescenteId: aId }]);
+  };
+  const removeParticipante = async (eId: number, aId: number) => { 
+      await api.removeParticipante(eId, aId); 
+      setParticipantes(prev => prev.filter(p => !(p.eventoId === eId && p.adolescenteId === aId)));
+  };
 
-  const addCelebracionCumpleanos = async (aId: number, ano: number) => { await api.addCumpleanosCelebrado({ adolescenteId: aId, ano }); await fetchData(); };
+  const addCelebracionCumpleanos = async (aId: number, ano: number) => { 
+      await api.addCumpleanosCelebrado({ adolescenteId: aId, ano }); 
+      setCelebraciones(prev => [...prev, { adolescenteId: aId, ano }]);
+  };
 
   const addUser = async (u: any) => { await api.createUsuario(u); await fetchData(); };
   const updateUser = async (u: Usuario) => { await api.updateUsuario(u); await fetchData(); };
@@ -199,12 +279,31 @@ export const DataProvider: React.FC<{children: React.ReactNode}> = ({ children }
   const updateRole = async (r: Rol) => { await api.updateRole(r); await fetchData(); };
   const deleteRole = async (id: number) => { const res = await api.deleteRole(id); await fetchData(); return res; };
 
-  const addDevocional = async (d: Omit<Devocional, 'id'>) => { await api.createDevocional(d); await fetchData(); };
-  const updateDevocional = async (d: Devocional) => { await api.updateDevocional(d); await fetchData(); };
-  const deleteDevocional = async (id: number) => { await api.deleteDevocional(id); await fetchData(); };
-  const registrarEntregaBulk = async (e: Omit<EntregaDevocional, 'id'>[]) => { await api.registrarEntregasBulk(e); await fetchData(); };
-  const updateEntrega = async (e: EntregaDevocional) => { await api.updateEntregaDevocional(e); await fetchData(); };
-  const deleteEntrega = async (id: number) => { await api.deleteEntrega(id); await fetchData(); };
+  const addDevocional = async (d: Omit<Devocional, 'id'>) => { 
+      const newDev = await api.createDevocional(d); 
+      setDevocionales(prev => [...prev, newDev]); 
+  };
+  const updateDevocional = async (d: Devocional) => { 
+      const updatedDev = await api.updateDevocional(d); 
+      setDevocionales(prev => prev.map(item => item.id === d.id ? updatedDev : item)); 
+  };
+  const deleteDevocional = async (id: number) => { 
+      await api.deleteDevocional(id); 
+      setDevocionales(prev => prev.filter(d => d.id !== id));
+  };
+  const registrarEntregaBulk = async (e: Omit<EntregaDevocional, 'id'>[]) => { 
+      await api.registrarEntregasBulk(e); 
+      const freshEntregas = await api.getEntregasDevocionales();
+      setEntregasDevocionales(freshEntregas);
+  };
+  const updateEntrega = async (e: EntregaDevocional) => { 
+      await api.updateEntregaDevocional(e); 
+      setEntregasDevocionales(prev => prev.map(item => item.id === e.id ? e : item));
+  };
+  const deleteEntrega = async (id: number) => { 
+      await api.deleteEntrega(id); 
+      setEntregasDevocionales(prev => prev.filter(e => e.id !== id));
+  };
 
   const clearTable = async (table: any) => { await api.clearTable(table); await fetchData(); };
 

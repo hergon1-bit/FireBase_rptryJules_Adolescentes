@@ -3,11 +3,11 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { useData } from '../contexts/DataContext';
 import { formatDate, formatCurrency } from '../utils/helpers';
 import { Adolescente, AsistenciaDetalle } from '../types';
-import { RefreshIcon, PrinterIcon, BookOpenIcon } from '../components/ui/Icons';
+import { RefreshIcon, PrinterIcon, BookOpenIcon, CalendarDaysIcon } from '../components/ui/Icons';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
-type ReportType = 'cumpleanos' | 'asistenciaReunion' | 'resumenAsistencia' | 'ausencias' | 'activos' | 'tutores' | 'pagosEvento' | 'entregasDevocionales';
+type ReportType = 'cumpleanos' | 'asistenciaReunion' | 'resumenAsistencia' | 'ausencias' | 'activos' | 'tutores' | 'pagosEvento' | 'entregasDevocionales' | 'inscriptosEvento';
 
 const Reportes: React.FC = () => {
     const { adolescentes, reuniones, asistencias, encargados, tutores, tutoresAdolescentes, eventos, inscripciones, pagos, devocionales, entregasDevocionales, fetchData } = useData();
@@ -36,6 +36,38 @@ const Reportes: React.FC = () => {
         const currentYear = new Date().getFullYear();
 
         switch (activeReport) {
+            case 'inscriptosEvento':
+                // Filtramos inscripciones por evento seleccionado o mostramos todas
+                const filteredInscripciones = selectedEventoId 
+                    ? inscripciones.filter(i => i.eventoId === Number(selectedEventoId))
+                    : inscripciones;
+
+                return filteredInscripciones.map(i => {
+                    const event = eventos.find(e => e.id === i.eventoId);
+                    const ado = adolescentes.find(a => a.id === i.adolescenteId);
+                    const pagosAdo = pagos.filter(p => p.inscripcionId === i.id);
+                    const montoPagado = pagosAdo.reduce((sum, p) => sum + p.monto, 0);
+                    const costoPersona = event?.costoPersona || 0;
+                    const saldo = costoPersona - montoPagado;
+
+                    return {
+                        id: i.id,
+                        eventoNombre: event?.tema || 'Desconocido',
+                        adolescenteNombre: ado ? `${ado.nombre} ${ado.apellido}` : 'Desconocido',
+                        adolescenteRegistro: ado?.registro || 'N/A', // Usamos registro en lugar de cédula
+                        costo: costoPersona,
+                        pagado: montoPagado,
+                        saldo: saldo > 0 ? saldo : 0,
+                        tieneCosto: event?.tieneCosto || false
+                    };
+                }).sort((a, b) => {
+                    // Orden primario por nombre del evento
+                    const eventCompare = a.eventoNombre.localeCompare(b.eventoNombre);
+                    if (eventCompare !== 0) return eventCompare;
+                    // Orden secundario por nombre del adolescente
+                    return a.adolescenteNombre.localeCompare(b.adolescenteNombre);
+                });
+
             case 'entregasDevocionales':
                 const entregasEsteAno = entregasDevocionales.filter(e => 
                     new Date(e.fechaEntrega).getFullYear() === currentYear
@@ -144,6 +176,74 @@ const Reportes: React.FC = () => {
         }
     }, [activeReport, adolescentes, reuniones, asistencias, encargados, tutores, tutoresAdolescentes, eventos, inscripciones, pagos, devocionales, entregasDevocionales, selectedReunionId, selectedEventoId, dateRange]);
 
+    const generarPDFBalanceEvento = () => {
+        if (!selectedEventoId) return;
+        const evento = eventos.find(e => e.id === selectedEventoId);
+        if (!evento) return;
+
+        const doc = new jsPDF({ orientation: 'landscape', format: 'a4' });
+        const data = reportData as any[];
+        const now = new Date().toLocaleString();
+        
+        const totalPagesExp = '{total_pages_count_string}';
+
+        autoTable(doc, {
+            startY: 58,
+            head: [['Evento', 'Adolescente', 'Reg. Salud', 'Monto Pagado', 'Saldo Pendiente']],
+            body: data.map(row => [
+                row.eventoNombre,
+                row.adolescenteNombre,
+                row.adolescenteRegistro,
+                formatCurrency(row.pagado),
+                formatCurrency(row.saldo)
+            ]),
+            theme: 'grid',
+            headStyles: { fillColor: [79, 70, 229], halign: 'center' },
+            columnStyles: {
+                0: { cellWidth: 60 },
+                1: { cellWidth: 'auto' },
+                2: { cellWidth: 40, halign: 'center' },
+                3: { cellWidth: 45, halign: 'right' },
+                4: { cellWidth: 45, halign: 'right' }
+            },
+            styles: { fontSize: 9 },
+            didDrawPage: (dataArg) => {
+                const pageSize = doc.internal.pageSize;
+                const pageWidth = pageSize.width ? pageSize.width : pageSize.getWidth();
+                
+                doc.setFontSize(8);
+                doc.setFont("helvetica", "normal");
+                doc.setTextColor(100);
+                doc.text(`Impreso el: ${now}`, dataArg.settings.margin.left, 10);
+                
+                const pageNumber = `Página ${doc.internal.getNumberOfPages()} / ${totalPagesExp}`;
+                doc.text(pageNumber, pageWidth - dataArg.settings.margin.right, 10, { align: 'right' });
+
+                doc.setFontSize(18);
+                doc.setTextColor(0);
+                doc.setFont("helvetica", "bold");
+                doc.text("Balances y Deudas de Inscriptos", pageWidth / 2, 20, { align: 'center' });
+
+                doc.setFontSize(11);
+                doc.text(`Evento: ${evento.tema}`, dataArg.settings.margin.left, 30);
+                doc.setFont("helvetica", "normal");
+                doc.text(`Fecha: ${formatDate(evento.fechaInicio)} - ${formatDate(evento.fechaFin)}`, dataArg.settings.margin.left, 37);
+                doc.text(`Costo por Persona: ${evento.tieneCosto ? formatCurrency(evento.costoPersona || 0) : 'Gratis'}`, dataArg.settings.margin.left, 44);
+                doc.text(`Total Inscriptos: ${data.length}`, dataArg.settings.margin.left, 51);
+                
+                doc.setDrawColor(200, 200, 200);
+                doc.line(dataArg.settings.margin.left, 53, pageWidth - dataArg.settings.margin.right, 53);
+            },
+            margin: { top: 58, left: 15, right: 15 }
+        });
+
+        if (typeof (doc as any).putTotalPages === 'function') {
+            (doc as any).putTotalPages(totalPagesExp);
+        }
+
+        doc.save(`Balance_Evento_${evento.tema.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.pdf`);
+    };
+
     const generarPDFAsistencia = () => {
         if (!selectedReunionId) return;
         const reunion = reuniones.find(r => r.id === selectedReunionId);
@@ -154,7 +254,6 @@ const Reportes: React.FC = () => {
         
         const doc = new jsPDF();
         
-        // Configuración de Título y Fecha de Generación
         doc.setFont("helvetica", "bold");
         doc.setFontSize(18);
         doc.text("LISTA DE ASISTENTES", 105, 15, { align: "center" });
@@ -163,13 +262,11 @@ const Reportes: React.FC = () => {
         doc.setFont("helvetica", "normal");
         doc.text(`Generado el: ${new Date().toLocaleString()}`, 200, 15, { align: "right" });
         
-        // Bloque de Información del Encabezado (Información de la Reunión)
         doc.setDrawColor(200, 200, 200);
-        doc.line(15, 20, 195, 20); // Línea superior
+        doc.line(15, 20, 195, 20); 
 
         doc.setFontSize(10);
         
-        // Primera Fila
         doc.setFont("helvetica", "bold");
         doc.text("Nro. Reunión:", 15, 30);
         doc.setFont("helvetica", "normal");
@@ -180,27 +277,23 @@ const Reportes: React.FC = () => {
         doc.setFont("helvetica", "normal");
         doc.text(formatDate(reunion.fecha), 135, 30);
         
-        // Segunda Fila
         doc.setFont("helvetica", "bold");
         doc.text("Tema:", 15, 38);
         doc.setFont("helvetica", "normal");
         doc.text(reunion.tema, 45, 38);
         
-        // Tercera Fila
         doc.setFont("helvetica", "bold");
         doc.text("Encargado:", 15, 46);
         doc.setFont("helvetica", "normal");
         doc.text(encargadoNombre, 45, 46);
         
-        // Cuarta Fila (Resumen de Participación)
         doc.setFont("helvetica", "bold");
         doc.text("Participantes:", 15, 54);
         doc.setFont("helvetica", "normal");
         doc.text(`${data.length} personas presentes`, 45, 54);
 
-        doc.line(15, 60, 195, 60); // Línea inferior
+        doc.line(15, 60, 195, 60); 
 
-        // Generación de la Tabla de Asistentes
         autoTable(doc, {
             startY: 65,
             head: [['Nombre', 'Apellido', 'Cédula', 'Tipo de Asistencia']],
@@ -213,14 +306,13 @@ const Reportes: React.FC = () => {
             theme: 'grid',
             headStyles: { fillColor: [79, 70, 229], halign: 'center' },
             columnStyles: {
-                // Se reducen ligeramente los anchos para asegurar que quepan en la página con márgenes (total 175mm < 180mm disponible)
                 0: { cellWidth: 45 },
                 1: { cellWidth: 45 },
                 2: { cellWidth: 40, halign: 'center' },
                 3: { cellWidth: 45, halign: 'center' }
             },
             styles: { fontSize: 9 },
-            margin: { left: 15, right: 15 } // Se definen márgenes explícitos
+            margin: { left: 15, right: 15 } 
         });
         
         doc.save(`Asistentes_Reunion_${reunion.id}_${reunion.fecha}.pdf`);
@@ -230,24 +322,20 @@ const Reportes: React.FC = () => {
         const doc = new jsPDF({ orientation: 'landscape', format: 'a4' });
         const data = reportData as Adolescente[];
         
-        // Format Date manually to dd/mm/yyyy for Header
         const today = new Date();
         const day = String(today.getDate()).padStart(2, '0');
         const month = String(today.getMonth() + 1).padStart(2, '0');
         const year = today.getFullYear();
         const dateStr = `Fecha: ${day}/${month}/${year}`;
 
-        // Generate Table
         autoTable(doc, {
             startY: 25,
             head: [['Ord', 'Nombres y Apellidos', 'Cédula', 'Ciudad', 'Teléfono', 'Fecha Nac.', 'Participo ____/___/__']],
             body: data.map((a, index) => {
-                // Formatear fecha de nacimiento a dd/mm/aaaa
                 let fechaNacFmt = '';
                 if (a.fechaNacimiento) {
                     const parts = a.fechaNacimiento.split('T')[0].split('-');
                     if (parts.length === 3) {
-                        // asumiendo entrada YYYY-MM-DD
                         fechaNacFmt = `${parts[2]}/${parts[1]}/${parts[0]}`; 
                     } else {
                         fechaNacFmt = a.fechaNacimiento;
@@ -261,11 +349,10 @@ const Reportes: React.FC = () => {
                     a.ciudad,
                     a.telefono,
                     fechaNacFmt,
-                    '' // Casilla vacía para completar manualmente
+                    '' 
                 ];
             }),
             theme: 'grid',
-            // Estilo similar al screenshot (gris claro, texto negro)
             headStyles: { 
                 fillColor: [220, 220, 220], 
                 textColor: 0, 
@@ -277,48 +364,35 @@ const Reportes: React.FC = () => {
             },
             styles: { 
                 fontSize: 9, 
-                cellPadding: 1.5, // Reduced padding to fit more rows
+                cellPadding: 1.5, 
                 lineColor: 150, 
                 lineWidth: 0.1, 
                 overflow: 'linebreak',
                 valign: 'middle'
             },
             columnStyles: {
-                0: { cellWidth: 10, halign: 'center' }, // Ord
-                1: { cellWidth: 'auto' }, // Nombre (auto width to take available space)
-                2: { cellWidth: 25 }, // Cedula
-                3: { cellWidth: 35 }, // Ciudad
-                4: { cellWidth: 30 }, // Telefono
-                5: { cellWidth: 25, halign: 'center' }, // Fecha Nac
-                6: { cellWidth: 40 } // Participo
+                0: { cellWidth: 10, halign: 'center' }, 
+                1: { cellWidth: 'auto' }, 
+                2: { cellWidth: 25 }, 
+                3: { cellWidth: 35 }, 
+                4: { cellWidth: 30 }, 
+                5: { cellWidth: 25, halign: 'center' }, 
+                6: { cellWidth: 40 } 
             },
-            margin: { top: 25, right: 10, bottom: 10, left: 10 }, // Márgenes mínimos
+            margin: { top: 25, right: 10, bottom: 10, left: 10 }, 
             didDrawPage: (data) => {
-                // Header Title on every page
                 doc.setFont("helvetica", "bold");
                 doc.setFontSize(14);
                 doc.text("REUNION NRO. ________", 15, 15);
-            },
-            didParseCell: (data) => {
-                // Si es el encabezado de la columna 'Ord' (índice 0), reducir la fuente
-                if (data.section === 'head' && data.column.index === 0) {
-                    data.cell.styles.fontSize = 8;
-                }
             }
         });
 
-        // Add Page Numbers and Date to all pages
-        const totalPages = doc.getNumberOfPages();
-
+        const totalPages = doc.internal.getNumberOfPages();
         for (let i = 1; i <= totalPages; i++) {
             doc.setPage(i);
-            
-            // Page Number (Smaller font, above date)
             doc.setFont("helvetica", "normal");
             doc.setFontSize(8);
             doc.text(`Página: ${i}/${totalPages}`, 280, 10, { align: 'right' });
-            
-            // Date
             doc.setFontSize(10);
             doc.text(dateStr, 280, 15, { align: 'right' });
         }
@@ -328,6 +402,61 @@ const Reportes: React.FC = () => {
 
     const renderReportContent = () => {
         switch (activeReport) {
+            case 'inscriptosEvento':
+                return (
+                    <div>
+                        <div className="flex flex-col md:flex-row md:items-end gap-6 mb-6 justify-between">
+                            <div className="flex flex-col md:flex-row md:items-end gap-6 flex-1">
+                                <div className="w-full md:w-auto">
+                                    <label className="block text-sm font-medium text-text-secondary mb-1">Filtrar por Evento:</label>
+                                    <select 
+                                        value={selectedEventoId || ''} 
+                                        onChange={(e) => setSelectedEventoId(e.target.value ? Number(e.target.value) : null)} 
+                                        className="bg-background border border-border p-2 rounded-md w-full md:w-96"
+                                    >
+                                        <option value="">-- Todos los Eventos --</option>
+                                        {eventos.map(e => <option key={e.id} value={e.id}>{e.tema} ({formatDate(e.fechaInicio)})</option>)}
+                                    </select>
+                                </div>
+                                {selectedEventoId && (
+                                    <div className="bg-background/40 px-4 py-2 rounded-lg border border-border flex flex-col justify-center animate-fade-in">
+                                        <p className="text-[10px] uppercase font-bold text-text-secondary tracking-widest leading-none mb-1">Total Inscriptos</p>
+                                        <p className="text-2xl font-black text-primary leading-none">{(reportData as any[]).length}</p>
+                                    </div>
+                                )}
+                            </div>
+                            
+                            {selectedEventoId && (
+                                <button 
+                                    onClick={generarPDFBalanceEvento} 
+                                    className="flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg transition-all shadow-lg font-bold h-fit mb-1 animate-fade-in"
+                                >
+                                    <PrinterIcon className="w-5 h-5" />
+                                    <span>Imprimir Balance</span>
+                                </button>
+                            )}
+                        </div>
+                        <ReportTable headers={['Evento', 'Adolescente', 'Reg. Salud', 'Costo por Persona', 'Monto Pagado', 'Saldo Pendiente']}>
+                            {(reportData as any[]).map((row) => (
+                                <tr key={row.id} className="hover:bg-background/40 transition-colors">
+                                    <td className="p-3 text-xs md:text-sm">{row.eventoNombre}</td>
+                                    <td className="p-3 font-medium text-text-primary">{row.adolescenteNombre}</td>
+                                    <td className="p-3 text-xs font-mono">{row.adolescenteRegistro}</td>
+                                    <td className="p-3 text-right">{row.tieneCosto ? formatCurrency(row.costo) : <span className="text-green-400 font-bold">Gratis</span>}</td>
+                                    <td className="p-3 text-right text-green-400 font-bold">{formatCurrency(row.pagado)}</td>
+                                    <td className="p-3 text-right">
+                                        <span className={`px-3 py-1 rounded-full font-bold ${row.saldo > 0 ? 'bg-red-500/10 text-red-400' : 'bg-green-500/10 text-green-400'}`}>
+                                            {formatCurrency(row.saldo)}
+                                        </span>
+                                    </td>
+                                </tr>
+                            ))}
+                            {(reportData as any[]).length === 0 && (
+                                <tr><td colSpan={6} className="p-12 text-center text-text-secondary italic">No se encontraron inscripciones registradas.</td></tr>
+                            )}
+                        </ReportTable>
+                    </div>
+                );
             case 'entregasDevocionales':
                 return (
                     <ReportTable headers={['Posición', 'Adolescente', 'Cédula', 'Total Entregas']}>
@@ -524,6 +653,7 @@ const Reportes: React.FC = () => {
             </div>
             
             <div className="flex flex-wrap gap-2">
+                <TabButton name="Balance Eventos" id="inscriptosEvento" active={activeReport} setActive={setActiveReport} />
                 <TabButton name="Entregas Devocionales" id="entregasDevocionales" active={activeReport} setActive={setActiveReport} />
                 <TabButton name="Resumen de Asistencia" id="resumenAsistencia" active={activeReport} setActive={setActiveReport} />
                 <TabButton name="Cumpleaños del Mes" id="cumpleanos" active={activeReport} setActive={setActiveReport} />
@@ -531,14 +661,15 @@ const Reportes: React.FC = () => {
                 <TabButton name="Ausencias por Período" id="ausencias" active={activeReport} setActive={setActiveReport} />
                 <TabButton name="Adolescentes Activos" id="activos" active={activeReport} setActive={setActiveReport} />
                 <TabButton name="Adolescentes y Tutores" id="tutores" active={activeReport} setActive={setActiveReport} />
-                <TabButton name="Pagos de Eventos" id="pagosEvento" active={activeReport} setActive={setActiveReport} />
+                <TabButton name="Historial de Pagos" id="pagosEvento" active={activeReport} setActive={setActiveReport} />
             </div>
 
             <div className="bg-surface p-6 rounded-lg shadow-lg">
                 <div className="mb-6 border-b border-border pb-4 flex items-center justify-between">
                     <h2 className="text-xl font-bold text-text-primary flex items-center gap-2">
+                        {activeReport === 'inscriptosEvento' && <CalendarDaysIcon className="text-primary w-6 h-6" />}
                         {activeReport === 'entregasDevocionales' && <BookOpenIcon className="text-secondary w-6 h-6" />}
-                        {activeReport === 'entregasDevocionales' ? 'Entregas de Devocionales (Año Actual)' : 'Detalle del Reporte'}
+                        {activeReport === 'inscriptosEvento' ? 'Balances y Deudas de Inscriptos' : 'Detalle del Reporte'}
                     </h2>
                 </div>
                 {renderReportContent()}
@@ -558,7 +689,7 @@ const ReportTable: React.FC<{headers: string[], children: React.ReactNode}> = ({
         <table className="w-full text-sm text-left text-text-secondary">
             <thead className="text-xs text-text-primary uppercase bg-background">
                 <tr>
-                    {headers.map(h => <th key={h} scope="col" className={`px-4 py-3 ${h.includes('Total') || h.includes('Posición') || h.includes('%') ? 'text-center' : 'text-left'}`}>{h}</th>)}
+                    {headers.map(h => <th key={h} scope="col" className={`px-4 py-3 ${h.includes('Total') || h.includes('Posición') || h.includes('%') || h.includes('Costo') || h.includes('Pagado') || h.includes('Saldo') ? 'text-right' : 'text-left'}`}>{h}</th>)}
                 </tr>
             </thead>
             <tbody className="divide-y divide-border">
