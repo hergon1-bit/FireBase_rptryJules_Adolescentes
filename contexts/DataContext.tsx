@@ -148,8 +148,8 @@ export const DataProvider: React.FC<{children: React.ReactNode}> = ({ children }
   const updateAdolescente = async (a: Adolescente) => { 
       const updatedAdo = await api.updateAdolescente(a); 
       setAdolescentes(prev => prev.map(item => item.id === a.id ? updatedAdo : item));
-      // Forzamos un refresco tras el update para asegurar que todo el grafo de datos esté sincronizado
-      setTimeout(() => fetchData(), 500);
+      // NOTA: Eliminamos el setTimeout de fetchData aquí para evitar saturar la red justo tras un guardado.
+      // Los datos locales ya se actualizaron arriba con setAdolescentes.
   };
   
   const deleteAdolescente = async (id: number) => { 

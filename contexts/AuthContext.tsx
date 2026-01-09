@@ -1,5 +1,5 @@
 
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { Usuario, Rol, Permisos } from '../types';
 import { supabase } from '../services/supabase';
 import { api } from '../services/api';
@@ -19,19 +19,24 @@ export const AuthProvider: React.FC<{children: React.ReactNode}> = ({ children }
   const [user, setUser] = useState<Usuario | null>(null);
   const [rol, setRol] = useState<Rol | null>(null);
   const [loading, setLoading] = useState(true);
+  
+  // Ref para evitar procesar la misma sesión múltiples veces durante el arranque
+  const processingId = useRef<string | null>(null);
 
   const loadUserProfile = async (userId: string) => {
+    if (processingId.current === userId && user) return true;
+    processingId.current = userId;
+
     try {
       const profile = await api.getUsuarioById(userId);
       if (profile) {
         setUser(profile);
         const roleData = await api.getRolById(profile.rolId);
         setRol(roleData);
-        // No esperamos a que termine updateLastSignIn para no bloquear
-        api.updateLastSignIn(userId).catch(err => console.error("Error updating sign in", err));
+        // Actualizamos última conexión de forma asíncrona
+        api.updateLastSignIn(userId).catch(() => {});
         return true;
       }
-      console.warn("Autenticado en Auth pero sin registro en tabla 'usuarios'.");
       return false;
     } catch (error) {
       console.error("Error cargando perfil:", error);
@@ -40,57 +45,55 @@ export const AuthProvider: React.FC<{children: React.ReactNode}> = ({ children }
   };
 
   useEffect(() => {
-    let mounted = true;
+    let isMounted = true;
 
-    const checkSession = async () => {
-      // Timeout de seguridad: si Supabase tarda más de 4s, liberamos la carga
-      const timeoutId = setTimeout(() => {
-          if (mounted) setLoading(false);
-      }, 4000);
-
+    const initAuth = async () => {
       try {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (session?.user && mounted) {
+        // 1. Verificar si ya hay una sesión guardada en localStorage
+        const { data: { session }, error } = await supabase.auth.getSession();
+        
+        if (error) throw error;
+
+        if (session?.user && isMounted) {
           await loadUserProfile(session.user.id);
         }
-      } catch (error) {
-        console.error("Session check error", error);
+      } catch (err) {
+        console.error("Error inicializando sesión:", err);
       } finally {
-        if (mounted) {
-          setLoading(false);
-          clearTimeout(timeoutId);
-        }
+        if (isMounted) setLoading(false);
       }
     };
 
-    checkSession();
+    initAuth();
 
+    // 2. Escuchar cambios globales de Auth (Login, Logout, Token expired)
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (!mounted) return;
-
-      // Ignorar actualizaciones de token en segundo plano para evitar recargas visuales
-      if (event === 'TOKEN_REFRESHED') {
-        return; 
-      }
+      if (!isMounted) return;
 
       if (session?.user) {
-        if (event === 'SIGNED_IN') {
-             await loadUserProfile(session.user.id);
+        // Solo cargar si el usuario cambió o no tenemos perfil
+        if (processingId.current !== session.user.id) {
+          setLoading(true);
+          await loadUserProfile(session.user.id);
+          setLoading(false);
         }
-      } else if (event === 'SIGNED_OUT') {
+      } else {
+        // No hay sesión activa
         setUser(null);
         setRol(null);
+        processingId.current = null;
         setLoading(false);
       }
     });
 
     return () => {
-      mounted = false;
+      isMounted = false;
       subscription.unsubscribe();
     };
-  }, []);
+  }, []); // Arreglo vacío: Solo se ejecuta UNA VEZ al abrir la app
 
   const login = async (email: string, pass: string) => {
+    setLoading(true);
     try {
       const { data, error } = await supabase.auth.signInWithPassword({
         email,
@@ -98,45 +101,35 @@ export const AuthProvider: React.FC<{children: React.ReactNode}> = ({ children }
       });
 
       if (error) {
-        console.error("Supabase Login Error:", error);
         let msg = error.message;
-
-        // Mapeo de errores para el usuario
-        if (msg === 'Failed to fetch' || msg.includes('fetch failed') || msg.includes('NetworkError')) {
-          msg = 'Error de conexión: No se pudo contactar con el servidor. Verifica tu internet o si el proyecto de Supabase está activo.';
-        } else if (msg.includes('Invalid login credentials') || msg.includes('invalid_grant')) {
-          msg = 'Credenciales inválidas. Verifica tu correo y contraseña.';
-        } else if (msg.includes('Email not confirmed')) {
-          msg = 'El correo electrónico aún no ha sido confirmado. Revisa tu bandeja de entrada.';
-        } else if (msg.includes('Too many requests')) {
-            msg = 'Demasiados intentos fallidos. Por favor espera unos minutos.';
+        if (msg.includes('Invalid login credentials')) {
+          msg = 'Correo o contraseña incorrectos.';
+        } else if (msg.includes('fetch')) {
+          msg = 'Error de conexión con el servidor.';
         }
-
         throw new Error(msg);
       }
 
       if (data.user) {
         const success = await loadUserProfile(data.user.id);
         if (!success) {
-          await supabase.auth.signOut(); 
-          throw new Error('Tu usuario no tiene un perfil asignado en el sistema. Contacta al administrador.');
+          await supabase.auth.signOut();
+          throw new Error('Tu usuario no tiene un perfil configurado en la base de datos.');
         }
       }
-    } catch (error) {
-        throw error;
+    } finally {
+      setLoading(false);
     }
   };
 
   const logout = async () => {
+    setLoading(true);
     try {
-      setUser(null);
-      setRol(null);
-      setLoading(false);
       await supabase.auth.signOut();
-    } catch (error) {
-      console.error("Error signing out:", error);
       setUser(null);
       setRol(null);
+      processingId.current = null;
+    } finally {
       setLoading(false);
     }
   };

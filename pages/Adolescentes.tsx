@@ -1,5 +1,5 @@
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useData } from '../contexts/DataContext';
 import { useAuth } from '../contexts/AuthContext';
 import { Adolescente, Sexo, EstadoAdolescente } from '../types';
@@ -14,6 +14,9 @@ const Adolescentes: React.FC = () => {
     const { hasPermission } = useAuth();
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
+    const [secondsElapsed, setSecondsElapsed] = useState(0);
+    const [retryCount, setRetryCount] = useState(0);
+    const [formError, setFormError] = useState('');
     const [editingAdolescente, setEditingAdolescente] = useState<Adolescente | null>(null);
     const [searchTerm, setSearchTerm] = useState('');
     const [estadoFilter, setEstadoFilter] = useState<'Todos' | EstadoAdolescente>('Todos');
@@ -28,14 +31,33 @@ const Adolescentes: React.FC = () => {
 
     const { values, handleInputChange, setValues, resetForm } = useForm<Omit<Adolescente, 'id'>>(initialFormState);
 
+    // Contador de tiempo para el estado de guardado
+    useEffect(() => {
+        let timer: any;
+        if (isSaving) {
+            timer = setInterval(() => {
+                setSecondsElapsed(prev => {
+                    if (prev > 0 && prev % 7 === 0) setRetryCount(r => r + 1);
+                    return prev + 1;
+                });
+            }, 1000);
+        } else {
+            setSecondsElapsed(0);
+            setRetryCount(0);
+        }
+        return () => clearInterval(timer);
+    }, [isSaving]);
+
     const openModalForCreate = () => {
         setEditingAdolescente(null);
+        setFormError('');
         resetForm();
         setIsModalOpen(true);
     };
 
     const openModalForEdit = (adolescente: Adolescente) => {
         setEditingAdolescente(adolescente);
+        setFormError('');
         const { id, ...rest } = adolescente;
         setValues({
             ...rest,
@@ -52,6 +74,7 @@ const Adolescentes: React.FC = () => {
         setEditingAdolescente(null);
         resetForm();
         setIsSaving(false);
+        setFormError('');
     };
 
     const checkIfChanged = () => {
@@ -83,6 +106,7 @@ const Adolescentes: React.FC = () => {
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (isSaving) return;
+        setFormError('');
 
         if (editingAdolescente && !checkIfChanged()) {
             forceCloseModal();
@@ -109,35 +133,20 @@ const Adolescentes: React.FC = () => {
                 throw new Error("Nombre, Apellido y Cédula son obligatorios.");
             }
 
-            const isCedulaDuplicate = adolescentes.some(a => {
-                if (editingAdolescente) {
-                    return a.cedula === cleanValues.cedula && a.id !== editingAdolescente.id;
-                }
-                return a.cedula === cleanValues.cedula;
-            });
-
-            if (isCedulaDuplicate) {
-                throw new Error('La cédula ingresada ya pertenece a otro registro.');
-            }
-
-            // Implementamos un timeout para evitar que se quede pegado si la red falla
-            const timeoutPromise = new Promise((_, reject) => 
-                setTimeout(() => reject(new Error("La operación tardó demasiado. Verifique su conexión e intente nuevamente.")), 15000)
-            );
-
             const operationPromise = editingAdolescente
                 ? updateAdolescente({ ...cleanValues, id: editingAdolescente.id })
                 : addAdolescente(cleanValues);
 
-            // Esperamos a que la operación termine o el timeout ocurra
-            await Promise.race([operationPromise, timeoutPromise]);
-            
+            await operationPromise;
             forceCloseModal();
         } catch (error: any) {
             console.error("Error al guardar:", error);
-            alert(error.message || "Error al procesar la solicitud.");
-        } finally {
-            setIsSaving(false);
+            let msg = error.message || "Error inesperado.";
+            if (msg.includes('fetch') || msg.includes('Timeout') || msg.includes('no responde')) {
+                msg = "⚠️ FALLO DE CONEXIÓN: El servidor tardó demasiado en responder. Los datos podrían NO haberse guardado. Por favor, verifique su internet e intente de nuevo.";
+            }
+            setFormError(msg);
+            setIsSaving(false); // IMPORTANTE: Liberar el estado de guardado si falla
         }
     };
 
@@ -167,10 +176,7 @@ const Adolescentes: React.FC = () => {
     }, [adolescentes, searchTerm, estadoFilter]);
 
     const handleExportCSV = () => {
-        if (filteredAdolescentes.length === 0) {
-            alert("No hay datos para exportar.");
-            return;
-        }
+        if (filteredAdolescentes.length === 0) return;
         const headers = ["ID", "Nombre", "Apellido", "Cedula", "Reg. Salud", "Edad", "Estado"];
         const csvRows = [
             headers.join(';'),
@@ -191,13 +197,13 @@ const Adolescentes: React.FC = () => {
             <div className="flex justify-between items-center flex-wrap gap-4">
                 <h1 className="text-3xl font-bold text-text-primary">Gestión de Adolescentes</h1>
                 <div className="flex items-center gap-2">
-                    <button onClick={handleExportCSV} className="bg-secondary text-white px-4 py-2 rounded-lg hover:bg-emerald-600 transition flex items-center gap-2 shadow-md">
+                    <button onClick={handleExportCSV} className="bg-secondary text-white px-4 py-2 rounded-lg hover:bg-emerald-600 transition flex items-center gap-2 shadow-md font-bold">
                         <DownloadCloudIcon className="w-5 h-5" />
                         <span>Exportar</span>
                     </button>
                     {hasPermission('adolescentes', 'create') && (
-                        <button onClick={openModalForCreate} className="bg-primary text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition shadow-md">
-                            Agregar Adolescente
+                        <button onClick={openModalForCreate} className="bg-primary text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition shadow-md font-bold">
+                            + Agregar Adolescente
                         </button>
                     )}
                 </div>
@@ -272,6 +278,33 @@ const Adolescentes: React.FC = () => {
 
             <Modal isOpen={isModalOpen} onClose={closeModal} title={editingAdolescente ? "Editar Adolescente" : "Agregar Adolescente"}>
                 <form onSubmit={handleSubmit} className="space-y-4">
+                    {formError && (
+                        <div className="bg-red-900/40 border-l-4 border-red-500 text-red-100 p-4 rounded shadow-lg" role="alert">
+                            <p className="font-bold">Error al guardar:</p>
+                            <p className="text-sm leading-relaxed">{formError}</p>
+                            <button type="button" onClick={() => setFormError('')} className="mt-2 text-[10px] uppercase font-bold underline">Cerrar este aviso</button>
+                        </div>
+                    )}
+                    
+                    {isSaving && (
+                        <div className="bg-blue-600/20 border-l-4 border-blue-500 text-blue-100 p-4 rounded animate-pulse">
+                            <p className="font-bold flex items-center gap-2">
+                                <RefreshIcon className="w-4 h-4 animate-spin" />
+                                Guardando en el servidor...
+                            </p>
+                            <p className="text-xs">Tiempo: {secondsElapsed}s {retryCount > 0 ? `| Reintento nro: ${retryCount}` : ''}</p>
+                            {secondsElapsed > 10 && (
+                                <button 
+                                    type="button" 
+                                    onClick={() => forceCloseModal()} 
+                                    className="mt-2 bg-red-600/40 hover:bg-red-600 text-white px-3 py-1 rounded text-[10px] font-bold uppercase transition-all"
+                                >
+                                    Cancelar y revisar conexión
+                                </button>
+                            )}
+                        </div>
+                    )}
+                    
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <InputField label="Nombre" name="nombre" value={values.nombre || ''} onChange={handleInputChange} required disabled={isSaving} />
                         <InputField label="Apellido" name="apellido" value={values.apellido || ''} onChange={handleInputChange} required disabled={isSaving} />
@@ -292,12 +325,12 @@ const Adolescentes: React.FC = () => {
                         </SelectField>
                     </div>
                     <div className="flex justify-end space-x-3 pt-6 border-t border-border mt-4">
-                        <button type="button" onClick={closeModal} disabled={isSaving} className="bg-gray-600 text-white px-5 py-2 rounded-lg hover:bg-gray-700 disabled:opacity-50 font-medium">Cancelar</button>
-                        <button type="submit" disabled={isSaving} className="bg-primary text-white px-8 py-2 rounded-lg hover:bg-indigo-700 disabled:opacity-50 flex items-center gap-2 font-bold shadow-lg">
+                        <button type="button" onClick={closeModal} disabled={isSaving} className="bg-gray-600 text-white px-5 py-2 rounded-lg hover:bg-gray-700 disabled:opacity-50 font-medium transition-colors">Cancelar</button>
+                        <button type="submit" disabled={isSaving} className={`bg-primary text-white px-8 py-2 rounded-lg hover:bg-indigo-700 disabled:opacity-70 flex items-center gap-2 font-bold shadow-lg transition-all ${isSaving ? 'cursor-wait' : ''}`}>
                             {isSaving ? (
                                 <>
                                     <RefreshIcon className="w-5 h-5 animate-spin" />
-                                    Guardando...
+                                    <span>Enviando...</span>
                                 </>
                             ) : 'Grabar Datos'}
                         </button>
