@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../services/api';
@@ -19,38 +18,39 @@ const LoginPage: React.FC = () => {
 
   // Initial Setup State
   const [isFirstRun, setIsFirstRun] = useState<boolean | null>(null);
+  const [statusText, setStatusText] = useState('Iniciando sistema...');
   const [adminName, setAdminName] = useState('');
 
   useEffect(() => {
     let mounted = true;
     
     const checkUsers = async () => {
-        // Timeout de seguridad: si la comprobación tarda más de 3 segundos,
-        // asumimos que no es la primera ejecución y mostramos el login normal.
-        const timer = setTimeout(() => {
-             if (mounted && isFirstRun === null) {
-                 console.warn("User check timed out, defaulting to login screen");
-                 setIsFirstRun(false);
-             }
-        }, 3000);
+        // Ciclo de mensajes para informar al usuario durante el Cold Start
+        const statusInterval = setInterval(() => {
+            if (!mounted) return;
+            setStatusText(prev => {
+                if (prev === 'Iniciando sistema...') return 'Despertando base de datos...';
+                if (prev === 'Despertando base de datos...') return 'Sincronizando esquemas...';
+                if (prev === 'Sincronizando esquemas...') return 'Estableciendo conexión segura...';
+                return 'Iniciando sistema...';
+            });
+        }, 8000);
 
         try {
             const count = await api.countUsuarios();
             if (mounted) {
-                clearTimeout(timer);
+                clearInterval(statusInterval);
                 if (count === -1) {
-                    // Error checking users (e.g. RLS or network). Assume system is initialized to allow login attempt.
-                    console.warn("Could not verify users count (likely due to RLS). Defaulting to Login screen.");
+                    // Fallback para permitir login si el conteo falla pero hay red
                     setIsFirstRun(false);
                 } else {
                     setIsFirstRun(count === 0);
                 }
             }
         } catch (e) {
-            console.error("Error checking users", e);
             if (mounted) {
-                clearTimeout(timer);
-                setIsFirstRun(false); // Fallback to normal login
+                clearInterval(statusInterval);
+                setIsFirstRun(false); 
             }
         }
     };
@@ -67,10 +67,7 @@ const LoginPage: React.FC = () => {
     try {
       await login(email, password);
     } catch (err: any) {
-      console.error("Error en login:", err);
-      // Aseguramos obtener el mensaje correcto ya sea objeto Error o string
-      const errorMessage = err instanceof Error ? err.message : String(err);
-      setError(errorMessage);
+      setError(err instanceof Error ? err.message : String(err));
     } finally {
       setIsLoading(false);
     }
@@ -82,20 +79,16 @@ const LoginPage: React.FC = () => {
       setIsLoading(true);
 
       try {
-          // 1. Asegurar roles
           await api.ensureDefaultRoles();
-          // 2. Crear admin
           await api.createUsuario({
               nombre: adminName,
               email: email,
               password: password,
               rolId: 1 // Admin
           });
-          // 3. Intentar login
           await login(email, password);
       } catch (err: any) {
-          const errorMessage = err instanceof Error ? err.message : String(err);
-          setError(errorMessage);
+          setError(err instanceof Error ? err.message : String(err));
       } finally {
           setIsLoading(false);
       }
@@ -111,9 +104,7 @@ const LoginPage: React.FC = () => {
           await api.resetPasswordForEmail(recoveryEmail);
           setRecoveryMessage('Si el correo está registrado, recibirás un enlace para restablecer tu contraseña.');
       } catch (err: any) {
-          console.error(err);
-          const errorMessage = err instanceof Error ? err.message : String(err);
-          setError(errorMessage);
+          setError(err instanceof Error ? err.message : String(err));
       } finally {
           setIsLoading(false);
       }
@@ -128,20 +119,25 @@ const LoginPage: React.FC = () => {
 
   if (isFirstRun === null) {
       return (
-          <div className="min-h-screen flex flex-col items-center justify-center bg-background gap-4">
-              <RefreshIcon className="w-12 h-12 animate-spin text-primary" />
-              <p className="text-text-secondary text-sm animate-pulse">Cargando sistema...</p>
+          <div className="min-h-screen flex flex-col items-center justify-center bg-background gap-6">
+              <div className="relative">
+                  <div className="w-20 h-20 border-4 border-primary/20 border-t-primary rounded-full animate-spin"></div>
+                  <UsersIcon className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-8 h-8 text-primary" />
+              </div>
+              <div className="text-center">
+                  <p className="text-text-primary font-bold text-lg">{statusText}</p>
+                  <p className="text-text-secondary text-sm animate-pulse mt-1">Por favor, no cierres esta ventana.</p>
+              </div>
           </div>
       );
   }
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background px-4">
-      <div className="bg-surface p-8 rounded-lg shadow-2xl max-w-md w-full border border-border">
+      <div className="bg-surface p-8 rounded-lg shadow-2xl max-w-md w-full border border-border animate-fade-in">
         
-        {/* Header */}
         <div className="text-center mb-8">
-            <div className="bg-primary/20 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
+            <div className="bg-primary/20 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 border border-primary/30">
                 <UsersIcon className="w-8 h-8 text-primary" />
             </div>
             <h2 className="text-3xl font-bold text-text-primary">
@@ -152,20 +148,18 @@ const LoginPage: React.FC = () => {
             </p>
         </div>
 
-        {/* Alerts - Mejor visibilidad del error */}
         {error && (
-          <div className="bg-red-900/30 border border-red-500 text-red-200 px-4 py-3 rounded mb-6 text-sm text-center font-medium shadow-md animate-pulse">
+          <div className="bg-red-900/30 border border-red-500 text-red-200 px-4 py-3 rounded mb-6 text-sm text-center font-medium shadow-md">
             {error}
           </div>
         )}
         
         {recoveryMessage && (
-             <div className="bg-green-500/10 border border-green-500 text-green-400 px-4 py-3 rounded mb-6 text-sm text-center animate-fade-in">
+             <div className="bg-green-500/10 border border-green-500 text-green-400 px-4 py-3 rounded mb-6 text-sm text-center">
                 {recoveryMessage}
              </div>
         )}
 
-        {/* Initial Setup Form */}
         {isFirstRun && (
             <form onSubmit={handleInitialSetup} className="space-y-6">
                 <div>
@@ -175,8 +169,8 @@ const LoginPage: React.FC = () => {
                         value={adminName}
                         onChange={(e) => setAdminName(e.target.value)}
                         required
-                        className="w-full px-4 py-3 bg-background border border-border rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent text-text-primary placeholder-gray-500 transition-all"
-                        placeholder="Administrador"
+                        className="w-full px-4 py-3 bg-background border border-border rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent text-text-primary transition-all outline-none"
+                        placeholder="Nombre completo"
                     />
                 </div>
                 <div>
@@ -186,7 +180,7 @@ const LoginPage: React.FC = () => {
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
                         required
-                        className="w-full px-4 py-3 bg-background border border-border rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent text-text-primary placeholder-gray-500 transition-all"
+                        className="w-full px-4 py-3 bg-background border border-border rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent text-text-primary transition-all outline-none"
                         placeholder="admin@ejemplo.com"
                     />
                 </div>
@@ -198,7 +192,7 @@ const LoginPage: React.FC = () => {
                         onChange={(e) => setPassword(e.target.value)}
                         required
                         minLength={6}
-                        className="w-full px-4 py-3 bg-background border border-border rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent text-text-primary placeholder-gray-500 transition-all"
+                        className="w-full px-4 py-3 bg-background border border-border rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent text-text-primary transition-all outline-none"
                         placeholder="••••••••"
                     />
                 </div>
@@ -212,21 +206,18 @@ const LoginPage: React.FC = () => {
             </form>
         )}
 
-        {/* Login Form */}
         {!isRecovering && !isFirstRun && (
             <form onSubmit={handleSubmit} className="space-y-6">
             <div>
                 <label className="block text-sm font-medium text-text-secondary mb-2">Correo Electrónico</label>
-                <div className="relative">
-                    <input
-                        type="email"
-                        value={email}
-                        onChange={(e) => setEmail(e.target.value)}
-                        required
-                        className="w-full pl-4 pr-4 py-3 bg-background border border-border rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent text-text-primary placeholder-gray-500 transition-all"
-                        placeholder="nombre@ejemplo.com"
-                    />
-                </div>
+                <input
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    required
+                    className="w-full px-4 py-3 bg-background border border-border rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent text-text-primary transition-all outline-none"
+                    placeholder="nombre@ejemplo.com"
+                />
             </div>
 
             <div>
@@ -237,7 +228,7 @@ const LoginPage: React.FC = () => {
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
                         required
-                        className="w-full pl-4 pr-12 py-3 bg-background border border-border rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent text-text-primary placeholder-gray-500 transition-all"
+                        className="w-full px-4 py-3 bg-background border border-border rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent text-text-primary transition-all outline-none pr-12"
                         placeholder="••••••••"
                     />
                     <button
@@ -253,12 +244,12 @@ const LoginPage: React.FC = () => {
             <button
                 type="submit"
                 disabled={isLoading}
-                className="w-full flex justify-center items-center bg-primary text-white py-3 px-4 rounded-lg hover:bg-indigo-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary transition-colors disabled:opacity-50 disabled:cursor-not-allowed font-medium"
+                className="w-full flex justify-center items-center bg-primary text-white py-3 px-4 rounded-lg hover:bg-indigo-600 transition-colors disabled:opacity-50 font-medium shadow-lg"
             >
                 {isLoading ? (
                     <>
                         <RefreshIcon className="w-5 h-5 animate-spin mr-2" />
-                        Ingresando...
+                        Validando...
                     </>
                 ) : (
                     <>
@@ -270,7 +261,6 @@ const LoginPage: React.FC = () => {
             </form>
         )}
 
-        {/* Recovery Form */}
         {isRecovering && !isFirstRun && (
              <form onSubmit={handleRecoverySubmit} className="space-y-6">
                 <p className="text-sm text-text-secondary text-center mb-4">
@@ -278,21 +268,19 @@ const LoginPage: React.FC = () => {
                 </p>
                 <div>
                     <label className="block text-sm font-medium text-text-secondary mb-2">Correo Electrónico</label>
-                    <div className="relative">
-                        <input
-                            type="email"
-                            value={recoveryEmail}
-                            onChange={(e) => setRecoveryEmail(e.target.value)}
-                            required
-                            className="w-full pl-4 pr-4 py-3 bg-background border border-border rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent text-text-primary placeholder-gray-500 transition-all"
-                            placeholder="nombre@ejemplo.com"
-                        />
-                    </div>
+                    <input
+                        type="email"
+                        value={recoveryEmail}
+                        onChange={(e) => setRecoveryEmail(e.target.value)}
+                        required
+                        className="w-full px-4 py-3 bg-background border border-border rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent text-text-primary transition-all outline-none"
+                        placeholder="nombre@ejemplo.com"
+                    />
                 </div>
                  <button
                     type="submit"
                     disabled={isLoading}
-                    className="w-full flex justify-center items-center bg-secondary text-white py-3 px-4 rounded-lg hover:bg-emerald-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-secondary transition-colors disabled:opacity-50 disabled:cursor-not-allowed font-medium"
+                    className="w-full flex justify-center items-center bg-secondary text-white py-3 px-4 rounded-lg hover:bg-emerald-600 transition-colors disabled:opacity-50 font-medium shadow-lg"
                 >
                     {isLoading ? (
                         <>
@@ -314,14 +302,14 @@ const LoginPage: React.FC = () => {
                 {!isRecovering ? (
                     <button 
                         onClick={toggleView}
-                        className="text-sm text-primary hover:text-indigo-400 font-medium transition-colors focus:outline-none"
+                        className="text-sm text-primary hover:text-indigo-400 font-medium transition-colors"
                     >
                         ¿Olvidaste tu contraseña?
                     </button>
                 ) : (
                     <button 
                         onClick={toggleView}
-                        className="text-sm text-text-secondary hover:text-text-primary font-medium transition-colors focus:outline-none flex items-center justify-center mx-auto"
+                        className="text-sm text-text-secondary hover:text-text-primary font-medium transition-colors flex items-center justify-center mx-auto"
                     >
                         <ArrowLeftIcon className="w-4 h-4 mr-1" />
                         Volver al inicio de sesión

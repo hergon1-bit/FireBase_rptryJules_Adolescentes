@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo, useEffect } from 'react';
 import { useData } from '../contexts/DataContext';
 import { useAuth } from '../contexts/AuthContext';
@@ -7,7 +6,7 @@ import Modal from '../components/ui/Modal';
 import ConfirmationModal from '../components/ui/ConfirmationModal';
 import { useForm } from '../hooks/useForm';
 import { formatDate } from '../utils/helpers';
-import { BookOpenIcon, CheckCircleIcon, TrashIcon, PencilIcon, RefreshIcon, BarChartIcon, TrophyIcon, UsersIcon } from '../components/ui/Icons';
+import { BookOpenIcon, CheckCircleIcon, TrashIcon, PencilIcon, RefreshIcon, BarChartIcon, TrophyIcon, UsersIcon, CalendarDaysIcon } from '../components/ui/Icons';
 
 type Tab = 'dashboard' | 'registro' | 'gestion' | 'historial';
 
@@ -17,6 +16,7 @@ const Tareas: React.FC = () => {
     
     const [activeTab, setActiveTab] = useState<Tab>('dashboard');
     const [isRefreshing, setIsRefreshing] = useState(false);
+    const [dashboardYear, setDashboardYear] = useState<number>(new Date().getFullYear());
     
     // --- State for Tab Gestion (Definitions) ---
     const [isDevocionalModalOpen, setIsDevocionalModalOpen] = useState(false);
@@ -66,21 +66,32 @@ const Tareas: React.FC = () => {
         setIsRefreshing(false);
     };
 
+    // --- Years Available for Filter ---
+    const availableYears = useMemo(() => {
+        const years = new Set<number>();
+        years.add(new Date().getFullYear());
+        devocionales.forEach(d => {
+            if (d.fechaDistribucion) years.add(new Date(d.fechaDistribucion).getFullYear());
+        });
+        entregasDevocionales.forEach(e => {
+            if (e.fechaEntrega) years.add(new Date(e.fechaEntrega).getFullYear());
+        });
+        return Array.from(years).sort((a, b) => b - a);
+    }, [devocionales, entregasDevocionales]);
+
     // --- Computed Data for Dashboard ---
-    const currentYear = new Date().getFullYear();
-    
     const statsAnuales = useMemo(() => {
-        const devsEsteAno = devocionales.filter(d => new Date(d.fechaDistribucion).getFullYear() === currentYear);
-        const totalDevs = devsEsteAno.length;
+        const devsYear = devocionales.filter(d => new Date(d.fechaDistribucion).getFullYear() === dashboardYear);
+        const totalDevsMeta = devsYear.length;
         
-        const entregasEsteAno = entregasDevocionales.filter(e => new Date(e.fechaEntrega).getFullYear() === currentYear);
+        const entregasYear = entregasDevocionales.filter(e => new Date(e.fechaEntrega).getFullYear() === dashboardYear);
         
         const ranking = adolescentes
             .filter(a => a.estado === 'Activo')
             .map(ado => {
-                const misEntregas = entregasEsteAno.filter(e => e.adolescenteId === ado.id);
+                const misEntregas = entregasYear.filter(e => e.adolescenteId === ado.id);
                 const count = misEntregas.length;
-                const porcentaje = totalDevs > 0 ? (count / totalDevs) * 100 : 0;
+                const porcentaje = totalDevsMeta > 0 ? (count / totalDevsMeta) * 100 : 0;
                 return {
                     ...ado,
                     count,
@@ -89,22 +100,24 @@ const Tareas: React.FC = () => {
             })
             .sort((a, b) => b.count - a.count);
 
-        const totalEntregasPosibles = ranking.length * totalDevs;
+        const totalEntregasPosibles = ranking.length * totalDevsMeta;
         const totalEntregasReales = ranking.reduce((acc, curr) => acc + curr.count, 0);
         const cumplimientoGlobal = totalEntregasPosibles > 0 ? (totalEntregasReales / totalEntregasPosibles) * 100 : 0;
 
         return {
-            totalDevs,
+            totalDevsMeta,
             ranking,
             cumplimientoGlobal,
-            topLider: ranking[0] || null
+            topLider: ranking[0] && ranking[0].count > 0 ? ranking[0] : null
         };
-    }, [devocionales, entregasDevocionales, adolescentes, currentYear]);
+    }, [devocionales, entregasDevocionales, adolescentes, dashboardYear]);
 
-    const filteredRanking = useMemo(() => {
-        return statsAnuales.ranking.filter(item => 
-            `${item.nombre} ${item.apellido}`.toLowerCase().includes(searchDashboard.toLowerCase())
-        );
+    const top10Ranking = useMemo(() => {
+        return statsAnuales.ranking
+            .filter(item => 
+                `${item.nombre} ${item.apellido}`.toLowerCase().includes(searchDashboard.toLowerCase())
+            )
+            .slice(0, 10);
     }, [statsAnuales.ranking, searchDashboard]);
 
     // --- Handlers for Gestion (Devocionales Definition) ---
@@ -309,6 +322,32 @@ const Tareas: React.FC = () => {
             {/* TAB: DASHBOARD ANUAL */}
             {activeTab === 'dashboard' && (
                 <div className="space-y-6 animate-fade-in">
+                    {/* Filtro de Año y Búsqueda */}
+                    <div className="flex flex-col md:flex-row gap-4 items-center bg-surface p-4 rounded-xl border border-border">
+                        <div className="flex items-center gap-2 w-full md:w-auto">
+                            <CalendarDaysIcon className="w-5 h-5 text-primary" />
+                            <label className="text-sm font-bold text-text-secondary whitespace-nowrap">Año del Dashboard:</label>
+                            <select 
+                                value={dashboardYear}
+                                onChange={(e) => setDashboardYear(Number(e.target.value))}
+                                className="bg-background border border-border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary outline-none"
+                            >
+                                {availableYears.map(year => (
+                                    <option key={year} value={year}>{year}</option>
+                                ))}
+                            </select>
+                        </div>
+                        <div className="flex-1 w-full relative">
+                            <input 
+                                type="text" 
+                                placeholder="Buscar en el ranking..." 
+                                value={searchDashboard}
+                                onChange={(e) => setSearchDashboard(e.target.value)}
+                                className="w-full bg-background border border-border rounded-lg pl-4 pr-4 py-2 focus:ring-2 focus:ring-primary outline-none"
+                            />
+                        </div>
+                    </div>
+
                     {/* Tarjetas de Resumen */}
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                         <div className="bg-surface p-6 rounded-xl border border-border shadow-lg flex items-center gap-4">
@@ -316,8 +355,8 @@ const Tareas: React.FC = () => {
                                 <BookOpenIcon className="w-8 h-8" />
                             </div>
                             <div>
-                                <p className="text-sm text-text-secondary">Meta del Año {currentYear}</p>
-                                <p className="text-2xl font-bold">{statsAnuales.totalDevs} Temas</p>
+                                <p className="text-sm text-text-secondary">Meta Año {dashboardYear}</p>
+                                <p className="text-2xl font-bold">{statsAnuales.totalDevsMeta} Temas</p>
                             </div>
                         </div>
                         <div className="bg-surface p-6 rounded-xl border border-border shadow-lg flex items-center gap-4">
@@ -334,44 +373,35 @@ const Tareas: React.FC = () => {
                                 <TrophyIcon className="w-8 h-8" />
                             </div>
                             <div>
-                                <p className="text-sm text-text-secondary">Líder de Entregas</p>
+                                <p className="text-sm text-text-secondary">Líder {dashboardYear}</p>
                                 <p className="text-2xl font-bold truncate">
-                                    {statsAnuales.topLider ? `${statsAnuales.topLider.nombre}` : 'Sin datos'}
+                                    {statsAnuales.topLider ? `${statsAnuales.topLider.nombre}` : 'N/A'}
                                 </p>
                             </div>
                         </div>
                     </div>
 
                     <div className="bg-surface p-6 rounded-xl border border-border shadow-lg space-y-6">
-                        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                            <h2 className="text-xl font-bold flex items-center gap-2">
-                                <UsersIcon className="w-6 h-6 text-primary" />
-                                Seguimiento por Adolescente
+                        <div className="flex justify-between items-center">
+                            <h2 className="text-xl font-bold flex items-center gap-2 text-yellow-400">
+                                <TrophyIcon className="w-6 h-6" />
+                                TOP 10 - Ranking de Entregas {dashboardYear}
                             </h2>
-                            <div className="relative w-full md:w-80">
-                                <input 
-                                    type="text" 
-                                    placeholder="Buscar chico..." 
-                                    value={searchDashboard}
-                                    onChange={(e) => setSearchDashboard(e.target.value)}
-                                    className="w-full bg-background border border-border rounded-lg pl-4 pr-4 py-2 focus:ring-2 focus:ring-primary focus:border-transparent outline-none"
-                                />
-                            </div>
                         </div>
 
                         <div className="overflow-x-auto">
                             <table className="min-w-full">
                                 <thead>
                                     <tr className="text-left text-xs font-bold text-text-secondary uppercase tracking-widest border-b border-border">
-                                        <th className="pb-4 px-2">#</th>
+                                        <th className="pb-4 px-2">Pos</th>
                                         <th className="pb-4 px-2">Adolescente</th>
-                                        <th className="pb-4 px-2">Progreso Anual</th>
+                                        <th className="pb-4 px-2">Progreso</th>
                                         <th className="pb-4 px-2 text-center">Entregas</th>
                                         <th className="pb-4 px-2 text-right">% Éxito</th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-border">
-                                    {filteredRanking.map((item, index) => {
+                                    {top10Ranking.map((item, index) => {
                                         return (
                                             <tr key={item.id} className="hover:bg-background/50 transition-colors group">
                                                 <td className="py-4 px-2">
@@ -397,7 +427,7 @@ const Tareas: React.FC = () => {
                                                     </div>
                                                 </td>
                                                 <td className="py-4 px-2 text-center font-bold text-lg">
-                                                    {item.count} <span className="text-xs text-text-secondary">/ {statsAnuales.totalDevs}</span>
+                                                    {item.count} <span className="text-xs text-text-secondary">/ {statsAnuales.totalDevsMeta}</span>
                                                 </td>
                                                 <td className="py-4 px-2 text-right">
                                                     <span className={`px-2 py-1 rounded-md text-xs font-bold ${
@@ -411,10 +441,12 @@ const Tareas: React.FC = () => {
                                             </tr>
                                         );
                                     })}
-                                    {filteredRanking.length === 0 && (
+                                    {top10Ranking.length === 0 && (
                                         <tr>
                                             <td colSpan={5} className="py-12 text-center text-text-secondary italic">
-                                                No se encontraron resultados para "{searchDashboard}"
+                                                {statsAnuales.ranking.length === 0 
+                                                    ? `No hay entregas registradas en el año ${dashboardYear}.` 
+                                                    : `No se encontraron resultados para "${searchDashboard}" dentro del TOP 10.`}
                                             </td>
                                         </tr>
                                     )}

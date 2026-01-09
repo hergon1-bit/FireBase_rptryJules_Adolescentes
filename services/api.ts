@@ -1,3 +1,4 @@
+
 import { supabase, supabaseUrl, supabaseKey } from './supabase';
 import { createClient } from '@supabase/supabase-js';
 import { 
@@ -6,19 +7,19 @@ import {
   CelebracionCumpleanos, ResumenReunion, Devocional, EntregaDevocional
 } from '../types';
 
-// Configuración de Timeouts
-const API_TIMEOUT = 15000; // 15 segundos máximo para no desesperar al usuario
+// Configuración de Timeouts extendida para entornos de producción/gratuitos
+const API_TIMEOUT = 45000; // 45 segundos para el primer arranque
 
 const withTimeout = <T>(promise: Promise<T>, ms = API_TIMEOUT): Promise<T> => {
   return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error("La base de datos no responde. Verifique su señal.")), ms);
+    const timer = setTimeout(() => reject(new Error("La base de datos está tardando demasiado. Es posible que esté iniciando su servidor gratuito.")), ms);
     promise
       .then(res => { clearTimeout(timer); resolve(res); })
       .catch(err => { clearTimeout(timer); reject(err); });
   });
 };
 
-const withRetry = async <T>(fn: () => Promise<T>, retries = 3, delay = 800): Promise<T> => {
+const withRetry = async <T>(fn: () => Promise<T>, retries = 3, delay = 2000): Promise<T> => {
   try {
     return await withTimeout(fn());
   } catch (error: any) {
@@ -26,15 +27,15 @@ const withRetry = async <T>(fn: () => Promise<T>, retries = 3, delay = 800): Pro
         error.message?.includes('fetch') || 
         error.message?.includes('NetworkError') || 
         error.message?.includes('Timeout') ||
-        error.message?.includes('no responde') ||
         error.status === 504 || 
         error.status === 502 ||
+        error.status === 503 ||
         error.status === 408;
 
     if (retries > 0 && isRetryable) {
-      console.warn(`Reintentando... (${retries} restantes). Motivo: ${error.message}`);
+      console.warn(`Reintentando conexión en ${delay}ms... (${retries} intentos restantes).`);
       await new Promise(resolve => setTimeout(resolve, delay));
-      return withRetry(fn, retries - 1, delay * 2);
+      return withRetry(fn, retries - 1, delay * 1.5); // Reintento exponencial ligero
     }
     throw error;
   }
@@ -44,7 +45,7 @@ const normalizeRol = (rol: any): Rol => {
   const defaultPerms = { read: false, create: false, update: false, delete: false };
   if (!rol) {
       return {
-          id: 0, nombre: 'Rol Inválido',
+          id: 0, nombre: 'Invitado',
           permisos: {
             adolescentes: { ...defaultPerms }, encargados: { ...defaultPerms }, reuniones: { ...defaultPerms },
             tutores: { ...defaultPerms }, eventos: { ...defaultPerms }, usuarios: { ...defaultPerms },
@@ -73,9 +74,8 @@ const normalizeRol = (rol: any): Rol => {
 
 const handleSupabaseData = <T>(data: T | null, error: any, context: string): T => {
     if (error) {
-        const errorMsg = error.message || (typeof error === 'object' ? JSON.stringify(error) : String(error));
-        console.error(`Error en ${context}: ${errorMsg}`);
-        throw new Error(errorMsg);
+        console.error(`Error crítico en API (${context}):`, error);
+        throw new Error(error.message || "Error inesperado de red.");
     }
     return data as T;
 };
@@ -105,35 +105,54 @@ const MAX_ROWS = 10000;
 
 export const api = {
   getUsuarioById: async (id: string): Promise<Usuario | null> => {
-    const { data, error } = await supabase.from('usuarios').select('*').eq('id', id).single();
-    if (error || !data) return null;
-    return { ...data, rolId: data.rol_id, lastSignInAt: data.last_sign_in_at };
+    try {
+      const { data, error } = await supabase.from('usuarios').select('*').eq('id', id).maybeSingle();
+      if (error || !data) return null;
+      return { ...data, rolId: data.rol_id, lastSignInAt: data.last_sign_in_at };
+    } catch (e) {
+      return null;
+    }
   },
   
   getRolById: async (id: number): Promise<Rol | null> => {
-    const { data, error } = await supabase.from('roles').select('*').eq('id', id).single();
-    if (error || !data) return null;
-    return normalizeRol(data);
+    try {
+      const { data, error } = await supabase.from('roles').select('*').eq('id', id).maybeSingle();
+      if (error || !data) return null;
+      return normalizeRol(data);
+    } catch (e) {
+      return null;
+    }
   },
 
   countUsuarios: async (): Promise<number> => {
     try {
-      const { count, error } = await supabase.from('usuarios').select('*', { count: 'exact', head: true });
-      if (error) return -1;
+      const { count, error } = await withRetry(async () => 
+        supabase.from('usuarios').select('*', { count: 'exact', head: true })
+      ) as any;
+      
+      if (error) {
+          console.warn("Fallo al contar usuarios:", error.message);
+          return -1;
+      }
       return count ?? 0;
-    } catch (e) { return -1; }
+    } catch (e) { 
+      return -1; 
+    }
   },
 
   ensureDefaultRoles: async (): Promise<void> => {
-    const { data: existingRoles } = await supabase.from('roles').select('id');
-    if (existingRoles && existingRoles.length > 0) return;
-    const defaultPerms = { read: true, create: true, update: true, delete: true };
-    const guestPerms = { read: true, create: false, update: false, delete: false };
-    const roles = [
-      { id: 1, nombre: 'Administrador', permisos: { adolescentes: defaultPerms, encargados: defaultPerms, reuniones: defaultPerms, tutores: defaultPerms, eventos: defaultPerms, usuarios: defaultPerms, devocionales: defaultPerms, entregas: defaultPerms, inscripciones: defaultPerms, pagos: defaultPerms, participantes: defaultPerms } },
-      { id: 2, nombre: 'Encargado', permisos: { adolescentes: defaultPerms, encargados: guestPerms, reuniones: defaultPerms, tutores: defaultPerms, eventos: guestPerms, usuarios: guestPerms, devocionales: guestPerms, entregas: defaultPerms, inscripciones: defaultPerms, pagos: defaultPerms, participantes: defaultPerms } }
-    ];
-    await supabase.from('roles').insert(roles);
+    try {
+      const { data: existingRoles } = await supabase.from('roles').select('id').limit(1);
+      if (existingRoles && existingRoles.length > 0) return;
+      
+      const defaultPerms = { read: true, create: true, update: true, delete: true };
+      const guestPerms = { read: true, create: false, update: false, delete: false };
+      const roles = [
+        { id: 1, nombre: 'Administrador', permisos: { adolescentes: defaultPerms, encargados: defaultPerms, reuniones: defaultPerms, tutores: defaultPerms, eventos: defaultPerms, usuarios: defaultPerms, devocionales: defaultPerms, entregas: defaultPerms, inscripciones: defaultPerms, pagos: defaultPerms, participantes: defaultPerms } },
+        { id: 2, nombre: 'Encargado', permisos: { adolescentes: defaultPerms, encargados: guestPerms, reuniones: defaultPerms, tutores: defaultPerms, eventos: guestPerms, usuarios: guestPerms, devocionales: guestPerms, entregas: defaultPerms, inscripciones: defaultPerms, pagos: defaultPerms, participantes: defaultPerms } }
+      ];
+      await supabase.from('roles').insert(roles);
+    } catch (e) {}
   },
   
   updateLastSignIn: async (id: string): Promise<void> => {
@@ -182,7 +201,7 @@ export const api = {
   getEventos: async (): Promise<Evento[]> => {
     try {
         const data = await fetchAllRows('eventos', '*', { column: 'fecha_inicio', ascending: false });
-        return data.map((e: any) => ({ id: e.id, tema: e.tema, lugar: e.lugar, fechaInicio: e.fecha_inicio, horaInicio: e.hora_inicio, fechaFin: e.fecha_fin, horaFin: e.hora_fin, tieneCosto: e.tiene_costo, costoTotal: e.costo_total, costoPersona: e.costo_persona }));
+        return data.map((e: any) => ({ id: e.id, tema: e.tema, lugar: e.lugar, fechaInicio: e.fecha_inicio, horaInicio: e.hora_inicio, fechaFin: e.fecha_fin, horaFin: e.hora_fin, tieneCosto: e.tiene_costo, costo_total: e.costo_total, costo_persona: e.costo_persona }));
     } catch (error) { return []; }
   },
 
@@ -299,13 +318,11 @@ export const api = {
         const dbPayload = { nombre: adolescente.nombre, apellido: adolescente.apellido, cedula: adolescente.cedula, registro: adolescente.registro, fecha_nacimiento: adolescente.fechaNacimiento, barrio: adolescente.barrio, ciudad: adolescente.ciudad, telefono: adolescente.telefono, sexo: adolescente.sexo, estado: adolescente.estado };
         const { data, error } = await supabase.from('adolescentes').insert(dbPayload).select().single();
         const result = handleSupabaseData(data, error, 'createAdolescente');
-        // Fix: Removed duplicate 'id' property.
         return { ...adolescente, id: result.id };
     });
   },
 
   updateAdolescente: async (adolescente: Adolescente): Promise<Adolescente> => {
-    // OPTIMIZACIÓN CLAVE: Usamos return: 'minimal' para que la conexión se libere de inmediato
     return withRetry(async () => {
         const { id, ...updateData } = adolescente;
         const dbPayload = { 
@@ -314,15 +331,8 @@ export const api = {
             barrio: updateData.barrio, ciudad: updateData.ciudad, telefono: updateData.telefono, 
             sexo: updateData.sexo, estado: updateData.estado 
         };
-        
-        const { error } = await supabase
-            .from('adolescentes')
-            .update(dbPayload)
-            .eq('id', id); // Quitamos .select() para que sea instantáneo
-            
+        const { error } = await supabase.from('adolescentes').update(dbPayload).eq('id', id);
         if (error) throw new Error(error.message);
-        
-        // Devolvemos el mismo objeto que enviamos para actualizar la UI localmente sin re-consultar
         return adolescente;
     });
   },
@@ -339,7 +349,6 @@ export const api = {
     return withRetry(async () => {
         const { data, error } = await supabase.from('encargados').insert({ nombre: encargado.nombre, apellido: encargado.apellido, cedula: encargado.cedula, fecha_nacimiento: encargado.fechaNacimiento || null, barrio: encargado.barrio, ciudad: encargado.ciudad, telefono: encargado.telefono, email: encargado.email || null }).select().single();
         const result = handleSupabaseData(data, error, 'createEncargado');
-        // Fix: Removed duplicate 'id' property.
         return { ...encargado, id: result.id };
     });
   },
@@ -365,7 +374,6 @@ export const api = {
     return withRetry(async () => {
         const { data, error } = await supabase.from('reuniones').insert({ fecha: reunion.fecha, tema: reunion.tema, encargado_id: reunion.encargadoId, estado: reunion.estado }).select().single();
         const result = handleSupabaseData(data, error, 'createReunion');
-        // Fix: Removed duplicate 'id' property.
         return { ...reunion, id: result.id };
     });
   },
@@ -521,7 +529,13 @@ export const api = {
 
   updateInscripcion: async (i: InscripcionEvento): Promise<InscripcionEvento> => {
     return withRetry(async () => {
-        const { error } = await supabase.from('inscripciones_eventos').update({ evento_id: i.eventoId, adolescente_id: i.adolescenteId, fecha_inscripcion: i.fechaInscripcion, notas: i.notas }).eq('id', i.id);
+        // Fixed: Use i.fechaInscripcion instead of i.fecha_inscripcion to match the interface property name
+        const { error } = await supabase.from('inscripciones_eventos').update({ 
+            evento_id: i.eventoId, 
+            adolescente_id: i.adolescenteId, 
+            fecha_inscripcion: i.fechaInscripcion, 
+            notas: i.notas 
+        }).eq('id', i.id);
         if (error) throw new Error(error.message);
         return i;
     });
