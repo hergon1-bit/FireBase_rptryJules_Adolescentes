@@ -1,12 +1,12 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useData } from '../contexts/DataContext';
 import { formatDate, formatCurrency, calcularEdad } from '../utils/helpers';
-import { Adolescente, AsistenciaDetalle } from '../types';
+import { Adolescente, AsistenciaDetalle, PagoEvento, PagoServidor } from '../types';
 import { RefreshIcon, PrinterIcon, BookOpenIcon, CalendarDaysIcon, DownloadCloudIcon } from '../components/ui/Icons';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
-type ReportType = 'cumpleanos' | 'asistenciaReunion' | 'resumenAsistencia' | 'ausencias' | 'activos' | 'tutores' | 'pagosEvento' | 'entregasDevocionales' | 'inscriptosEvento';
+type ReportType = 'cumpleanos' | 'asistenciaReunion' | 'resumenAsistencia' | 'ausencias' | 'activos' | 'tutores' | 'pagosEvento' | 'entregasDevocionales' | 'inscriptosEvento' | 'historialPagosEvento';
 
 const Reportes: React.FC = () => {
     const { 
@@ -49,6 +49,51 @@ const Reportes: React.FC = () => {
         const currentYear = new Date().getFullYear();
 
         switch (activeReport) {
+            case 'historialPagosEvento':
+                if (!selectedEventoId) return [];
+                const eventH = eventos.find(e => e.id === selectedEventoId);
+                const costoBase = eventH?.costoPersona || 0;
+
+                const historialChicos = inscripciones.filter(i => i.eventoId === selectedEventoId).map(i => {
+                    const ado = adolescentes.find(a => a.id === i.adolescenteId);
+                    const pagosAdo = pagos.filter(p => p.inscripcionId === i.id).sort((a,b) => new Date(a.fecha).getTime() - new Date(b.fecha).getTime());
+                    const totalPagado = pagosAdo.reduce((sum, p) => sum + p.monto, 0);
+                    
+                    return {
+                        tipo: 'CHICO',
+                        nombre: ado ? `${ado.nombre} ${ado.apellido}` : 'Desconocido',
+                        registro: ado?.registro || 'N/A',
+                        rol: 'Participante',
+                        pagos: pagosAdo.map(p => ({ monto: p.monto, fecha: p.fecha })),
+                        totalPagado,
+                        saldo: Math.max(0, costoBase - totalPagado),
+                        beca: 'Ninguna'
+                    };
+                });
+
+                const historialServidores = inscripcionesServidores.filter(i => i.eventoId === selectedEventoId).map(i => {
+                    const s = servidores.find(ser => ser.id === i.servidorId);
+                    const pagosS = pagosServidores.filter(p => p.inscripcionServidorId === i.id).sort((a,b) => new Date(a.fecha).getTime() - new Date(b.fecha).getTime());
+                    const totalPagado = pagosS.reduce((sum, p) => sum + p.monto, 0);
+                    
+                    let costoEsperado = costoBase;
+                    if (i.tipoBeca === 'Total') costoEsperado = 0;
+                    else if (i.tipoBeca === 'Parcial') costoEsperado = i.montoAcordado || 0;
+
+                    return {
+                        tipo: 'APOYO',
+                        nombre: s ? `${s.nombre} ${s.apellido}` : 'Desconocido',
+                        registro: s?.registro || 'N/A',
+                        rol: i.rol,
+                        pagos: pagosS.map(p => ({ monto: p.monto, fecha: p.fecha })),
+                        totalPagado,
+                        saldo: Math.max(0, costoEsperado - totalPagado),
+                        beca: i.tipoBeca || 'Ninguna'
+                    };
+                });
+
+                return [...historialChicos, ...historialServidores].sort((a, b) => a.nombre.localeCompare(b.nombre));
+
             case 'inscriptosEvento':
                 if (!selectedEventoId) return [];
                 const event = eventos.find(e => e.id === selectedEventoId);
@@ -175,11 +220,87 @@ const Reportes: React.FC = () => {
         }
     }, [activeReport, adolescentes, reuniones, asistencias, encargados, tutores, tutoresAdolescentes, eventos, inscripciones, pagos, servidores, inscripcionesServidores, pagosServidores, devocionales, entregasDevocionales, selectedReunionId, selectedEventoId, dateRange, filterBecados, filterDeudores, filterPagados]);
 
+    const generarPDFHistorialPagosEvento = () => {
+        if (!selectedEventoId) return;
+        const ev = eventos.find(e => e.id === selectedEventoId);
+        if (!ev) return;
+        const doc = new jsPDF({ orientation: 'landscape' });
+        const totalPagesExp = '{total_pages_count_string}';
+        const data = reportData as any[];
+        
+        const ahora = new Date();
+        const fechaHoraImp = `${ahora.toLocaleDateString('es-PY')} ${ahora.toLocaleTimeString('es-PY', { hour: '2-digit', minute: '2-digit' })}`;
+        
+        // Estadísticas para cabecera
+        const sumaPagosRealizados = data.reduce((acc, r) => acc + r.totalPagado, 0);
+        const sumaSaldosPendientes = data.reduce((acc, r) => acc + r.saldo, 0);
+        const sumaPagosBecadosTotales = data.filter(r => r.beca === 'Total').reduce((acc, r) => acc + r.totalPagado, 0);
+        const sumaPagosBecadosParciales = data.filter(r => r.beca === 'Parcial').reduce((acc, r) => acc + r.totalPagado, 0);
+
+        autoTable(doc, {
+            startY: 55,
+            margin: { top: 55 },
+            head: [['TIPO', 'NOMBRE Y APELLIDO', 'REG. SALUD', 'FUNCIÓN', 'DETALLE DE PAGOS', 'TOTAL']],
+            body: data.map(row => [
+                row.tipo, 
+                row.nombre, 
+                row.registro, 
+                row.rol, 
+                row.pagos.map((p: any) => `${formatDate(p.fecha)}: ${formatCurrency(p.monto)}`).join('\n') || 'Sin pagos',
+                formatCurrency(row.totalPagado)
+            ]),
+            theme: 'grid',
+            headStyles: { fillColor: [79, 70, 229], fontSize: 9 },
+            columnStyles: {
+                4: { cellWidth: 80, fontSize: 8 },
+                5: { fontStyle: 'bold' }
+            },
+            didDrawPage: (d) => {
+                doc.setFontSize(16);
+                doc.setTextColor(40);
+                doc.text(`Historial de Pagos por Evento: ${ev.tema}`, 15, 15);
+                
+                doc.setFontSize(9);
+                doc.text(`Impreso: ${fechaHoraImp}`, 235, 15);
+                let str = "Página " + doc.internal.getNumberOfPages();
+                if (typeof doc.putTotalPages === 'function') {
+                    str = str + " / " + totalPagesExp;
+                }
+                doc.text(str, 235, 20);
+                
+                doc.setFontSize(10);
+                doc.text(`Fecha Evento: ${formatDate(ev.fechaInicio)} | Costo p/ Persona: ${formatCurrency(ev.costoPersona || 0)}`, 15, 23);
+                
+                // Cuadro de Resumen en Cabecera
+                doc.setFontSize(9);
+                doc.setDrawColor(200);
+                doc.setFillColor(245, 245, 250);
+                doc.rect(15, 28, 265, 20, 'F');
+                
+                doc.setTextColor(40);
+                doc.text(`Suma de Pagos realizados: ${formatCurrency(sumaPagosRealizados)}`, 20, 35);
+                doc.text(`Suma de Saldos Pendientes: ${formatCurrency(sumaSaldosPendientes)}`, 20, 42);
+                
+                doc.text(`Suma de Pagos por Becados totales: ${formatCurrency(sumaPagosBecadosTotales)}`, 140, 35);
+                doc.text(`Suma de Pagos por Becados Parciales: ${formatCurrency(sumaPagosBecadosParciales)}`, 140, 42);
+                
+                doc.line(15, 52, 280, 52);
+            }
+        });
+
+        if (typeof doc.putTotalPages === 'function') {
+            doc.putTotalPages(totalPagesExp);
+        }
+        
+        doc.save(`HistorialPagos_${ev.tema}.pdf`);
+    };
+
     const generarPDFBalanceEvento = () => {
         if (!selectedEventoId) return;
         const ev = eventos.find(e => e.id === selectedEventoId);
         if (!ev) return;
         const doc = new jsPDF({ orientation: 'landscape' });
+        const totalPagesExp = '{total_pages_count_string}';
         const data = reportData as any[];
         
         const ahora = new Date();
@@ -187,11 +308,13 @@ const Reportes: React.FC = () => {
         
         const costoPersona = ev.costoPersona || 0;
         const totalPagado = data.reduce((acc, r) => acc + r.pagado, 0);
-        const totalEsperado = data.length * costoPersona;
+        const sumaSaldosPendientes = data.reduce((acc, r) => acc + r.saldo, 0);
+        const sumaBecadosTotales = data.filter(r => r.rol.includes('(Beca Total)')).reduce((acc, r) => acc + r.pagado, 0);
+        const sumaBecadosParciales = data.filter(r => r.rol.includes('(Beca Parcial)')).reduce((acc, r) => acc + r.pagado, 0);
 
         autoTable(doc, {
-            startY: 50,
-            margin: { top: 50 },
+            startY: 55,
+            margin: { top: 55 },
             head: [['Tipo', 'Nombre y Apellido', 'Registro / CI', 'Rol / Función', 'Pagado', 'Saldo']],
             body: data.map(row => [row.tipo, row.nombre, row.registro, row.rol, formatCurrency(row.pagado), formatCurrency(row.saldo)]),
             theme: 'grid',
@@ -201,25 +324,38 @@ const Reportes: React.FC = () => {
                 doc.setTextColor(40);
                 doc.text(`Balance de Evento: ${ev.tema}`, 15, 15);
                 
-                doc.setFontSize(10);
+                doc.setFontSize(9);
                 doc.text(`Fecha/Hora: ${fechaHoraImp}`, 235, 15);
-                doc.text(`Página ${d.pageNumber}`, 235, 20);
+                let str = "Página " + doc.internal.getNumberOfPages();
+                if (typeof doc.putTotalPages === 'function') {
+                    str = str + " / " + totalPagesExp;
+                }
+                doc.text(str, 235, 20);
                 
                 doc.setFontSize(10);
-                doc.text(`Fecha Evento: ${formatDate(ev.fechaInicio)} | Costo p/ Persona: ${formatCurrency(costoPersona)}`, 15, 25);
-                doc.text(`Inscriptos Totales: ${data.length}`, 15, 30);
+                doc.text(`Fecha Evento: ${formatDate(ev.fechaInicio)} | Costo p/ Persona: ${formatCurrency(costoPersona)}`, 15, 23);
                 
-                doc.setFont(undefined, 'bold');
-                doc.text(`Monto Esperado a Recaudar: ${formatCurrency(totalEsperado)}`, 15, 38);
-                doc.setTextColor(16, 185, 129);
-                doc.text(`Total Cobrado a la Fecha: ${formatCurrency(totalPagado)}`, 140, 38);
+                // Cuadro de Resumen en Cabecera (Totalizadores)
+                doc.setFontSize(9);
+                doc.setDrawColor(200);
+                doc.setFillColor(245, 245, 250);
+                doc.rect(15, 28, 265, 20, 'F');
+                
                 doc.setTextColor(40);
-                doc.setFont(undefined, 'normal');
+                doc.text(`Suma de Pagos realizados: ${formatCurrency(totalPagado)}`, 20, 35);
+                doc.text(`Suma de Saldos Pendientes: ${formatCurrency(sumaSaldosPendientes)}`, 20, 42);
                 
-                doc.line(15, 42, 280, 42);
+                doc.text(`Suma de Pagos por Becados totales: ${formatCurrency(sumaBecadosTotales)}`, 140, 35);
+                doc.text(`Suma de Pagos por Becados Parciales: ${formatCurrency(sumaBecadosParciales)}`, 140, 42);
+                
+                doc.line(15, 52, 280, 52);
             }
         });
         
+        if (typeof doc.putTotalPages === 'function') {
+            doc.putTotalPages(totalPagesExp);
+        }
+
         doc.save(`Balance_${ev.tema}.pdf`);
     };
 
@@ -311,6 +447,7 @@ const Reportes: React.FC = () => {
 
     const tableHeaders = useMemo(() => {
         switch (activeReport) {
+            case 'historialPagosEvento': return ['TIPO', 'NOMBRE', 'REG. SALUD', 'DETALLE PAGOS', 'SALDO'];
             case 'inscriptosEvento': return ['Tipo', 'Nombre', 'Reg / CI', 'Función', 'Pagado', 'Saldo'];
             case 'cumpleanos': return ['Fecha Cumpleaños', 'Nombre y Apellido', 'Reg. Salud', 'Edad Actual'];
             case 'activos': return ['Nombre y Apellido', 'Cédula', 'Teléfono', 'Ciudad'];
@@ -320,6 +457,19 @@ const Reportes: React.FC = () => {
             default: return ['Dato'];
         }
     }, [activeReport]);
+
+    // Totales calculados para la vista de Balance
+    const balanceTotals = useMemo(() => {
+        if (activeReport !== 'inscriptosEvento' || !selectedEventoId) return null;
+        const data = reportData as any[];
+        
+        return {
+            pagosRealizados: data.reduce((acc, r) => acc + r.pagado, 0),
+            saldosPendientes: data.reduce((acc, r) => acc + r.saldo, 0),
+            becasTotales: data.filter(r => r.rol.includes('(Beca Total)')).reduce((acc, r) => acc + r.pagado, 0),
+            becasParciales: data.filter(r => r.rol.includes('(Beca Parcial)')).reduce((acc, r) => acc + r.pagado, 0)
+        };
+    }, [activeReport, selectedEventoId, reportData]);
 
     return (
         <div className="space-y-6">
@@ -332,6 +482,7 @@ const Reportes: React.FC = () => {
             
             <div className="flex flex-wrap gap-2">
                 <TabButton name="Balance Eventos" id="inscriptosEvento" active={activeReport} setActive={setActiveReport} />
+                <TabButton name="Historial Pagos Evento" id="historialPagosEvento" active={activeReport} setActive={setActiveReport} />
                 <TabButton name="Cumpleaños del Mes" id="cumpleanos" active={activeReport} setActive={setActiveReport} />
                 <TabButton name="Resumen Asistencia" id="resumenAsistencia" active={activeReport} setActive={setActiveReport} />
                 <TabButton name="Lista Asistentes" id="asistenciaReunion" active={activeReport} setActive={setActiveReport} />
@@ -340,6 +491,40 @@ const Reportes: React.FC = () => {
             </div>
 
             <div className="bg-surface p-6 rounded-lg shadow-lg">
+                {activeReport === 'historialPagosEvento' && (
+                    <div className="space-y-4 mb-6">
+                         <div className="flex flex-col md:flex-row gap-4">
+                            <select value={selectedEventoId || ''} onChange={e => { setSelectedEventoId(Number(e.target.value)); }} className="bg-background border border-border p-2 rounded-md flex-1 text-text-primary">
+                                <option value="">-- Elija un evento --</option>
+                                {eventos.filter(e => e.tieneCosto).map(e => <option key={e.id} value={e.id}>{e.tema} ({formatDate(e.fechaInicio)})</option>)}
+                            </select>
+                            <button onClick={generarPDFHistorialPagosEvento} disabled={!selectedEventoId} className="bg-primary hover:bg-indigo-700 text-white px-4 py-2 rounded-md disabled:opacity-50 flex items-center gap-2 font-bold transition shadow-lg">
+                                <PrinterIcon className="w-5 h-5" /> Imprimir Historial PDF
+                            </button>
+                        </div>
+                        {selectedEventoId && (
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 p-4 bg-background/50 rounded-lg border border-border/50">
+                                <div>
+                                    <p className="text-[10px] text-text-secondary uppercase font-bold">Suma de Pagos realizados</p>
+                                    <p className="text-sm font-bold text-green-400">{formatCurrency(reportData.reduce((acc: any, r: any) => acc + r.totalPagado, 0))}</p>
+                                </div>
+                                <div>
+                                    <p className="text-[10px] text-text-secondary uppercase font-bold">Suma de Saldos Pendientes</p>
+                                    <p className="text-sm font-bold text-red-400">{formatCurrency(reportData.reduce((acc: any, r: any) => acc + r.saldo, 0))}</p>
+                                </div>
+                                <div>
+                                    <p className="text-[10px] text-text-secondary uppercase font-bold">Suma de Pagos por Becados totales</p>
+                                    <p className="text-sm font-bold text-blue-400">{formatCurrency(reportData.filter((r: any) => r.beca === 'Total').reduce((acc: any, r: any) => acc + r.totalPagado, 0))}</p>
+                                </div>
+                                <div>
+                                    <p className="text-[10px] text-text-secondary uppercase font-bold">Suma de Pagos por Becados Parciales</p>
+                                    <p className="text-sm font-bold text-yellow-400">{formatCurrency(reportData.filter((r: any) => r.beca === 'Parcial').reduce((acc: any, r: any) => acc + r.totalPagado, 0))}</p>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                )}
+
                 {activeReport === 'inscriptosEvento' && (
                     <div className="space-y-4 mb-6">
                         <div className="flex flex-col md:flex-row gap-4">
@@ -353,38 +538,60 @@ const Reportes: React.FC = () => {
                         </div>
                         
                         {selectedEventoId && (
-                            <div className="flex flex-wrap gap-4 p-3 bg-background/50 rounded-lg border border-border/50">
-                                <span className="text-xs font-bold text-text-secondary uppercase tracking-widest w-full mb-1">Filtrar vista actual:</span>
-                                <label className="flex items-center gap-2 text-xs font-bold text-text-secondary cursor-pointer hover:text-text-primary transition-colors select-none">
-                                    <input 
-                                        type="checkbox" 
-                                        checked={filterBecados} 
-                                        onChange={(e) => setFilterBecados(e.target.checked)}
-                                        className="h-4 w-4 text-primary rounded border-border bg-background focus:ring-primary"
-                                    />
-                                    <span>Ver Becados</span>
-                                </label>
-                                <label className="flex items-center gap-2 text-xs font-bold text-text-secondary cursor-pointer hover:text-text-primary transition-colors select-none">
-                                    <input 
-                                        type="checkbox" 
-                                        checked={filterDeudores} 
-                                        onChange={(e) => setFilterDeudores(e.target.checked)}
-                                        className="h-4 w-4 text-primary rounded border-border bg-background focus:ring-primary"
-                                    />
-                                    <span>Saldo Pendiente</span>
-                                </label>
-                                <label className="flex items-center gap-2 text-xs font-bold text-text-secondary cursor-pointer hover:text-text-primary transition-colors select-none">
-                                    <input 
-                                        type="checkbox" 
-                                        checked={filterPagados} 
-                                        onChange={(e) => setFilterPagados(e.target.checked)}
-                                        className="h-4 w-4 text-primary rounded border-border bg-background focus:ring-primary"
-                                    />
-                                    <span>Totalmente Pagados</span>
-                                </label>
-                            </div>
+                            <>
+                                {/* Sección de Totalizadores */}
+                                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 p-4 bg-background/50 rounded-lg border border-primary/20 shadow-inner">
+                                    <div className="flex flex-col">
+                                        <p className="text-[10px] text-text-secondary uppercase font-bold tracking-widest">Suma de Pagos realizados</p>
+                                        <p className="text-lg font-black text-green-400">{formatCurrency(balanceTotals?.pagosRealizados || 0)}</p>
+                                    </div>
+                                    <div className="flex flex-col">
+                                        <p className="text-[10px] text-text-secondary uppercase font-bold tracking-widest">Suma de Saldos Pendientes</p>
+                                        <p className="text-lg font-black text-red-400">{formatCurrency(balanceTotals?.saldosPendientes || 0)}</p>
+                                    </div>
+                                    <div className="flex flex-col">
+                                        <p className="text-[10px] text-indigo-300 uppercase font-bold tracking-widest">Suma de Pagos por Becados totales</p>
+                                        <p className="text-lg font-black text-indigo-400">{formatCurrency(balanceTotals?.becasTotales || 0)}</p>
+                                    </div>
+                                    <div className="flex flex-col">
+                                        <p className="text-[10px] text-yellow-500/80 uppercase font-bold tracking-widest">Suma de Pagos por Becados Parciales</p>
+                                        <p className="text-lg font-black text-yellow-400">{formatCurrency(balanceTotals?.becasParciales || 0)}</p>
+                                    </div>
+                                </div>
+
+                                <div className="flex flex-wrap gap-4 p-3 bg-background/50 rounded-lg border border-border/50">
+                                    <span className="text-xs font-bold text-text-secondary uppercase tracking-widest w-full mb-1">Filtrar vista actual:</span>
+                                    <label className="flex items-center gap-2 text-xs font-bold text-text-secondary cursor-pointer hover:text-text-primary transition-colors select-none">
+                                        <input 
+                                            type="checkbox" 
+                                            checked={filterBecados} 
+                                            onChange={(e) => setFilterBecados(e.target.checked)}
+                                            className="h-4 w-4 text-primary rounded border-border bg-background focus:ring-primary"
+                                        />
+                                        <span>Ver Becados</span>
+                                    </label>
+                                    <label className="flex items-center gap-2 text-xs font-bold text-text-secondary cursor-pointer hover:text-text-primary transition-colors select-none">
+                                        <input 
+                                            type="checkbox" 
+                                            checked={filterDeudores} 
+                                            onChange={(e) => setFilterDeudores(e.target.checked)}
+                                            className="h-4 w-4 text-primary rounded border-border bg-background focus:ring-primary"
+                                        />
+                                        <span>Saldo Pendiente</span>
+                                    </label>
+                                    <label className="flex items-center gap-2 text-xs font-bold text-text-secondary cursor-pointer hover:text-text-primary transition-colors select-none">
+                                        <input 
+                                            type="checkbox" 
+                                            checked={filterPagados} 
+                                            onChange={(e) => setFilterPagados(e.target.checked)}
+                                            className="h-4 w-4 text-primary rounded border-border bg-background focus:ring-primary"
+                                        />
+                                        <span>Totalmente Pagados</span>
+                                    </label>
+                                </div>
+                            </>
                         )}
-                    </div>
+                    </div >
                 )}
 
                 {activeReport === 'cumpleanos' && reportData.length > 0 && (
@@ -417,7 +624,36 @@ const Reportes: React.FC = () => {
                         <tbody className="divide-y divide-border">
                             {reportData.length > 0 ? (
                                 reportData.map((r: any, i) => {
-                                    if (activeReport === 'inscriptosEvento') {
+                                    if (activeReport === 'historialPagosEvento') {
+                                        return (
+                                            <tr key={i} className="hover:bg-background/40 align-top">
+                                                <td className={`p-3 font-bold text-[10px] ${r.tipo === 'CHICO' ? 'text-primary' : 'text-secondary'}`}>{r.tipo}</td>
+                                                <td className="p-3">
+                                                    <p className="font-bold">{r.nombre}</p>
+                                                    <p className="text-[10px] text-text-secondary uppercase">{r.rol}</p>
+                                                </td>
+                                                <td className="p-3 font-mono text-xs">{r.registro}</td>
+                                                <td className="p-3">
+                                                    {r.pagos.length > 0 ? (
+                                                        <div className="space-y-1">
+                                                            {r.pagos.map((p: any, idx: number) => (
+                                                                <div key={idx} className="flex justify-between gap-4 text-[11px]">
+                                                                    <span className="text-text-secondary">{formatDate(p.fecha)}</span>
+                                                                    <span className="font-bold text-green-400">{formatCurrency(p.monto)}</span>
+                                                                </div>
+                                                            ))}
+                                                            <div className="pt-1 border-t border-border/50 text-right font-black text-white">
+                                                                Total: {formatCurrency(r.totalPagado)}
+                                                            </div>
+                                                        </div>
+                                                    ) : (
+                                                        <span className="text-xs text-text-secondary italic">Sin pagos registrados</span>
+                                                    )}
+                                                </td>
+                                                <td className={`p-3 font-bold ${r.saldo > 0 ? 'text-red-400' : 'text-green-500'}`}>{formatCurrency(r.saldo)}</td>
+                                            </tr>
+                                        );
+                                    } else if (activeReport === 'inscriptosEvento') {
                                         return (
                                             <tr key={i} className="hover:bg-background/40">
                                                 <td className={`p-3 font-bold text-[10px] ${r.tipo === 'CHICO' ? 'text-primary' : 'text-secondary'}`}>{r.tipo}</td>

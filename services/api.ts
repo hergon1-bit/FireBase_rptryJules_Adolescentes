@@ -329,7 +329,7 @@ export const api = {
             fechaFin: e.fecha_fin, 
             horaFin: e.hora_fin, 
             tieneCosto: e.tiene_costo, 
-            costoTotal: e.costo_total, 
+            costo_total: e.costo_total, 
             costoPersona: e.costo_persona 
         }));
     } catch (error) { return []; }
@@ -656,7 +656,8 @@ export const api = {
 
   updateInscripcion: async (i: InscripcionEvento): Promise<InscripcionEvento> => {
     return withRetry(async () => {
-        const { error } = await supabase.from('inscripciones_eventos').update({ evento_id: i.eventoId, adolescente_id: i.adolescente_id, fecha_inscripcion: i.fechaInscripcion, notas: i.notas }).eq('id', i.id);
+        // Fix: Replace 'adolescente_id: i.adolescente_id' with 'adolescente_id: i.adolescenteId' to match the InscripcionEvento interface.
+        const { error } = await supabase.from('inscripciones_eventos').update({ evento_id: i.eventoId, adolescente_id: i.adolescenteId, fecha_inscripcion: i.fechaInscripcion, notas: i.notas }).eq('id', i.id);
         if (error) throw new Error(error.message);
         return i;
     });
