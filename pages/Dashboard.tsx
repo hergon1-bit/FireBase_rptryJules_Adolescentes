@@ -250,7 +250,7 @@ const Dashboard: React.FC<DashboardProps> = ({ navigateTo }) => {
                                         <img src={`https://ui-avatars.com/api/?name=${persona.nombre}+${persona.apellido}&background=random`} alt="avatar" className="w-10 h-10 rounded-full" />
                                         <div>
                                             <p className="font-semibold text-text-primary">{persona.nombre} {persona.apellido}</p>
-                                            <p className="text-sm text-text-secondary">{new Date(persona.fechaNacimiento).toLocaleDateString('es-ES', { day: 'numeric', month: 'long' })}</p>
+                                            <p className="text-sm text-text-secondary">{formatDate(persona.fechaNacimiento)}</p>
                                         </div>
                                     </div>
                                     <button onClick={() => addCelebracionCumpleanos(persona.id, new Date().getFullYear())} className="p-1.5 rounded-full text-gray-400 hover:text-green-400 transition-all"><CheckCircleIcon className="w-6 h-6" /></button>

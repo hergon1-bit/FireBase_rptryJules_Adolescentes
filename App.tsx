@@ -4,7 +4,6 @@ import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { DataProvider } from './contexts/DataContext';
 import { Page } from './types';
 
-// Páginas
 import Dashboard from './pages/Dashboard';
 import Sidebar from './components/layout/Sidebar';
 import Header from './components/layout/Header';
@@ -22,6 +21,7 @@ import LimpiarTablas from './pages/LimpiarTablas';
 import CargarTablas from './pages/CargarTablas';
 import UpdatePassword from './pages/UpdatePassword';
 import LoginPage from './pages/LoginPage';
+import Servidores from './pages/Servidores';
 
 const AppContent: React.FC = () => {
   const { user, loading } = useAuth();
@@ -48,6 +48,7 @@ const AppContent: React.FC = () => {
     switch (currentPage) {
       case 'dashboard': return <Dashboard navigateTo={navigateTo} />;
       case 'adolescentes': return <Adolescentes />;
+      case 'servidores': return <Servidores />;
       case 'encargados': return <Encargados />;
       case 'reuniones': return <Reuniones navigateTo={navigateTo} />;
       case 'asistencia': return <Asistencia reunionId={pageParams?.reunionId} navigateTo={navigateTo} />;

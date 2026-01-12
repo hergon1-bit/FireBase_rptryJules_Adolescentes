@@ -29,11 +29,9 @@ const CargarTablas: React.FC = () => {
     const [isFixingDates, setIsFixingDates] = useState(false);
     const [isRecalculating, setIsRecalculating] = useState(false);
     
-    // Diagnosis state
     const [showDiagnosis, setShowDiagnosis] = useState(false);
     const [showOnlyErrors, setShowOnlyErrors] = useState(true);
 
-    // Import Preview state
     const [filterImportErrors, setFilterImportErrors] = useState(false);
     
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -181,8 +179,6 @@ const CargarTablas: React.FC = () => {
         const asistenciasInFile = new Set<string>();
         const validDetalles = ['Regular', 'Primera Vez', 'Regresa'];
 
-        // Helper maps for ID lookup
-        // Added explicit type casting to provide type safety and avoid "unknown" property access errors
         const adolescentesMap = new Map<string, Adolescente>((adolescentes as Adolescente[]).map(a => [a.cedula, a]));
         const reunionesMap = new Map<number, Reunion>((reuniones as Reunion[]).map(r => [r.id, r]));
 
@@ -393,19 +389,18 @@ const CargarTablas: React.FC = () => {
                 <div>
                     <p className="mb-2 text-sm font-semibold">El archivo debe tener exactamente las 4 columnas citadas abajo:</p>
                     <ol className="list-decimal list-inside space-y-1">
-                        <li>reunion_id (Entero, Clave foránea)</li>
-                        <li>adolescente_id (Entero, Clave foránea)</li>
-                        <li>estado (Texto: 'Presente' o 'Ausente')</li>
-                        <li>detalle (Texto: 'Regular', 'Primera Vez', etc.)</li>
+                        <li>ID Reunión (Entero)</li>
+                        <li>Cédula Adolescente (Requerido)</li>
+                        <li>Estado (Texto: 'Presente' o 'Ausente')</li>
+                        <li>Detalle (Texto: 'Regular', 'Primera Vez', etc.)</li>
                     </ol>
                     <p className="mt-2 text-xs text-text-secondary italic">
-                        <strong>Importante:</strong> Para la columna <em>adolescente_id</em>, debe ingresar la <strong>Cédula</strong> del adolescente para que el sistema lo identifique.
+                        <strong>Importante:</strong> Para identificar al adolescente, debe ingresar su número de <strong>Cédula</strong>.
                     </p>
                 </div>
             ),
             previewHeaders: ['ID Reunión', 'Adolescente CI', 'Estado', 'Detalle', 'Validación', 'Observación'],
             renderRow: (row: ParsedRow, index: number) => {
-                 // Explicitly cast context arrays to their expected types to ensure property accessibility and fix "unknown" type errors
                  const ado = (adolescentes as Adolescente[]).find((a: Adolescente) => a.id === row.data.adolescenteId);
                  const reu = (reuniones as Reunion[]).find((r: Reunion) => r.id === row.data.reunionId);
                  
@@ -457,8 +452,8 @@ const CargarTablas: React.FC = () => {
                                     Mantenimiento de Datos
                                 </h2>
                                 <p className="text-sm text-text-secondary mb-4">
-                                    Utilice esta herramienta si las fechas de nacimiento se cargaron con formatos incorrectos (como DD/MM/AAAA o con barras).
-                                    Esto convertirá todas las fechas al formato estándar de la base de datos <strong>(AAAA-MM-DD)</strong>.
+                                    Utilice esta herramienta si las fechas de nacimiento se cargaron con formatos incorrectos.
+                                    Esto convertirá todas las fechas al formato estándar <strong>(AAAA-MM-DD)</strong>.
                                 </p>
                                 <button 
                                     onClick={handleNormalizeDates}
@@ -481,7 +476,7 @@ const CargarTablas: React.FC = () => {
                             
                             <div className="pt-4 border-t border-border">
                                 <p className="text-sm text-text-secondary mb-3">
-                                    Si los datos ya están grabados correctamente en la tabla pero no ves las edades o gráficos actualizados, usa este botón para refrescar.
+                                    Si los datos ya están grabados correctamente pero no ves las edades o gráficos actualizados, usa este botón para refrescar.
                                 </p>
                                 <button 
                                     onClick={handleRecalculateAges}
@@ -496,7 +491,7 @@ const CargarTablas: React.FC = () => {
                                     ) : (
                                         <>
                                             <CalculatorIcon className="w-4 h-4" />
-                                            Recalculan Edades (Refrescar)
+                                            Recalcular Edades (Refrescar)
                                         </>
                                     )}
                                 </button>

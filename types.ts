@@ -16,21 +16,21 @@ export interface Rol {
     tutores: Permisos;
     eventos: Permisos;
     usuarios: Permisos;
-    devocionales: Permisos; // Gestión de temas de la semana
-    entregas: Permisos;      // Registro de entregas de los chicos
-    inscripciones: Permisos; // Gestión de inscripciones a eventos
-    pagos: Permisos;         // Gestión de pagos de eventos
-    participantes: Permisos; // Gestión de participantes confirmados en eventos
+    devocionales: Permisos;
+    entregas: Permisos;
+    inscripciones: Permisos;
+    pagos: Permisos;
+    participantes: Permisos;
   };
 }
 
 export interface Usuario {
-  id: string; // Changed from number to string for Supabase auth UUID
+  id: string;
   email: string;
   nombre: string;
   rolId: number;
   avatarUrl?: string;
-  lastSignInAt?: string; // Fecha de última conexión
+  lastSignInAt?: string;
 }
 
 export type Sexo = 'Masculino' | 'Femenino';
@@ -41,8 +41,8 @@ export interface Adolescente {
   nombre: string;
   apellido: string;
   cedula: string;
-  registro: string; // Nuevo campo: Registro de salud (9 dígitos)
-  fechaNacimiento: string; // YYYY-MM-DD
+  registro: string;
+  fechaNacimiento: string;
   barrio: string;
   ciudad: string;
   telefono: string;
@@ -50,12 +50,45 @@ export interface Adolescente {
   estado: EstadoAdolescente;
 }
 
+// --- SERVIDORES (APOYO) ---
+export type RolServidor = 'Pastor' | 'Padre' | 'Madre' | 'Lider de Color' | 'Lider de Campamento' | 'Cuidador' | 'Apoyo' | 'Cocina' | 'Sonido' | 'Alabanza' | 'Otro';
+export type TipoBeca = 'Ninguna' | 'Parcial' | 'Total';
+
+export interface Servidor {
+  id: number;
+  nombre: string;
+  apellido: string;
+  cedula: string;
+  registro: string;
+  telefono: string;
+  ciudad: string;
+}
+
+export interface InscripcionServidor {
+  id: number;
+  eventoId: number;
+  servidorId: number;
+  rol: RolServidor;
+  tipoBeca?: TipoBeca;
+  montoAcordado?: number;
+  iglesiaPagaSaldo?: boolean;
+  notas?: string;
+}
+
+export interface PagoServidor {
+  id: number;
+  inscripcionServidorId: number;
+  fecha: string;
+  monto: number;
+  notas?: string;
+}
+
 export interface Encargado {
   id: number;
   nombre: string;
   apellido: string;
   cedula: string;
-  fechaNacimiento?: string; // YYYY-MM-DD
+  fechaNacimiento?: string;
   barrio: string;
   ciudad: string;
   telefono: string;
@@ -66,7 +99,7 @@ export type EstadoReunion = 'En Proceso' | 'Finalizado';
 
 export interface Reunion {
   id: number;
-  fecha: string; // YYYY-MM-DD
+  fecha: string;
   tema: string;
   encargadoId: number;
   estado: EstadoReunion;
@@ -82,7 +115,6 @@ export interface Asistencia {
   detalle?: AsistenciaDetalle;
 }
 
-// Nueva interfaz para la vista de resumen
 export interface ResumenReunion {
   reunionId: number;
   presentes: number;
@@ -107,15 +139,14 @@ export interface TutorAdolescente {
     adolescenteId: number;
 }
 
-
 export interface Evento {
   id: number;
   tema: string;
   lugar: string;
-  fechaInicio: string; // YYYY-MM-DD
-  horaInicio: string; // HH:MM
-  fechaFin: string; // YYYY-MM-DD
-  horaFin: string; // HH:MM
+  fechaInicio: string;
+  horaInicio: string;
+  fechaFin: string;
+  horaFin: string;
   tieneCosto: boolean;
   costoTotal?: number;
   costoPersona?: number;
@@ -125,14 +156,14 @@ export interface InscripcionEvento {
   id: number;
   eventoId: number;
   adolescenteId: number;
-  fechaInscripcion: string; // YYYY-MM-DD
+  fechaInscripcion: string;
   notas?: string;
 }
 
 export interface PagoEvento {
   id: number;
   inscripcionId: number;
-  fecha: string; // YYYY-MM-DD
+  fecha: string;
   monto: number;
 }
 
@@ -146,21 +177,21 @@ export interface CelebracionCumpleanos {
   ano: number;
 }
 
-// --- TAREAS / DEVOCIONALES ---
 export interface Devocional {
   id: number;
   numeroSemana: number;
   tema: string;
-  fechaDistribucion: string; // YYYY-MM-DD
-  fechaVencimiento: string; // YYYY-MM-DD
+  fechaDistribucion: string;
+  fechaVencimiento: string;
 }
 
+// Renamed observations to observaciones to align with the database schema and app-wide naming conventions.
 export interface EntregaDevocional {
   id: number;
   devocionalId: number;
   adolescenteId: number;
-  fechaEntrega: string; // YYYY-MM-DD
+  fechaEntrega: string;
   observaciones?: string;
 }
 
-export type Page = 'dashboard' | 'adolescentes' | 'encargados' | 'reuniones' | 'tutores' | 'eventos' | 'reportes' | 'usuarios' | 'roles' | 'asistencia' | 'limpiar-tablas' | 'cargar-tablas' | 'update-password' | 'tareas';
+export type Page = 'dashboard' | 'adolescentes' | 'encargados' | 'reuniones' | 'tutores' | 'eventos' | 'reportes' | 'usuarios' | 'roles' | 'asistencia' | 'limpiar-tablas' | 'cargar-tablas' | 'update-password' | 'tareas' | 'servidores';

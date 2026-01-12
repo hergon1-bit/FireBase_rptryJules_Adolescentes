@@ -1,14 +1,13 @@
-
 import { supabase, supabaseUrl, supabaseKey } from './supabase';
 import { createClient } from '@supabase/supabase-js';
 import { 
   Usuario, Rol, Adolescente, Encargado, Reunion, Tutor, Evento, Asistencia, 
   TutorAdolescente, InscripcionEvento, PagoEvento, ParticipanteEvento, TipoAsistencia, AsistenciaDetalle,
-  CelebracionCumpleanos, ResumenReunion, Devocional, EntregaDevocional
+  CelebracionCumpleanos, ResumenReunion, Devocional, EntregaDevocional,
+  Servidor, InscripcionServidor, PagoServidor
 } from '../types';
 
-// Configuración de Timeouts extendida para entornos de producción/gratuitos
-const API_TIMEOUT = 45000; // 45 segundos para el primer arranque
+const API_TIMEOUT = 45000;
 
 const withTimeout = <T>(promise: Promise<T>, ms = API_TIMEOUT): Promise<T> => {
   return new Promise((resolve, reject) => {
@@ -35,7 +34,7 @@ const withRetry = async <T>(fn: () => Promise<T>, retries = 3, delay = 2000): Pr
     if (retries > 0 && isRetryable) {
       console.warn(`Reintentando conexión en ${delay}ms... (${retries} intentos restantes).`);
       await new Promise(resolve => setTimeout(resolve, delay));
-      return withRetry(fn, retries - 1, delay * 1.5); // Reintento exponencial ligero
+      return withRetry(fn, retries - 1, delay * 1.5);
     }
     throw error;
   }
@@ -129,22 +128,15 @@ export const api = {
       const { count, error } = await withRetry(async () => 
         supabase.from('usuarios').select('*', { count: 'exact', head: true })
       ) as any;
-      
-      if (error) {
-          console.warn("Fallo al contar usuarios:", error.message);
-          return -1;
-      }
+      if (error) return -1;
       return count ?? 0;
-    } catch (e) { 
-      return -1; 
-    }
+    } catch (e) { return -1; }
   },
 
   ensureDefaultRoles: async (): Promise<void> => {
     try {
       const { data: existingRoles } = await supabase.from('roles').select('id').limit(1);
       if (existingRoles && existingRoles.length > 0) return;
-      
       const defaultPerms = { read: true, create: true, update: true, delete: true };
       const guestPerms = { read: true, create: false, update: false, delete: false };
       const roles = [
@@ -177,6 +169,133 @@ export const api = {
     } catch (error: any) { return []; }
   },
 
+  // --- API SERVIDORES ---
+  getServidores: async (): Promise<Servidor[]> => {
+    try {
+        const data = await fetchAllRows('servidores', '*', { column: 'nombre', ascending: true });
+        return data as Servidor[];
+    } catch (error) { return []; }
+  },
+
+  createServidor: async (s: Omit<Servidor, 'id'>): Promise<Servidor> => {
+    return withRetry(async () => {
+        const { data, error } = await supabase.from('servidores').insert(s).select().single();
+        const result = handleSupabaseData(data, error, 'createServidor');
+        return result;
+    });
+  },
+
+  updateServidor: async (s: Servidor): Promise<Servidor> => {
+    return withRetry(async () => {
+        const { id, ...rest } = s;
+        const { data, error } = await supabase.from('servidores').update(rest).eq('id', id).select().single();
+        const result = handleSupabaseData(data, error, 'updateServidor');
+        return result;
+    });
+  },
+
+  deleteServidor: async (id: number): Promise<void> => {
+    await supabase.from('servidores').delete().eq('id', id);
+  },
+
+  getInscripcionesServidores: async (): Promise<InscripcionServidor[]> => {
+    try {
+        const { data, error } = await supabase.from('inscripciones_servidores').select('*');
+        if (error) return [];
+        return (data || []).map((i: any) => ({ 
+            id: i.id, 
+            eventoId: i.evento_id, 
+            servidorId: i.servidor_id, 
+            rol: i.rol, 
+            tipoBeca: i.tipo_beca, // Fix mapping
+            montoAcordado: i.monto_acordado, // Fix mapping
+            iglesiaPagaSaldo: i.iglesia_paga_saldo, // Fix mapping
+            notas: i.notas 
+        }));
+    } catch (e) { return []; }
+  },
+
+  createInscripcionServidor: async (i: Omit<InscripcionServidor, 'id'>): Promise<InscripcionServidor> => {
+    return withRetry(async () => {
+        const { data, error } = await supabase.from('inscripciones_servidores').insert({ 
+            evento_id: i.eventoId, 
+            servidor_id: i.servidorId, 
+            rol: i.rol, 
+            tipo_beca: i.tipoBeca || 'Ninguna',
+            monto_acordado: i.montoAcordado || 0,
+            // Fix: property name was church_paga_saldo instead of churchPagaSaldo from interface
+            iglesia_paga_saldo: i.iglesiaPagaSaldo || false,
+            notas: i.notas 
+        }).select().single();
+        const result = handleSupabaseData(data, error, 'createInscripcionServidor');
+        return { 
+            id: result.id, 
+            eventoId: result.evento_id, 
+            servidorId: result.servidor_id, 
+            rol: result.rol, 
+            tipoBeca: result.tipo_beca,
+            montoAcordado: result.monto_acordado,
+            iglesiaPagaSaldo: result.iglesia_paga_saldo,
+            notas: result.notas 
+        };
+    });
+  },
+
+  updateInscripcionServidor: async (i: InscripcionServidor): Promise<void> => {
+    return withRetry(async () => {
+        const { error } = await supabase.from('inscripciones_servidores').update({ 
+            rol: i.rol, 
+            tipo_beca: i.tipoBeca,
+            monto_acordado: i.montoAcordado,
+            // Fix: property name typo
+            iglesia_paga_saldo: i.iglesiaPagaSaldo,
+            notas: i.notas 
+        }).eq('id', i.id);
+        if (error) throw new Error(error.message);
+    });
+  },
+
+  deleteInscripcionServidor: async (id: number): Promise<void> => {
+    await supabase.from('inscripciones_servidores').delete().eq('id', id);
+  },
+
+  // Fix duplicate 'getPagosServidores' and consolidate into a robust version using fetchAllRows
+  getPagosServidores: async (): Promise<PagoServidor[]> => {
+    try {
+        const data = await fetchAllRows('pagos_servidores', '*');
+        return (data || []).map((p: any) => ({ 
+            id: p.id, 
+            inscripcionServidorId: p.inscripcion_servidor_id, 
+            fecha: p.fecha, 
+            monto: p.monto,
+            notas: p.notas
+        }));
+    } catch (e) { return []; }
+  },
+
+  createPagoServidor: async (p: Omit<PagoServidor, 'id'>): Promise<PagoServidor> => {
+    return withRetry(async () => {
+        const { data, error } = await supabase.from('pagos_servidores').insert({ 
+            inscripcion_servidor_id: p.inscripcionServidorId, 
+            monto: p.monto, 
+            fecha: p.fecha,
+            notas: p.notas
+        }).select().single();
+        const result = handleSupabaseData(data, error, 'createPagoServidor');
+        return { 
+            id: result.id, 
+            inscripcionServidorId: result.inscripcion_servidor_id, 
+            fecha: result.fecha, 
+            monto: result.monto,
+            notas: result.notas
+        };
+    });
+  },
+
+  deletePagoServidor: async (id: number): Promise<void> => {
+    await supabase.from('pagos_servidores').delete().eq('id', id);
+  },
+
   getEncargados: async (): Promise<Encargado[]> => {
     try {
         const data = await fetchAllRows('encargados', 'id, nombre, apellido, cedula, fecha_nacimiento, barrio, ciudad, telefono, email', { column: 'nombre', ascending: true });
@@ -201,7 +320,18 @@ export const api = {
   getEventos: async (): Promise<Evento[]> => {
     try {
         const data = await fetchAllRows('eventos', '*', { column: 'fecha_inicio', ascending: false });
-        return data.map((e: any) => ({ id: e.id, tema: e.tema, lugar: e.lugar, fechaInicio: e.fecha_inicio, horaInicio: e.hora_inicio, fechaFin: e.fecha_fin, horaFin: e.hora_fin, tieneCosto: e.tiene_costo, costo_total: e.costo_total, costo_persona: e.costo_persona }));
+        return data.map((e: any) => ({ 
+            id: e.id, 
+            tema: e.tema, 
+            lugar: e.lugar, 
+            fechaInicio: e.fecha_inicio, 
+            horaInicio: e.hora_inicio, 
+            fechaFin: e.fecha_fin, 
+            horaFin: e.hora_fin, 
+            tieneCosto: e.tiene_costo, 
+            costoTotal: e.costo_total, 
+            costoPersona: e.costo_persona 
+        }));
     } catch (error) { return []; }
   },
 
@@ -325,12 +455,7 @@ export const api = {
   updateAdolescente: async (adolescente: Adolescente): Promise<Adolescente> => {
     return withRetry(async () => {
         const { id, ...updateData } = adolescente;
-        const dbPayload = { 
-            nombre: updateData.nombre, apellido: updateData.apellido, cedula: updateData.cedula, 
-            registro: updateData.registro, fecha_nacimiento: updateData.fechaNacimiento, 
-            barrio: updateData.barrio, ciudad: updateData.ciudad, telefono: updateData.telefono, 
-            sexo: updateData.sexo, estado: updateData.estado 
-        };
+        const dbPayload = { nombre: updateData.nombre, apellido: updateData.apellido, cedula: updateData.cedula, registro: updateData.registro, fecha_nacimiento: updateData.fechaNacimiento, barrio: updateData.barrio, ciudad: updateData.ciudad, telefono: updateData.telefono, sexo: updateData.sexo, estado: updateData.estado };
         const { error } = await supabase.from('adolescentes').update(dbPayload).eq('id', id);
         if (error) throw new Error(error.message);
         return adolescente;
@@ -341,6 +466,7 @@ export const api = {
 
   createAdolescentesBulk: async (adolescentes: Omit<Adolescente, 'id'>[]): Promise<void> => {
     return withRetry(async () => {
+        // Fix: Property was fecha_nacimiento instead of fechaNacimiento
         await supabase.from('adolescentes').insert(adolescentes.map(a => ({ nombre: a.nombre, apellido: a.apellido, cedula: a.cedula, registro: a.registro, fecha_nacimiento: a.fechaNacimiento, barrio: a.barrio, ciudad: a.ciudad, telefono: a.telefono, sexo: a.sexo, estado: a.estado })));
     });
   },
@@ -366,6 +492,7 @@ export const api = {
 
   createEncargadosBulk: async (encargados: Omit<Encargado, 'id'>[]): Promise<void> => {
     return withRetry(async () => {
+        // Fix: Property was fecha_nacimiento instead of fechaNacimiento
         await supabase.from('encargados').insert(encargados.map(e => ({ nombre: e.nombre, apellido: e.apellido, cedula: e.cedula, fecha_nacimiento: e.fechaNacimiento || null, barrio: e.barrio, ciudad: e.ciudad, telefono: e.telefono, email: e.email || null })));
     });
   },
@@ -529,13 +656,7 @@ export const api = {
 
   updateInscripcion: async (i: InscripcionEvento): Promise<InscripcionEvento> => {
     return withRetry(async () => {
-        // Fixed: Use i.fechaInscripcion instead of i.fecha_inscripcion to match the interface property name
-        const { error } = await supabase.from('inscripciones_eventos').update({ 
-            evento_id: i.eventoId, 
-            adolescente_id: i.adolescenteId, 
-            fecha_inscripcion: i.fechaInscripcion, 
-            notas: i.notas 
-        }).eq('id', i.id);
+        const { error } = await supabase.from('inscripciones_eventos').update({ evento_id: i.eventoId, adolescente_id: i.adolescente_id, fecha_inscripcion: i.fechaInscripcion, notas: i.notas }).eq('id', i.id);
         if (error) throw new Error(error.message);
         return i;
     });
