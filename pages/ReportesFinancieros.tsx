@@ -7,6 +7,7 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
 type FinReportType = 'balance' | 'historial';
+type BalanceFilterStatus = 'all' | 'pending' | 'paid' | 'scholarship' | 'local';
 
 const ReportesFinancieros: React.FC = () => {
     const { 
@@ -16,6 +17,10 @@ const ReportesFinancieros: React.FC = () => {
     const [activeReport, setActiveReport] = useState<FinReportType>('balance');
     const [selectedEventoId, setSelectedEventoId] = useState<number | null>(null);
     const [isRefreshing, setIsRefreshing] = useState(false);
+
+    // Estados para filtros de Balance General
+    const [searchTermBalance, setSearchTermBalance] = useState('');
+    const [activeStatusFilter, setActiveStatusFilter] = useState<BalanceFilterStatus>('all');
 
     useEffect(() => {
         const loadFreshData = async () => {
@@ -32,7 +37,7 @@ const ReportesFinancieros: React.FC = () => {
         setIsRefreshing(false);
     }
 
-    // Datos para la pestaña de Balance (Resumen por persona)
+    // Datos base para el Balance
     const summaryData = useMemo(() => {
         if (!selectedEventoId) return [];
         const event = eventos.find(e => e.id === selectedEventoId);
@@ -84,6 +89,21 @@ const ReportesFinancieros: React.FC = () => {
 
         return [...dataChicos, ...dataServidores].sort((a, b) => a.nombre.localeCompare(b.nombre));
     }, [adolescentes, eventos, inscripciones, pagos, servidores, inscripcionesServidores, pagosServidores, selectedEventoId]);
+
+    // Aplicación de filtros en Balance General
+    const filteredSummaryData = useMemo(() => {
+        return summaryData.filter(item => {
+            const matchesSearch = item.nombre.toLowerCase().includes(searchTermBalance.toLowerCase());
+            
+            let matchesStatus = true;
+            if (activeStatusFilter === 'pending') matchesStatus = item.saldo > 0;
+            else if (activeStatusFilter === 'paid') matchesStatus = item.saldo <= 0;
+            else if (activeStatusFilter === 'scholarship') matchesStatus = (item.beca !== 'Ninguna' && !item.precioLocal);
+            else if (activeStatusFilter === 'local') matchesStatus = item.precioLocal === true;
+
+            return matchesSearch && matchesStatus;
+        });
+    }, [summaryData, searchTermBalance, activeStatusFilter]);
 
     // Datos para la pestaña de Historial (Listado de transacciones)
     const historyData = useMemo(() => {
@@ -142,7 +162,7 @@ const ReportesFinancieros: React.FC = () => {
             }
         });
 
-        // Cálculos de cantidades
+        // Cálculos de cantidades (sobre summaryData base, sin filtros de visualización)
         const cantInscriptos = summaryData.length;
         const cantPagadosFull = summaryData.filter(r => r.saldo <= 0).length;
         const cantPendientes = summaryData.filter(r => r.saldo > 0).length;
@@ -271,7 +291,7 @@ const ReportesFinancieros: React.FC = () => {
                         <label className="block text-xs font-bold text-text-secondary mb-2 uppercase tracking-widest">Seleccionar Evento</label>
                         <select 
                             value={selectedEventoId || ''} 
-                            onChange={e => setSelectedEventoId(Number(e.target.value))} 
+                            onChange={e => { setSelectedEventoId(Number(e.target.value)); setSearchTermBalance(''); setActiveStatusFilter('all'); }} 
                             className="bg-background border border-border p-3 rounded-lg w-full text-text-primary focus:ring-2 ring-primary outline-none transition-all"
                         >
                             <option value="">-- Seleccione un evento para ver finanzas --</option>
@@ -309,19 +329,19 @@ const ReportesFinancieros: React.FC = () => {
                     <div className="space-y-8 animate-fade-in">
                         {/* Indicadores Clave de Montos */}
                         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
-                            <div className="p-5 bg-background/50 rounded-xl border border-border shadow-inner group">
+                            <div className="p-5 bg-background/50 rounded-xl border border-border shadow-inner group text-center md:text-left">
                                 <p className="text-[10px] text-text-secondary uppercase font-bold tracking-tighter mb-1">Cobrado en Caja</p>
                                 <p className="text-2xl font-black text-green-400">{formatCurrency(balanceTotals.pagosRealizados)}</p>
                             </div>
-                            <div className="p-5 bg-background/50 rounded-xl border border-border shadow-inner group">
+                            <div className="p-5 bg-background/50 rounded-xl border border-border shadow-inner group text-center md:text-left">
                                 <p className="text-[10px] text-text-secondary uppercase font-bold tracking-tighter mb-1">Saldo Pendiente</p>
                                 <p className="text-2xl font-black text-red-400">{formatCurrency(balanceTotals.saldosPendientes)}</p>
                             </div>
-                            <div className="p-5 bg-indigo-500/10 rounded-xl border border-indigo-500/20 shadow-inner group">
+                            <div className="p-5 bg-indigo-500/10 rounded-xl border border-indigo-500/20 shadow-inner group text-center md:text-left">
                                 <p className="text-[10px] text-indigo-300 uppercase font-bold tracking-tighter mb-1">Becas (Iglesia)</p>
                                 <p className="text-2xl font-black text-indigo-400">{formatCurrency(balanceTotals.becasCargoIglesia)}</p>
                             </div>
-                            <div className="p-5 bg-orange-500/10 rounded-xl border border-orange-500/20 shadow-inner group">
+                            <div className="p-5 bg-orange-500/10 rounded-xl border border-orange-500/20 shadow-inner group text-center md:text-left">
                                 <p className="text-[10px] text-orange-300 uppercase font-bold tracking-tighter mb-1">Acuerdos Locales</p>
                                 <p className="text-2xl font-black text-orange-400">{formatCurrency(balanceTotals.ahorroAcuerdoLocal)}</p>
                             </div>
@@ -356,6 +376,57 @@ const ReportesFinancieros: React.FC = () => {
                             </div>
                         </div>
 
+                        {/* Barra de Filtros (Balance General) */}
+                        {activeReport === 'balance' && (
+                            <div className="flex flex-col lg:flex-row gap-4 p-4 bg-background/20 rounded-xl border border-border/50">
+                                <div className="flex-1">
+                                    <label className="block text-[10px] uppercase font-black text-text-secondary mb-1">Buscar por Nombre</label>
+                                    <div className="relative">
+                                        <input 
+                                            type="text" 
+                                            placeholder="Ej: Juan Pérez..." 
+                                            value={searchTermBalance}
+                                            onChange={(e) => setSearchTermBalance(e.target.value)}
+                                            className="w-full bg-background border border-border p-2 rounded-lg text-sm pl-10 focus:ring-2 ring-primary outline-none transition-all"
+                                        />
+                                        <UsersIcon className="w-4 h-4 absolute left-3 top-2.5 text-text-secondary" />
+                                    </div>
+                                </div>
+                                <div className="flex flex-wrap items-end gap-2">
+                                    <button 
+                                        onClick={() => setActiveStatusFilter('all')}
+                                        className={`px-4 py-2 rounded-lg text-xs font-bold transition-all border ${activeStatusFilter === 'all' ? 'bg-primary text-white border-primary shadow-md' : 'bg-surface text-text-secondary border-border hover:bg-background'}`}
+                                    >
+                                        Todos
+                                    </button>
+                                    <button 
+                                        onClick={() => setActiveStatusFilter('pending')}
+                                        className={`px-4 py-2 rounded-lg text-xs font-bold transition-all border ${activeStatusFilter === 'pending' ? 'bg-red-500/20 text-red-400 border-red-500/50 shadow-md' : 'bg-surface text-text-secondary border-border hover:bg-background'}`}
+                                    >
+                                        Pendientes
+                                    </button>
+                                    <button 
+                                        onClick={() => setActiveStatusFilter('paid')}
+                                        className={`px-4 py-2 rounded-lg text-xs font-bold transition-all border ${activeStatusFilter === 'paid' ? 'bg-green-500/20 text-green-400 border-green-500/50 shadow-md' : 'bg-surface text-text-secondary border-border hover:bg-background'}`}
+                                    >
+                                        Total Pagados
+                                    </button>
+                                    <button 
+                                        onClick={() => setActiveStatusFilter('scholarship')}
+                                        className={`px-4 py-2 rounded-lg text-xs font-bold transition-all border ${activeStatusFilter === 'scholarship' ? 'bg-indigo-500/20 text-indigo-400 border-indigo-500/50 shadow-md' : 'bg-surface text-text-secondary border-border hover:bg-background'}`}
+                                    >
+                                        Becados
+                                    </button>
+                                    <button 
+                                        onClick={() => setActiveStatusFilter('local')}
+                                        className={`px-4 py-2 rounded-lg text-xs font-bold transition-all border ${activeStatusFilter === 'local' ? 'bg-orange-500/20 text-orange-400 border-orange-500/50 shadow-md' : 'bg-surface text-text-secondary border-border hover:bg-background'}`}
+                                    >
+                                        Acuerdos Locales
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+
                         {/* Contenido de la Tabla según Pestaña */}
                         <div className="overflow-x-auto rounded-xl border border-border bg-background/30">
                             {activeReport === 'balance' ? (
@@ -370,7 +441,7 @@ const ReportesFinancieros: React.FC = () => {
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-border">
-                                        {summaryData.map((r, i) => (
+                                        {filteredSummaryData.map((r, i) => (
                                             <tr key={i} className="hover:bg-background/40 transition-colors group">
                                                 <td className={`p-4 font-bold text-[10px] ${r.tipo === 'CHICO' ? 'text-primary' : 'text-purple-400'}`}>{r.tipo}</td>
                                                 <td className="p-4 font-medium text-text-primary group-hover:text-primary">{r.nombre}</td>
@@ -385,6 +456,11 @@ const ReportesFinancieros: React.FC = () => {
                                                 <td className={`p-4 text-right font-black ${r.saldo > 0 ? 'text-red-400' : 'text-green-500'}`}>{formatCurrency(r.saldo)}</td>
                                             </tr>
                                         ))}
+                                        {filteredSummaryData.length === 0 && (
+                                            <tr>
+                                                <td colSpan={5} className="p-10 text-center text-text-secondary italic">No se encontraron registros con los filtros aplicados.</td>
+                                            </tr>
+                                        )}
                                     </tbody>
                                 </table>
                             ) : (
