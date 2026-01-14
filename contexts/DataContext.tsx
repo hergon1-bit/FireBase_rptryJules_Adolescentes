@@ -72,7 +72,7 @@ interface DataContextType {
   updateInscripcion: (i: InscripcionEvento) => Promise<void>;
   deleteInscripcion: (id: number) => Promise<void>;
   
-  addPago: (iId: number, m: number, fecha: string) => Promise<void>;
+  addPago: (iId: number, m: number, fecha: string, notas?: string) => Promise<void>;
   deletePago: (id: number) => Promise<void>;
   
   addParticipante: (eId: number, aId: number) => Promise<void>;
@@ -294,8 +294,8 @@ export const DataProvider: React.FC<{children: React.ReactNode}> = ({ children }
       setInscripciones(prev => prev.filter(i => i.id !== id));
   };
 
-  const addPago = async (iId: number, m: number, fecha: string) => { 
-    await api.createPago({ inscripcionId: iId, monto: m, fecha }); 
+  const addPago = async (iId: number, m: number, fecha: string, notas?: string) => { 
+    await api.createPago({ inscripcionId: iId, monto: m, fecha, notas }); 
     const freshPagos = await api.getPagos();
     setPagos(freshPagos);
   };

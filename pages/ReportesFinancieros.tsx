@@ -9,6 +9,23 @@ import autoTable from 'jspdf-autotable';
 type FinReportType = 'balance' | 'historial';
 type BalanceFilterStatus = 'all' | 'pending' | 'paid' | 'scholarship' | 'local';
 
+interface GroupedPayment {
+    fecha: string;
+    monto: number;
+    notas: string;
+}
+
+interface GroupedHistoryEntry {
+    key: string;
+    nombre: string;
+    registro: string;
+    tipo: string;
+    rol: string;
+    montoTotal: number;
+    ultimaFecha: string;
+    pagos: GroupedPayment[];
+}
+
 const ReportesFinancieros: React.FC = () => {
     const { 
         adolescentes, eventos, inscripciones, pagos, servidores, 
@@ -107,43 +124,72 @@ const ReportesFinancieros: React.FC = () => {
         });
     }, [summaryData, searchTermBalance, activeStatusFilter]);
 
-    // Datos para la pestaña de Historial (Listado de transacciones)
+    // Datos para la pestaña de Historial (AGRUPADOS POR PERSONA)
     const historyData = useMemo(() => {
         if (!selectedEventoId) return [];
         
         const eventAdoInsc = inscripciones.filter(i => i.eventoId === selectedEventoId);
         const eventSerInsc = inscripcionesServidores.filter(i => i.eventoId === selectedEventoId);
 
-        const adoPayments = pagos.filter(p => eventAdoInsc.some(i => i.id === p.inscripcionId)).map(p => {
+        const groups = new Map<string, GroupedHistoryEntry>();
+
+        // Procesar pagos de Chicos
+        pagos.filter(p => eventAdoInsc.some(i => i.id === p.inscripcionId)).forEach(p => {
             const insc = eventAdoInsc.find(i => i.id === p.inscripcionId)!;
             const ado = adolescentes.find(a => a.id === insc.adolescenteId);
-            return {
-                id: p.id,
-                fecha: p.fecha,
-                nombre: ado ? `${ado.nombre} ${ado.apellido}` : 'Desconocido',
-                tipo: 'CHICO',
-                rol: 'Participante',
-                monto: p.monto,
-                notas: ''
-            };
+            const key = `CHICO-${insc.adolescenteId}`;
+            
+            if (!groups.has(key)) {
+                groups.set(key, {
+                    key,
+                    nombre: ado ? `${ado.nombre} ${ado.apellido}` : 'Desconocido',
+                    registro: ado?.registro || 'N/A',
+                    tipo: 'CHICO',
+                    rol: 'Participante',
+                    montoTotal: 0,
+                    ultimaFecha: p.fecha,
+                    pagos: []
+                });
+            }
+
+            const group = groups.get(key)!;
+            group.montoTotal += p.monto;
+            group.pagos.push({ fecha: p.fecha, monto: p.monto, notas: '' });
+            if (new Date(p.fecha) > new Date(group.ultimaFecha)) group.ultimaFecha = p.fecha;
         });
 
-        const serPayments = pagosServidores.filter(p => eventSerInsc.some(i => i.id === p.inscripcionServidorId)).map(p => {
+        // Procesar pagos de Apoyos
+        pagosServidores.filter(p => eventSerInsc.some(i => i.id === p.inscripcionServidorId)).forEach(p => {
             const insc = eventSerInsc.find(i => i.id === p.inscripcionServidorId)!;
             const ser = servidores.find(s => s.id === insc.servidorId);
-            return {
-                id: p.id,
-                fecha: p.fecha,
-                nombre: ser ? `${ser.nombre} ${ser.apellido}` : 'Desconocido',
-                tipo: 'APOYO',
-                rol: insc.rol,
-                monto: p.monto,
-                notas: p.notas || ''
-            };
+            const key = `APOYO-${insc.servidorId}`;
+
+            if (!groups.has(key)) {
+                groups.set(key, {
+                    key,
+                    nombre: ser ? `${ser.nombre} ${ser.apellido}` : 'Desconocido',
+                    registro: ser?.registro || 'N/A',
+                    tipo: 'APOYO',
+                    rol: insc.rol,
+                    montoTotal: 0,
+                    ultimaFecha: p.fecha,
+                    pagos: []
+                });
+            }
+
+            const group = groups.get(key)!;
+            group.montoTotal += p.monto;
+            group.pagos.push({ fecha: p.fecha, monto: p.monto, notas: p.notas || '' });
+            if (new Date(p.fecha) > new Date(group.ultimaFecha)) group.ultimaFecha = p.fecha;
         });
 
-        // UI muestra orden descendente (más nuevos primero)
-        return [...adoPayments, ...serPayments].sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime());
+        // Ordenar pagos internos por fecha ascendente
+        groups.forEach(g => {
+            g.pagos.sort((a, b) => new Date(a.fecha).getTime() - new Date(b.fecha).getTime());
+        });
+
+        // UI muestra ordenado por Persona (Nombre)
+        return Array.from(groups.values()).sort((a, b) => a.nombre.localeCompare(b.nombre));
     }, [selectedEventoId, inscripciones, inscripcionesServidores, pagos, pagosServidores, adolescentes, servidores]);
 
     const balanceTotals = useMemo(() => {
@@ -192,31 +238,26 @@ const ReportesFinancieros: React.FC = () => {
         const reportDate = now.toLocaleDateString('es-PY');
         const reportTime = now.toLocaleTimeString('es-PY', { hour: '2-digit', minute: '2-digit' });
 
-        // Ordenar cronológicamente (ascendente) para el reporte
-        const sortedData = [...historyData].sort((a, b) => new Date(a.fecha).getTime() - new Date(b.fecha).getTime());
-
-        const headers = ["Fecha", "Nombre", "Tipo", "Rol", "Monto", "Notas"];
+        const headers = ["Fecha pago", "Persona", "Registro de salud", "Tipo / Rol", "Monto Total"];
         
-        // Construcción del archivo CSV con encabezados metadata
-        const metadata = [
-            ["HISTORIAL DE PAGOS"],
-            [`Evento:;${event?.tema || 'N/A'}`],
-            [`Fecha de Generación:;${reportDate}`],
-            [`Hora de Generación:;${reportTime}`],
-            [""], // Espaciador
-            [headers.join(';')]
-        ];
-
-        const dataRows = sortedData.map(h => [
-            formatDate(h.fecha), 
-            h.nombre, 
-            h.tipo, 
-            h.rol, 
-            h.monto, 
-            h.notas || ''
+        // Generar filas basadas en los datos agrupados de la pantalla
+        const dataRows = historyData.map((h) => [
+            formatDate(h.ultimaFecha),
+            h.nombre,
+            h.registro,
+            `${h.tipo} / ${h.rol}`,
+            h.montoTotal
         ].join(';'));
 
-        const csvContent = metadata.map(m => m.join(';')).join('\n') + '\n' + dataRows.join('\n');
+        const csvContent = [
+            [`Fecha y Hora de Generación:;${reportDate} ${reportTime}`],
+            [`TITULO:;HISTORIAL DE PAGOS`],
+            [`EVENTO SELECCIONADO:;----- ${event?.tema.toUpperCase()} -----`],
+            [`Total de Inscriptos registrados:;${balanceTotals?.cantInscriptos || 0}`],
+            [""], // Fila vacía
+            [headers.join(';')],
+            ...dataRows
+        ].join('\n');
 
         const blob = new Blob([`\uFEFF${csvContent}`], { type: 'text/csv;charset=utf-8;' }); 
         const link = document.createElement('a');
@@ -225,18 +266,50 @@ const ReportesFinancieros: React.FC = () => {
         link.click();
     };
 
+    const handleExportBalanceExcel = () => {
+        if (!selectedEventoId || !balanceTotals) return;
+        const event = eventos.find(e => e.id === selectedEventoId);
+        const now = new Date();
+        const reportDate = now.toLocaleDateString('es-PY');
+        const reportTime = now.toLocaleTimeString('es-PY', { hour: '2-digit', minute: '2-digit' });
+
+        const headers = ["Orden", "Tipo", "Nombre", "Reg / CI", "Función"];
+        
+        // Generar filas basadas en los datos filtrados actualmente en pantalla
+        const dataRows = filteredSummaryData.map((r, index) => [
+            index + 1,
+            r.tipo,
+            r.nombre,
+            r.registro || 'N/A',
+            r.rol
+        ].join(';'));
+
+        const csvContent = [
+            [`Fecha y Hora de Generación:;${reportDate} ${reportTime}`],
+            [`EVENTO SELECCIONADO:;----- ${event?.tema.toUpperCase()} -----`],
+            [`Total de Inscriptos registrados:;${balanceTotals.cantInscriptos}`],
+            [""], // Fila vacía
+            [headers.join(';')],
+            ...dataRows
+        ].join('\n');
+
+        const blob = new Blob([`\uFEFF${csvContent}`], { type: 'text/csv;charset=utf-8;' }); 
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = `Balance_Excel_${event?.tema.replace(/\s+/g, '_')}.csv`;
+        link.click();
+    };
+
     const handlePrintBalancePDF = () => {
         if (!selectedEventoId || !balanceTotals) return;
         const event = eventos.find(e => e.id === selectedEventoId);
-        const doc = new jsPDF('landscape'); // Cambiado a landscape para mejor ajuste de columnas
+        const doc = new jsPDF('landscape'); 
         const now = new Date();
         const printDate = `${now.toLocaleDateString('es-PY')} ${now.toLocaleTimeString('es-PY')}`;
 
-        // Configuración de márgenes y estilo
         const marginX = 14;
         let currentY = 15;
 
-        // Renderizado del encabezado en cada página
         const addHeader = (data: any) => {
             doc.setFontSize(8);
             doc.setTextColor(150);
@@ -244,7 +317,6 @@ const ReportesFinancieros: React.FC = () => {
             doc.text(`Página ${data.pageNumber} / ${data.pageCount}`, 280, 10, { align: 'right' });
         };
 
-        // Primera página: Título e Información del Evento
         doc.setFontSize(22);
         doc.setTextColor(40);
         doc.setFont('helvetica', 'bold');
@@ -269,7 +341,6 @@ const ReportesFinancieros: React.FC = () => {
 
         currentY += 10;
 
-        // Cuerpo de la tabla (Inscriptos Filtrados - ORDENADOS POR NOMBRE)
         const tableBody = filteredSummaryData.map(r => {
             let acuerdoBecaStr = 'Estándar';
             if (r.precioLocal) acuerdoBecaStr = 'Acuerdo Local';
@@ -290,16 +361,14 @@ const ReportesFinancieros: React.FC = () => {
             head: [['Tipo', 'Nombre', 'Reg. Salud', 'Acuerdo / Beca', 'Monto Pagado', 'Monto Pendiente']],
             body: tableBody,
             theme: 'striped',
-            headStyles: { fillColor: [79, 70, 229] }, // Indigo Primary
+            headStyles: { fillColor: [79, 70, 229] }, 
             styles: { fontSize: 9 },
             didDrawPage: (data) => addHeader(data),
             margin: { top: 20 }
         });
 
-        // Resumen Final (Última hoja)
         const finalY = (doc as any).lastAutoTable.finalY + 15;
         
-        // Si no hay suficiente espacio para el resumen, crear nueva página
         let summaryY = finalY;
         if (summaryY > 160) {
             doc.addPage();
@@ -313,7 +382,6 @@ const ReportesFinancieros: React.FC = () => {
         summaryY += 10;
         doc.setFontSize(10);
         
-        // Bloque de Totales Monetarios
         const totalsData = [
             ["Cobrado en Caja:", formatCurrency(balanceTotals.pagosRealizados)],
             ["Saldo Pendiente:", formatCurrency(balanceTotals.saldosPendientes)],
@@ -330,7 +398,6 @@ const ReportesFinancieros: React.FC = () => {
             margin: { left: marginX }
         });
 
-        // Bloque de Cantidades
         const countsY = (doc as any).lastAutoTable.finalY + 10;
         doc.setFontSize(16);
         doc.setFont('helvetica', 'bold');
@@ -353,7 +420,6 @@ const ReportesFinancieros: React.FC = () => {
             margin: { left: marginX }
         });
 
-        // Loop final para inyectar conteo de páginas exacto
         const totalPages = doc.internal.getNumberOfPages();
         for (let i = 1; i <= totalPages; i++) {
             doc.setPage(i);
@@ -370,31 +436,36 @@ const ReportesFinancieros: React.FC = () => {
         const event = eventos.find(e => e.id === selectedEventoId);
         const doc = new jsPDF();
         
-        // Estilos de encabezado
         doc.setFontSize(18);
         doc.setTextColor(40);
-        doc.text(`Historial Detallado de Pagos`, 14, 15);
+        doc.text(`Historial de Pagos (Agrupado)`, 14, 15);
         
         doc.setFontSize(12);
         doc.setTextColor(100);
         doc.text(`Evento: ${event?.tema}`, 14, 25);
         doc.text(`Fecha del Informe: ${new Date().toLocaleString()}`, 14, 32);
 
-        const tableData = historyData.map(h => [
-            formatDate(h.fecha),
-            h.nombre,
-            h.tipo,
-            h.rol,
-            formatCurrency(h.monto),
-            h.notas || '-'
-        ]);
+        // Para el PDF, listamos todos los pagos individuales para transparencia
+        const tableData: any[] = [];
+        historyData.forEach(g => {
+            g.pagos.forEach(p => {
+                tableData.push([
+                    formatDate(p.fecha),
+                    g.nombre,
+                    g.tipo,
+                    g.rol,
+                    formatCurrency(p.monto),
+                    p.notas || '-'
+                ]);
+            });
+        });
 
         autoTable(doc, {
             startY: 40,
             head: [['Fecha', 'Nombre', 'Tipo', 'Rol', 'Monto', 'Notas']],
             body: tableData,
             theme: 'striped',
-            headStyles: { fillColor: [79, 70, 229] }, // Indigo Primary
+            headStyles: { fillColor: [79, 70, 229] }, 
             foot: [['', '', '', 'TOTAL COBRADO:', formatCurrency(balanceTotals?.pagosRealizados || 0), '']],
             footStyles: { fillColor: [31, 41, 55], textColor: [255, 255, 255], fontStyle: 'bold' }
         });
@@ -444,13 +515,22 @@ const ReportesFinancieros: React.FC = () => {
                     </div>
                     <div className="flex gap-2">
                         {activeReport === 'balance' && selectedEventoId && (
-                            <button 
-                                onClick={handlePrintBalancePDF}
-                                className="bg-gray-700 text-white p-3 rounded-lg hover:bg-gray-600 transition-colors shadow-md border border-border"
-                                title="Imprimir PDF del Balance"
-                            >
-                                <PrinterIcon className="w-5 h-5" />
-                            </button>
+                            <>
+                                <button 
+                                    onClick={handleExportBalanceExcel}
+                                    className="bg-secondary text-white p-3 rounded-lg hover:bg-emerald-600 transition-colors shadow-md"
+                                    title="Exportar a Excel"
+                                >
+                                    <DownloadCloudIcon className="w-5 h-5" />
+                                </button>
+                                <button 
+                                    onClick={handlePrintBalancePDF}
+                                    className="bg-gray-700 text-white p-3 rounded-lg hover:bg-gray-600 transition-colors shadow-md border border-border"
+                                    title="Imprimir PDF del Balance"
+                                >
+                                    <PrinterIcon className="w-5 h-5" />
+                                </button>
+                            </>
                         )}
                         {activeReport === 'historial' && selectedEventoId && historyData.length > 0 && (
                             <>
@@ -620,26 +700,67 @@ const ReportesFinancieros: React.FC = () => {
                                 <table className="min-w-full text-sm text-left">
                                     <thead className="bg-background text-text-secondary uppercase text-[10px] font-black tracking-widest">
                                         <tr>
-                                            <th className="p-4">Fecha</th>
+                                            <th className="p-4">Última Fecha</th>
                                             <th className="p-4">Persona</th>
                                             <th className="p-4">Tipo / Rol</th>
-                                            <th className="p-4 text-right">Monto Cobrado</th>
+                                            <th className="p-4 text-right">Monto Total</th>
                                             <th className="p-4">Observaciones</th>
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-border">
                                         {historyData.map((h) => (
-                                            <tr key={h.id} className="hover:bg-background/40 transition-colors group">
-                                                <td className="p-4 font-mono text-xs text-text-secondary">{formatDate(h.fecha)}</td>
-                                                <td className="p-4 font-bold text-text-primary group-hover:text-primary">{h.nombre}</td>
+                                            <tr key={h.key} className="hover:bg-background/40 transition-colors group align-top">
+                                                <td className="p-4">
+                                                    <div className="flex flex-col">
+                                                        <span className="font-mono text-xs text-text-primary font-bold">{formatDate(h.ultimaFecha)}</span>
+                                                        {h.pagos.length > 1 && (
+                                                            <div className="mt-2 flex flex-col space-y-0.5 opacity-60">
+                                                                {h.pagos.map((p, pi) => (
+                                                                    <span key={pi} className="text-[9px] font-mono">{formatDate(p.fecha)}</span>
+                                                                ))}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </td>
+                                                <td className="p-4">
+                                                    <div className="flex flex-col">
+                                                        <span className="font-bold text-text-primary group-hover:text-primary transition-colors">{h.nombre}</span>
+                                                        {h.pagos.length > 1 && (
+                                                            <div className="mt-2 flex flex-col space-y-0.5 opacity-60 italic">
+                                                                {h.pagos.map((_, pi) => (
+                                                                    <span key={pi} className="text-[9px]">Pago parcial {pi + 1}</span>
+                                                                ))}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </td>
                                                 <td className="p-4">
                                                     <div className="flex flex-col">
                                                         <span className={`text-[10px] font-black uppercase ${h.tipo === 'CHICO' ? 'text-primary' : 'text-purple-400'}`}>{h.tipo}</span>
                                                         <span className="text-[9px] text-text-secondary italic">{h.rol}</span>
                                                     </div>
                                                 </td>
-                                                <td className="p-4 text-right font-black text-green-400">{formatCurrency(h.monto)}</td>
-                                                <td className="p-4 text-xs text-text-secondary italic max-w-xs truncate">{h.notas || '-'}</td>
+                                                <td className="p-4 text-right">
+                                                    <div className="flex flex-col">
+                                                        <span className="font-black text-green-400 text-base">{formatCurrency(h.montoTotal)}</span>
+                                                        {h.pagos.length > 1 && (
+                                                            <div className="mt-1.5 flex flex-col space-y-0.5 opacity-70">
+                                                                {h.pagos.map((p, pi) => (
+                                                                    <span key={pi} className="text-[10px] font-bold text-green-500/80">{formatCurrency(p.monto)}</span>
+                                                                ))}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </td>
+                                                <td className="p-4 text-xs text-text-secondary italic max-w-xs">
+                                                    <div className="flex flex-col space-y-1">
+                                                        {h.pagos.map((p, pi) => p.notas ? (
+                                                            <span key={pi} className="block truncate">"{p.notas}"</span>
+                                                        ) : (
+                                                            h.pagos.length > 1 ? <span key={pi} className="text-[10px] opacity-30">-</span> : '-'
+                                                        ))}
+                                                    </div>
+                                                </td>
                                             </tr>
                                         ))}
                                         {historyData.length === 0 && (

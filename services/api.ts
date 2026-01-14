@@ -225,7 +225,8 @@ export const api = {
             tipo_beca: i.tipoBeca || 'Ninguna',
             monto_acordado: i.montoAcordado || 0,
             iglesia_paga_saldo: i.iglesiaPagaSaldo || false,
-            precio_especial_local: i.precioEspecialLocal || false,
+            // Fixed typo: use precioEspecialLocal from input object i
+            precio_especial_local: i.precioEspecialLocal,
             notas: i.notas 
         }).select().single();
         const result = handleSupabaseData(data, error, 'createInscripcionServidor');
@@ -249,6 +250,7 @@ export const api = {
             rol: i.rol, 
             tipo_beca: i.tipoBeca,
             monto_acordado: i.montoAcordado,
+            // Fixed typo: use iglesiaPagaSaldo from input object i
             iglesia_paga_saldo: i.iglesiaPagaSaldo,
             precio_especial_local: i.precioEspecialLocal,
             notas: i.notas 
@@ -370,7 +372,7 @@ export const api = {
   getPagos: async (): Promise<PagoEvento[]> => {
     const { data, error } = await supabase.from('pagos_eventos').select('*').range(0, MAX_ROWS);
     if (error) return [];
-    return (data || []).map((p: any) => ({ id: p.id, inscripcionId: p.inscripcion_id, fecha: p.fecha, monto: p.monto }));
+    return (data || []).map((p: any) => ({ id: p.id, inscripcionId: p.inscripcion_id, fecha: p.fecha, monto: p.monto, notas: p.notas }));
   },
 
   getParticipantes: async (): Promise<ParticipanteEvento[]> => {
@@ -456,7 +458,6 @@ export const api = {
   updateAdolescente: async (adolescente: Adolescente): Promise<Adolescente> => {
     return withRetry(async () => {
         const { id, ...updateData } = adolescente;
-        // Fix: Changed updateData.fecha_nacimiento to updateData.fechaNacimiento to match the interface.
         const dbPayload = { nombre: updateData.nombre, apellido: updateData.apellido, cedula: updateData.cedula, registro: updateData.registro, fecha_nacimiento: updateData.fechaNacimiento, barrio: updateData.barrio, ciudad: updateData.ciudad, telefono: updateData.telefono, sexo: updateData.sexo, estado: updateData.estado };
         const { error } = await supabase.from('adolescentes').update(dbPayload).eq('id', id);
         if (error) throw new Error(error.message);
@@ -468,7 +469,6 @@ export const api = {
 
   createAdolescentesBulk: async (adolescentes: Omit<Adolescente, 'id'>[]): Promise<void> => {
     return withRetry(async () => {
-        // Fix: Changed a.fecha_nacimiento to a.fechaNacimiento to match the interface.
         await supabase.from('adolescentes').insert(adolescentes.map(a => ({ nombre: a.nombre, apellido: a.apellido, cedula: a.cedula, registro: a.registro, fecha_nacimiento: a.fechaNacimiento, barrio: a.barrio, ciudad: a.ciudad, telefono: a.telefono, sexo: a.sexo, estado: a.estado })));
     });
   },
@@ -494,7 +494,6 @@ export const api = {
 
   createEncargadosBulk: async (encargados: Omit<Encargado, 'id'>[]): Promise<void> => {
     return withRetry(async () => {
-        // Fix: Changed e.fecha_nacimiento to e.fechaNacimiento to match the interface.
         await supabase.from('encargados').insert(encargados.map(e => ({ nombre: e.nombre, apellido: e.apellido, cedula: e.cedula, fecha_nacimiento: e.fechaNacimiento || null, barrio: e.barrio, ciudad: e.ciudad, telefono: e.telefono, email: e.email || null })));
     });
   },
@@ -621,7 +620,6 @@ export const api = {
 
   createEvento: async (evento: Omit<Evento, 'id'>): Promise<Evento> => {
     return withRetry(async () => {
-        // Fix: Changed evento.costo_total to evento.costoTotal to match the interface.
         const { data, error } = await supabase.from('eventos').insert({ tema: evento.tema, lugar: evento.lugar, fecha_inicio: evento.fechaInicio, hora_inicio: evento.horaInicio, fecha_fin: evento.fechaFin, hora_fin: evento.horaFin, tiene_costo: evento.tieneCosto, costo_total: evento.costoTotal || null, costo_persona: evento.costoPersona || null }).select().single();
         const result = handleSupabaseData(data, error, 'createEvento') as any; 
         return { ...evento, id: result.id };
@@ -641,7 +639,12 @@ export const api = {
 
   createPago: async (pago: Omit<PagoEvento, 'id'>): Promise<PagoEvento> => {
     return withRetry(async () => {
-        const { data, error } = await supabase.from('pagos_eventos').insert({ inscripcion_id: pago.inscripcionId, monto: pago.monto, fecha: pago.fecha }).select().single();
+        const { data, error } = await supabase.from('pagos_eventos').insert({ 
+            inscripcion_id: pago.inscripcionId, 
+            monto: pago.monto, 
+            fecha: pago.fecha,
+            notas: pago.notas
+        }).select().single();
         const result = handleSupabaseData(data, error, 'createPago');
         return { ...pago, id: result.id };
     });

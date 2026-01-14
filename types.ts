@@ -166,6 +166,7 @@ export interface PagoEvento {
   inscripcionId: number;
   fecha: string;
   monto: number;
+  notas?: string;
 }
 
 export interface ParticipanteEvento {

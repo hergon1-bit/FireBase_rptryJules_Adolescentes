@@ -60,8 +60,11 @@ const Eventos: React.FC = () => {
 
     const [newPayment, setNewPayment] = useState<{ [key: number]: string }>({});
     const [newPaymentDate, setNewPaymentDate] = useState<{ [key: number]: string }>({});
+    const [newPaymentNote, setNewPaymentNote] = useState<{ [key: number]: string }>({});
+    
     const [newPaymentServidor, setNewPaymentServidor] = useState<{ [key: number]: string }>({});
     const [newPaymentDateServidor, setNewPaymentDateServidor] = useState<{ [key: number]: string }>({});
+    const [newPaymentNoteServidor, setNewPaymentNoteServidor] = useState<{ [key: number]: string }>({});
 
     const [expandedHistory, setExpandedHistory] = useState<{ [key: string]: boolean }>({});
     const [isEventModalOpen, setIsEventModalOpen] = useState(false);
@@ -208,20 +211,24 @@ const Eventos: React.FC = () => {
     const handleAddPago = async (inscripcionId: number) => {
         const monto = parseFloat(newPayment[inscripcionId] || '0');
         const fecha = newPaymentDate[inscripcionId] || new Date().toISOString().split('T')[0];
+        const notas = newPaymentNote[inscripcionId] || '';
         if (monto > 0) {
-            await addPago(inscripcionId, monto, fecha);
+            await addPago(inscripcionId, monto, fecha, notas);
             setNewPayment(prev => ({ ...prev, [inscripcionId]: '' }));
             setNewPaymentDate(prev => ({ ...prev, [inscripcionId]: '' }));
+            setNewPaymentNote(prev => ({ ...prev, [inscripcionId]: '' }));
         }
     };
 
     const handleAddPagoServidor = async (inscId: number) => {
         const monto = parseFloat(newPaymentServidor[inscId] || '0');
         const fecha = newPaymentDateServidor[inscId] || new Date().toISOString().split('T')[0];
+        const notas = newPaymentNoteServidor[inscId] || '';
         if (monto > 0) {
-            await addPagoServidor(inscId, monto, fecha);
+            await addPagoServidor(inscId, monto, fecha, notas);
             setNewPaymentServidor(prev => ({ ...prev, [inscId]: '' }));
             setNewPaymentDateServidor(prev => ({ ...prev, [inscId]: '' }));
+            setNewPaymentNoteServidor(prev => ({ ...prev, [inscId]: '' }));
         }
     };
 
@@ -514,18 +521,25 @@ const Eventos: React.FC = () => {
                                                                 <tr key={p.id} className="hover:bg-primary/5">
                                                                     <td className="p-2 font-mono text-text-secondary">{formatDate(p.fecha)}</td>
                                                                     <td className="p-2 font-bold text-green-400">{formatCurrency(p.monto)}</td>
+                                                                    <td className="p-2 italic text-text-secondary">{p.notas || '-'}</td>
                                                                     <td className="p-2 text-right"><button onClick={() => deletePago(p.id)} className="text-red-500 hover:bg-red-500/10 p-1 rounded transition-colors"><TrashIcon className="w-3.5 h-3.5" /></button></td>
                                                                 </tr>
                                                             ))}
-                                                            {item.pagos.length === 0 && <tr><td colSpan={3} className="p-4 text-center italic text-text-secondary">No hay pagos registrados.</td></tr>}
+                                                            {item.pagos.length === 0 && <tr><td colSpan={4} className="p-4 text-center italic text-text-secondary">No hay pagos registrados.</td></tr>}
                                                         </tbody>
                                                     </table>
                                                 </div>
                                             )}
                                             {selectedEvent.tieneCosto && item.debe > 0 && (
-                                                <div className="flex gap-2">
-                                                    <input type="number" placeholder="Monto a cuenta" value={newPayment[item.inscripcion.id] || ''} onChange={e => setNewPayment({...newPayment, [item.inscripcion.id]: e.target.value})} className="flex-1 bg-surface border border-border p-1.5 text-sm rounded outline-none focus:ring-1 ring-primary" />
-                                                    <button onClick={() => handleAddPago(item.inscripcion.id)} className="bg-secondary text-white px-4 py-1 rounded text-sm font-bold shadow-md hover:bg-emerald-600 transition-colors">Abonar</button>
+                                                <div className="space-y-2">
+                                                    <div className="flex gap-2">
+                                                        <input type="number" placeholder="Monto" value={newPayment[item.inscripcion.id] || ''} onChange={e => setNewPayment({...newPayment, [item.inscripcion.id]: e.target.value})} className="flex-1 bg-surface border border-border p-1.5 text-sm rounded outline-none focus:ring-1 ring-primary" />
+                                                        <input type="date" value={newPaymentDate[item.inscripcion.id] || new Date().toISOString().split('T')[0]} onChange={e => setNewPaymentDate({...newPaymentDate, [item.inscripcion.id]: e.target.value})} className="w-32 bg-surface border border-border p-1.5 text-sm rounded outline-none focus:ring-1 ring-primary" />
+                                                    </div>
+                                                    <div className="flex gap-2">
+                                                        <input type="text" placeholder="Observaciones / Notas" value={newPaymentNote[item.inscripcion.id] || ''} onChange={e => setNewPaymentNote({...newPaymentNote, [item.inscripcion.id]: e.target.value})} className="flex-1 bg-surface border border-border p-1.5 text-xs rounded outline-none focus:ring-1 ring-primary" />
+                                                        <button onClick={() => handleAddPago(item.inscripcion.id)} className="bg-secondary text-white px-4 py-1 rounded text-sm font-bold shadow-md hover:bg-emerald-600 transition-colors">Abonar</button>
+                                                    </div>
                                                 </div>
                                             )}
                                         </div>
@@ -588,6 +602,7 @@ const Eventos: React.FC = () => {
                                                                 <tr key={p.id} className="hover:bg-primary/5">
                                                                     <td className="p-2 font-mono text-text-secondary">{formatDate(p.fecha)}</td>
                                                                     <td className="p-2 font-bold text-green-400">{formatCurrency(p.monto)}</td>
+                                                                    <td className="p-2 italic text-text-secondary">{p.notas || '-'}</td>
                                                                     <td className="p-2 text-right"><button onClick={() => deletePagoServidor(p.id)} className="text-red-500 hover:bg-red-500/10 p-1 rounded"><TrashIcon className="w-3.5 h-3.5" /></button></td>
                                                                 </tr>
                                                             ))}
@@ -596,9 +611,15 @@ const Eventos: React.FC = () => {
                                                 </div>
                                             )}
                                             {item.inscripcion.tipoBeca !== 'Total' && item.debe > 0 && (
-                                                <div className="flex gap-2 mt-3">
-                                                    <input type="number" placeholder="Monto a cuenta" value={newPaymentServidor[item.inscripcion.id] || ''} onChange={e => setNewPaymentServidor({...newPaymentServidor, [item.inscripcion.id]: e.target.value})} className="flex-1 bg-surface border border-border p-1.5 text-sm rounded outline-none focus:ring-1 ring-primary" />
-                                                    <button onClick={() => handleAddPagoServidor(item.inscripcion.id)} className="bg-secondary text-white px-4 py-1 rounded text-sm font-bold shadow-md hover:bg-emerald-600">Abonar</button>
+                                                <div className="space-y-2 mt-3">
+                                                    <div className="flex gap-2">
+                                                        <input type="number" placeholder="Monto" value={newPaymentServidor[item.inscripcion.id] || ''} onChange={e => setNewPaymentServidor({...newPaymentServidor, [item.inscripcion.id]: e.target.value})} className="flex-1 bg-surface border border-border p-1.5 text-sm rounded outline-none focus:ring-1 ring-primary" />
+                                                        <input type="date" value={newPaymentDateServidor[item.inscripcion.id] || new Date().toISOString().split('T')[0]} onChange={e => setNewPaymentDateServidor({...newPaymentDateServidor, [item.inscripcion.id]: e.target.value})} className="w-32 bg-surface border border-border p-1.5 text-sm rounded outline-none focus:ring-1 ring-primary" />
+                                                    </div>
+                                                    <div className="flex gap-2">
+                                                        <input type="text" placeholder="Observaciones / Notas" value={newPaymentNoteServidor[item.inscripcion.id] || ''} onChange={e => setNewPaymentNoteServidor({...newPaymentNoteServidor, [item.inscripcion.id]: e.target.value})} className="flex-1 bg-surface border border-border p-1.5 text-xs rounded outline-none focus:ring-1 ring-primary" />
+                                                        <button onClick={() => handleAddPagoServidor(item.inscripcion.id)} className="bg-secondary text-white px-4 py-1 rounded text-sm font-bold shadow-md hover:bg-emerald-600 transition-colors">Abonar</button>
+                                                    </div>
                                                 </div>
                                             )}
                                         </div>
