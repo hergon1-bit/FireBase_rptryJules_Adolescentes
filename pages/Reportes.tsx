@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo, useEffect } from 'react';
 import { useData } from '../contexts/DataContext';
 import { formatDate, formatCurrency, calcularEdad } from '../utils/helpers';
@@ -77,7 +78,8 @@ const Reportes: React.FC = () => {
                     const totalPagado = pagosS.reduce((sum, p) => sum + p.monto, 0);
                     
                     let costoEsperado = costoBase;
-                    if (i.tipoBeca === 'Total') costoEsperado = 0;
+                    if (i.precioEspecialLocal) costoEsperado = i.montoAcordado || 0;
+                    else if (i.tipoBeca === 'Total') costoEsperado = 0;
                     else if (i.tipoBeca === 'Parcial') costoEsperado = i.montoAcordado || 0;
 
                     return {
@@ -88,7 +90,8 @@ const Reportes: React.FC = () => {
                         pagos: pagosS.map(p => ({ monto: p.monto, fecha: p.fecha })),
                         totalPagado,
                         saldo: Math.max(0, costoEsperado - totalPagado),
-                        beca: i.tipoBeca || 'Ninguna'
+                        beca: i.tipoBeca || 'Ninguna',
+                        precioEspecial: i.precioEspecialLocal
                     };
                 });
 
@@ -126,23 +129,27 @@ const Reportes: React.FC = () => {
                     const montoAcordado = i.montoAcordado || 0;
                     let saldoCalculado = 0;
 
-                    // Lógica solicitada para Servidores:
-                    if (i.tipoBeca === 'Total') {
-                        // Beca Total: saldo es 0 siempre para el servidor
+                    // Lógica ajustada con Precio Especial Local:
+                    if (i.precioEspecialLocal) {
+                        // Acuerdo con el local: Saldo es Monto Acordado menos lo pagado
+                        saldoCalculado = Math.max(0, montoAcordado - totalPagado);
+                    } else if (i.tipoBeca === 'Total') {
                         saldoCalculado = 0;
                     } else if (i.tipoBeca === 'Parcial') {
-                        // Beca Parcial: Lo que el servidor debe es su monto acordado menos lo pagado
                         saldoCalculado = Math.max(0, montoAcordado - totalPagado);
                     } else {
-                        // Sin Beca: Costo estándar menos pagado
                         saldoCalculado = Math.max(0, costoPersona - totalPagado);
                     }
+
+                    let rolLabel = i.rol;
+                    if (i.precioEspecialLocal) rolLabel += ' (Precio Esp. Local)';
+                    if (i.tipoBeca && i.tipoBeca !== 'Ninguna') rolLabel += ` (Beca ${i.tipoBeca})`;
 
                     return {
                         tipo: 'APOYO',
                         nombre: s ? `${s.nombre} ${s.apellido}` : 'Desconocido',
                         registro: s?.registro || 'N/A',
-                        rol: i.rol + (i.tipoBeca && i.tipoBeca !== 'Ninguna' ? ` (Beca ${i.tipoBeca})` : ''),
+                        rol: rolLabel,
                         pagado: totalPagado,
                         saldo: saldoCalculado
                     };
@@ -153,7 +160,7 @@ const Reportes: React.FC = () => {
                 // Aplicar filtros si alguno está activo
                 if (filterBecados || filterDeudores || filterPagados) {
                     combinedResults = combinedResults.filter(item => {
-                        const isBecado = item.tipo === 'APOYO' && item.rol.includes('Beca');
+                        const isBecado = item.tipo === 'APOYO' && (item.rol.includes('Beca') || item.rol.includes('Precio Esp. Local'));
                         const hasDebt = item.saldo > 0;
                         const isFullyPaid = item.saldo === 0;
 
@@ -220,6 +227,44 @@ const Reportes: React.FC = () => {
         }
     }, [activeReport, adolescentes, reuniones, asistencias, encargados, tutores, tutoresAdolescentes, eventos, inscripciones, pagos, servidores, inscripcionesServidores, pagosServidores, devocionales, entregasDevocionales, selectedReunionId, selectedEventoId, dateRange, filterBecados, filterDeudores, filterPagados]);
 
+    const exportarExcelBalance = () => {
+        if (!selectedEventoId) return;
+        const ev = eventos.find(e => e.id === selectedEventoId);
+        if (!ev) return;
+        
+        const data = reportData as any[];
+        const ahora = new Date();
+        const fechaStr = ahora.toLocaleDateString('es-PY');
+        const horaStr = ahora.toLocaleTimeString('es-PY', { hour: '2-digit', minute: '2-digit', hour12: true });
+        
+        // Encabezado según layout solicitado
+        let csvContent = `Fecha: ${fechaStr} - Hora: ${horaStr}\n`;
+        csvContent += `;;Listado General de Inscriptos por Evento: ${ev.tema}\n`;
+        csvContent += `Cantidad total de Inscriptos: ${data.length}\n`;
+        
+        // Cabecera de la tabla
+        const headers = ["Orden", "Tipo", "Nombre", "Reg / CI", "Función"];
+        csvContent += headers.join(';') + '\n';
+        
+        // Detalle con contador de orden
+        data.forEach((r, index) => {
+            const row = [
+                index + 1,        // Columna Orden
+                r.tipo,           // Columna Tipo
+                r.nombre,         // Columna Nombre
+                r.registro,       // Columna Reg / CI
+                r.rol             // Columna Función
+            ];
+            csvContent += row.join(';') + '\n';
+        });
+        
+        const blob = new Blob([`\uFEFF${csvContent}`], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = `Inscriptos_${ev.tema.replace(/\s+/g, '_')}.csv`;
+        link.click();
+    };
+
     const generarPDFHistorialPagosEvento = () => {
         if (!selectedEventoId) return;
         const ev = eventos.find(e => e.id === selectedEventoId);
@@ -235,7 +280,7 @@ const Reportes: React.FC = () => {
         const sumaPagosRealizados = data.reduce((acc, r) => acc + r.totalPagado, 0);
         const sumaSaldosPendientes = data.reduce((acc, r) => acc + r.saldo, 0);
         const sumaPagosBecadosTotales = data.filter(r => r.beca === 'Total').reduce((acc, r) => acc + r.totalPagado, 0);
-        const sumaPagosBecadosParciales = data.filter(r => r.beca === 'Parcial').reduce((acc, r) => acc + r.totalPagado, 0);
+        const sumaPagosBecadosParciales = data.filter(r => r.beca === 'Parcial' || r.precioEspecial).reduce((acc, r) => acc + r.totalPagado, 0);
 
         autoTable(doc, {
             startY: 55,
@@ -282,7 +327,7 @@ const Reportes: React.FC = () => {
                 doc.text(`Suma de Saldos Pendientes: ${formatCurrency(sumaSaldosPendientes)}`, 20, 42);
                 
                 doc.text(`Suma de Pagos por Becados totales: ${formatCurrency(sumaPagosBecadosTotales)}`, 140, 35);
-                doc.text(`Suma de Pagos por Becados Parciales: ${formatCurrency(sumaPagosBecadosParciales)}`, 140, 42);
+                doc.text(`Suma de Pagos por Becados Parciales/Local: ${formatCurrency(sumaPagosBecadosParciales)}`, 140, 42);
                 
                 doc.line(15, 52, 280, 52);
             }
@@ -310,7 +355,7 @@ const Reportes: React.FC = () => {
         const totalPagado = data.reduce((acc, r) => acc + r.pagado, 0);
         const sumaSaldosPendientes = data.reduce((acc, r) => acc + r.saldo, 0);
         const sumaBecadosTotales = data.filter(r => r.rol.includes('(Beca Total)')).reduce((acc, r) => acc + r.pagado, 0);
-        const sumaBecadosParciales = data.filter(r => r.rol.includes('(Beca Parcial)')).reduce((acc, r) => acc + r.pagado, 0);
+        const sumaBecadosParciales = data.filter(r => r.rol.includes('(Beca Parcial)') || r.rol.includes('(Precio Esp. Local)')).reduce((acc, r) => acc + r.pagado, 0);
 
         autoTable(doc, {
             startY: 55,
@@ -346,7 +391,7 @@ const Reportes: React.FC = () => {
                 doc.text(`Suma de Saldos Pendientes: ${formatCurrency(sumaSaldosPendientes)}`, 20, 42);
                 
                 doc.text(`Suma de Pagos por Becados totales: ${formatCurrency(sumaBecadosTotales)}`, 140, 35);
-                doc.text(`Suma de Pagos por Becados Parciales: ${formatCurrency(sumaBecadosParciales)}`, 140, 42);
+                doc.text(`Suma de Pagos por Becados Parciales/Local: ${formatCurrency(sumaBecadosParciales)}`, 140, 42);
                 
                 doc.line(15, 52, 280, 52);
             }
@@ -467,7 +512,11 @@ const Reportes: React.FC = () => {
             pagosRealizados: data.reduce((acc, r) => acc + r.pagado, 0),
             saldosPendientes: data.reduce((acc, r) => acc + r.saldo, 0),
             becasTotales: data.filter(r => r.rol.includes('(Beca Total)')).reduce((acc, r) => acc + r.pagado, 0),
-            becasParciales: data.filter(r => r.rol.includes('(Beca Parcial)')).reduce((acc, r) => acc + r.pagado, 0)
+            becasParciales: data.filter(r => r.rol.includes('(Beca Parcial)') || r.rol.includes('(Precio Esp. Local)')).reduce((acc, r) => acc + r.pagado, 0),
+            cantTotal: data.length,
+            cantPagados: data.filter(r => r.saldo === 0).length,
+            cantPendientes: data.filter(r => r.saldo > 0).length,
+            cantBecados: data.filter(r => r.rol.includes('Beca') || r.rol.includes('Local')).length
         };
     }, [activeReport, selectedEventoId, reportData]);
 
@@ -517,8 +566,8 @@ const Reportes: React.FC = () => {
                                     <p className="text-sm font-bold text-blue-400">{formatCurrency(reportData.filter((r: any) => r.beca === 'Total').reduce((acc: any, r: any) => acc + r.totalPagado, 0))}</p>
                                 </div>
                                 <div>
-                                    <p className="text-[10px] text-text-secondary uppercase font-bold">Suma de Pagos por Becados Parciales</p>
-                                    <p className="text-sm font-bold text-yellow-400">{formatCurrency(reportData.filter((r: any) => r.beca === 'Parcial').reduce((acc: any, r: any) => acc + r.totalPagado, 0))}</p>
+                                    <p className="text-[10px] text-text-secondary uppercase font-bold">Suma de Pagos por Becados Parciales/Local</p>
+                                    <p className="text-sm font-bold text-yellow-400">{formatCurrency(reportData.filter((r: any) => r.beca === 'Parcial' || r.precioEspecial).reduce((acc: any, r: any) => acc + r.totalPagado, 0))}</p>
                                 </div>
                             </div>
                         )}
@@ -532,14 +581,19 @@ const Reportes: React.FC = () => {
                                 <option value="">-- Elija un evento --</option>
                                 {eventos.map(e => <option key={e.id} value={e.id}>{e.tema} ({formatDate(e.fechaInicio)})</option>)}
                             </select>
-                            <button onClick={generarPDFBalanceEvento} disabled={!selectedEventoId} className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-md disabled:opacity-50 flex items-center gap-2 font-bold transition">
-                                <PrinterIcon className="w-5 h-5" /> Imprimir Balance PDF
-                            </button>
+                            <div className="flex gap-2">
+                                <button onClick={generarPDFBalanceEvento} disabled={!selectedEventoId} className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-md disabled:opacity-50 flex items-center gap-2 font-bold transition">
+                                    <PrinterIcon className="w-5 h-5" /> PDF
+                                </button>
+                                <button onClick={exportarExcelBalance} disabled={!selectedEventoId} className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-md disabled:opacity-50 flex items-center gap-2 font-bold transition">
+                                    <DownloadCloudIcon className="w-5 h-5" /> Excel
+                                </button>
+                            </div>
                         </div>
                         
                         {selectedEventoId && (
                             <>
-                                {/* Sección de Totalizadores */}
+                                {/* Sección de Totalizadores Monetarios */}
                                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4 p-4 bg-background/50 rounded-lg border border-primary/20 shadow-inner">
                                     <div className="flex flex-col">
                                         <p className="text-[10px] text-text-secondary uppercase font-bold tracking-widest">Suma de Pagos realizados</p>
@@ -554,8 +608,28 @@ const Reportes: React.FC = () => {
                                         <p className="text-lg font-black text-indigo-400">{formatCurrency(balanceTotals?.becasTotales || 0)}</p>
                                     </div>
                                     <div className="flex flex-col">
-                                        <p className="text-[10px] text-yellow-500/80 uppercase font-bold tracking-widest">Suma de Pagos por Becados Parciales</p>
+                                        <p className="text-[10px] text-yellow-500/80 uppercase font-bold tracking-widest">Suma de Pagos por Becados Parcial/Local</p>
                                         <p className="text-lg font-black text-yellow-400">{formatCurrency(balanceTotals?.becasParciales || 0)}</p>
+                                    </div>
+                                </div>
+
+                                {/* Sección de Totalizadores de Cantidades */}
+                                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 p-4 bg-surface rounded-lg border border-border shadow-md">
+                                    <div className="flex flex-col border-r border-border last:border-0 pr-2">
+                                        <p className="text-[10px] text-text-secondary uppercase font-bold tracking-widest">Inscriptos Totales</p>
+                                        <p className="text-xl font-black text-text-primary">{balanceTotals?.cantTotal || 0}</p>
+                                    </div>
+                                    <div className="flex flex-col border-r border-border last:border-0 pr-2">
+                                        <p className="text-[10px] text-text-secondary uppercase font-bold tracking-widest">Pagados Totalmente</p>
+                                        <p className="text-xl font-black text-emerald-400">{balanceTotals?.cantPagados || 0}</p>
+                                    </div>
+                                    <div className="flex flex-col border-r border-border last:border-0 pr-2">
+                                        <p className="text-[10px] text-text-secondary uppercase font-bold tracking-widest">Con Saldo Pendiente</p>
+                                        <p className="text-xl font-black text-red-400">{balanceTotals?.cantPendientes || 0}</p>
+                                    </div>
+                                    <div className="flex flex-col">
+                                        <p className="text-[10px] text-text-secondary uppercase font-bold tracking-widest">Cant. de Becados/Local</p>
+                                        <p className="text-xl font-black text-indigo-400">{balanceTotals?.cantBecados || 0}</p>
                                     </div>
                                 </div>
 
@@ -568,7 +642,7 @@ const Reportes: React.FC = () => {
                                             onChange={(e) => setFilterBecados(e.target.checked)}
                                             className="h-4 w-4 text-primary rounded border-border bg-background focus:ring-primary"
                                         />
-                                        <span>Ver Becados</span>
+                                        <span>Ver Becados/Local</span>
                                     </label>
                                     <label className="flex items-center gap-2 text-xs font-bold text-text-secondary cursor-pointer hover:text-text-primary transition-colors select-none">
                                         <input 

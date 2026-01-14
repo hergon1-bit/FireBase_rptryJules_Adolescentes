@@ -72,6 +72,7 @@ export interface InscripcionServidor {
   tipoBeca?: TipoBeca;
   montoAcordado?: number;
   iglesiaPagaSaldo?: boolean;
+  precioEspecialLocal?: boolean;
   notas?: string;
 }
 
@@ -185,7 +186,6 @@ export interface Devocional {
   fechaVencimiento: string;
 }
 
-// Renamed observations to observaciones to align with the database schema and app-wide naming conventions.
 export interface EntregaDevocional {
   id: number;
   devocionalId: number;

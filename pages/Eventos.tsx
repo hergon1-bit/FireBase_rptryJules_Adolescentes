@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo } from 'react';
 import { useData } from '../contexts/DataContext';
 import { useAuth } from '../contexts/AuthContext';
@@ -40,6 +41,7 @@ const Eventos: React.FC = () => {
     const [becaServidorToInscribe, setBecaServidorToInscribe] = useState<TipoBeca>('Ninguna');
     const [montoServidorToInscribe, setMontoServidorToInscribe] = useState<string>('0');
     const [iglesiaPagaServidorToInscribe, setIglesiaPagaServidorToInscribe] = useState<boolean>(false);
+    const [precioEspecialLocalToInscribe, setPrecioEspecialLocalToInscribe] = useState<boolean>(false);
     
     // Edit Enrollment State
     const [editingInscripcion, setEditingInscripcion] = useState<InscripcionServidor | null>(null);
@@ -148,10 +150,15 @@ const Eventos: React.FC = () => {
             const pagosS = pagosServidores.filter(p => p.inscripcionServidorId === insc.id).sort((a,b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime());
             const totalP = pagosS.reduce((acc, curr) => acc + curr.monto, 0);
             
-            // Lógica de saldo basada en becas
+            // Lógica de saldo basada en becas y Precio Especial Local
             let costoEsperado = selectedEvent.costoPersona || 0;
-            if (insc.tipoBeca === 'Total') costoEsperado = 0;
-            else if (insc.tipoBeca === 'Parcial') costoEsperado = insc.montoAcordado || 0;
+            if (insc.precioEspecialLocal) {
+                costoEsperado = insc.montoAcordado || 0;
+            } else if (insc.tipoBeca === 'Total') {
+                costoEsperado = 0;
+            } else if (insc.tipoBeca === 'Parcial') {
+                costoEsperado = insc.montoAcordado || 0;
+            }
 
             return {
                 servidor: s,
@@ -164,7 +171,7 @@ const Eventos: React.FC = () => {
         })
         .filter(item => {
             const matchesSearch = item.servidor && `${item.servidor.nombre} ${item.servidor.apellido}`.toLowerCase().includes(searchInscribedServidor.toLowerCase());
-            const matchesBeca = !showOnlyBecados || (item.inscripcion.tipoBeca !== 'Ninguna');
+            const matchesBeca = !showOnlyBecados || (item.inscripcion.tipoBeca !== 'Ninguna' || item.inscripcion.precioEspecialLocal);
             return matchesSearch && matchesBeca;
         })
         .sort((a, b) => `${a.servidor!.nombre} ${a.servidor!.apellido}`.localeCompare(`${b.servidor!.nombre} ${b.servidor!.apellido}`));
@@ -178,7 +185,7 @@ const Eventos: React.FC = () => {
         const totalBecas = inscripcionesServidores.filter(i => i.eventoId === selectedEvent.id).reduce((sum, i) => {
             const costo = selectedEvent.costoPersona || 0;
             if (i.tipoBeca === 'Total') return sum + costo;
-            if (i.tipoBeca === 'Parcial') return sum + (costo - (i.montoAcordado || 0));
+            if (i.tipoBeca === 'Parcial' || i.precioEspecialLocal) return sum + (costo - (i.montoAcordado || 0));
             return sum;
         }, 0);
 
@@ -225,10 +232,10 @@ const Eventos: React.FC = () => {
                 rol: rolServidorToInscribe,
                 tipoBeca: becaServidorToInscribe,
                 montoAcordado: Number(montoServidorToInscribe),
-                iglesiaPagaSaldo: iglesiaPagaServidorToInscribe
+                iglesiaPagaSaldo: iglesiaPagaServidorToInscribe,
+                precioEspecialLocal: precioEspecialLocalToInscribe
             });
 
-            // Si se marcó que la iglesia cubre el saldo, registrar pago automáticamente
             if (iglesiaPagaServidorToInscribe && created) {
                  await addPagoServidor(
                      created.id, 
@@ -242,6 +249,7 @@ const Eventos: React.FC = () => {
             setMontoServidorToInscribe('0');
             setBecaServidorToInscribe('Ninguna');
             setIglesiaPagaServidorToInscribe(false);
+            setPrecioEspecialLocalToInscribe(false);
         }
     };
 
@@ -256,7 +264,6 @@ const Eventos: React.FC = () => {
             const oldInsc = inscripcionesServidores.find(is => is.id === editingInscripcion.id);
             await updateInscripcionServidor(editingInscripcion);
             
-            // Si antes no estaba marcado y ahora sí se marca "La iglesia cubre el saldo", registrar pago
             if (editingInscripcion.iglesiaPagaSaldo && (!oldInsc || !oldInsc.iglesiaPagaSaldo)) {
                  await addPagoServidor(
                      editingInscripcion.id, 
@@ -302,11 +309,10 @@ const Eventos: React.FC = () => {
                     const totalCobrado = cobradoAdo + cobradoServ;
                     const saldoPendiente = proyectado - totalCobrado;
 
-                    // Cálculo cargo iglesia para tarjeta
                     const cargoIglesia = eventServInscripciones.reduce((sum, i) => {
                         const costo = evento.costoPersona || 0;
                         if (i.tipoBeca === 'Total') return sum + costo;
-                        if (i.tipoBeca === 'Parcial') return sum + (costo - (i.montoAcordado || 0));
+                        if (i.tipoBeca === 'Parcial' || i.precioEspecialLocal) return sum + (costo - (i.montoAcordado || 0));
                         return sum;
                     }, 0);
 
@@ -520,21 +526,27 @@ const Eventos: React.FC = () => {
                                             </select>
                                         </div>
                                         
-                                        {becaServidorToInscribe === 'Parcial' && (
+                                        {(becaServidorToInscribe === 'Parcial' || precioEspecialLocalToInscribe) && (
                                             <div>
                                                 <label className="text-[10px] text-text-secondary uppercase font-bold">Monto que puede pagar</label>
-                                                <input type="number" value={montoServidorToInscribe} onChange={e => setMontoServidorToInscribe(e.target.value)} className="w-full bg-surface border border-border rounded-md p-2 text-sm" placeholder="Monto comprometido" />
+                                                <input type="number" value={montoServidorToInscribe} onChange={e => setMontoServidorToInscribe(e.target.value)} className="w-full bg-surface border border-border rounded-md p-2 text-sm" placeholder="Monto acordado" />
                                             </div>
                                         )}
                                         
-                                        {(becaServidorToInscribe === 'Parcial' || becaServidorToInscribe === 'Total') && (
-                                            <div className="flex items-center gap-2 pb-2">
-                                                <input type="checkbox" checked={iglesiaPagaServidorToInscribe} onChange={e => setIglesiaPagaServidorToInscribe(e.target.checked)} className="h-4 w-4 text-primary rounded" />
-                                                <label className="text-xs font-medium text-text-secondary">Iglesia paga saldo</label>
+                                        <div className="flex flex-col gap-2 pb-2">
+                                            <div className="flex items-center gap-2">
+                                                <input type="checkbox" checked={precioEspecialLocalToInscribe} onChange={e => setPrecioEspecialLocalToInscribe(e.target.checked)} className="h-4 w-4 text-primary rounded" />
+                                                <label className="text-xs font-medium text-text-secondary">Precio Especial Local</label>
                                             </div>
-                                        )}
+                                            {(becaServidorToInscribe === 'Parcial' || becaServidorToInscribe === 'Total') && (
+                                                <div className="flex items-center gap-2">
+                                                    <input type="checkbox" checked={iglesiaPagaServidorToInscribe} onChange={e => setIglesiaPagaServidorToInscribe(e.target.checked)} className="h-4 w-4 text-primary rounded" />
+                                                    <label className="text-xs font-medium text-text-secondary">Iglesia paga saldo</label>
+                                                </div>
+                                            )}
+                                        </div>
                                         
-                                        <button onClick={handleAddInscripcionServidor} disabled={!servidorToInscribe} className={`bg-primary text-white px-4 py-2 rounded-lg font-bold disabled:opacity-50 whitespace-nowrap ${becaServidorToInscribe === 'Ninguna' ? 'sm:col-span-2' : ''}`}>Inscribir Apoyo</button>
+                                        <button onClick={handleAddInscripcionServidor} disabled={!servidorToInscribe} className={`bg-primary text-white px-4 py-2 rounded-lg font-bold disabled:opacity-50 whitespace-nowrap ${(becaServidorToInscribe === 'Ninguna' && !precioEspecialLocalToInscribe) ? 'sm:col-span-2' : ''}`}>Inscribir Apoyo</button>
                                     </div>
                                 </div>
 
@@ -568,6 +580,9 @@ const Eventos: React.FC = () => {
                                                     <div className="flex items-center gap-2">
                                                         <p className="font-bold text-lg">{item.servidor!.nombre} {item.servidor!.apellido}</p>
                                                         <span className="text-[10px] bg-purple-500/30 text-purple-300 px-2 py-0.5 rounded uppercase font-bold">{item.inscripcion.rol}</span>
+                                                        {item.inscripcion.precioEspecialLocal && (
+                                                            <span className="text-[10px] bg-orange-500/30 text-orange-300 px-2 py-0.5 rounded uppercase font-bold">Precio Especial</span>
+                                                        )}
                                                         {item.inscripcion.tipoBeca !== 'Ninguna' && (
                                                             <span className={`text-[10px] px-2 py-0.5 rounded uppercase font-bold ${item.inscripcion.tipoBeca === 'Total' ? 'bg-green-500/20 text-green-400' : 'bg-blue-500/20 text-blue-400'}`}>
                                                                 Beca {item.inscripcion.tipoBeca}
@@ -682,9 +697,21 @@ const Eventos: React.FC = () => {
                             </div>
                         </div>
 
-                        {editingInscripcion.tipoBeca === 'Parcial' && (
+                        <div className="flex items-center gap-4 mt-2">
+                             <div className="flex items-center gap-2">
+                                <input 
+                                    type="checkbox" 
+                                    checked={editingInscripcion.precioEspecialLocal} 
+                                    onChange={e => setEditingInscripcion({...editingInscripcion, precioEspecialLocal: e.target.checked})}
+                                    className="h-5 w-5 text-primary rounded border-border focus:ring-primary bg-background"
+                                />
+                                <label className="text-sm font-bold text-text-secondary">Precio Especial Local</label>
+                            </div>
+                        </div>
+
+                        {(editingInscripcion.tipoBeca === 'Parcial' || editingInscripcion.precioEspecialLocal) && (
                             <InputField 
-                                label="Monto Acordado (Que el servidor pagará)" 
+                                label="Monto Acordado (Monto final a pagar)" 
                                 type="number" 
                                 value={editingInscripcion.montoAcordado || 0} 
                                 onChange={e => setEditingInscripcion({...editingInscripcion, montoAcordado: Number(e.target.value)})}
