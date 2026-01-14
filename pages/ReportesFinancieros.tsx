@@ -50,10 +50,11 @@ const ReportesFinancieros: React.FC = () => {
             return {
                 tipo: 'CHICO',
                 nombre: ado ? `${ado.nombre} ${ado.apellido}` : 'Desconocido',
+                registro: ado?.registro || 'N/A',
                 rol: 'Participante',
                 pagado: totalPagado,
                 saldo: Math.max(0, costoPersonaDefault - totalPagado),
-                beca: 'Ninguna',
+                beca: 'Ninguna' as string,
                 precioLocal: false
             };
         });
@@ -79,6 +80,7 @@ const ReportesFinancieros: React.FC = () => {
             return {
                 tipo: 'APOYO',
                 nombre: s ? `${s.nombre} ${s.apellido}` : 'Desconocido',
+                registro: s?.registro || 'N/A',
                 rol: i.rol,
                 pagado: totalPagado,
                 saldo: saldoCalculado,
@@ -223,7 +225,147 @@ const ReportesFinancieros: React.FC = () => {
         link.click();
     };
 
-    const handlePrintPDF = () => {
+    const handlePrintBalancePDF = () => {
+        if (!selectedEventoId || !balanceTotals) return;
+        const event = eventos.find(e => e.id === selectedEventoId);
+        const doc = new jsPDF('landscape'); // Cambiado a landscape para mejor ajuste de columnas
+        const now = new Date();
+        const printDate = `${now.toLocaleDateString('es-PY')} ${now.toLocaleTimeString('es-PY')}`;
+
+        // Configuración de márgenes y estilo
+        const marginX = 14;
+        let currentY = 15;
+
+        // Renderizado del encabezado en cada página
+        const addHeader = (data: any) => {
+            doc.setFontSize(8);
+            doc.setTextColor(150);
+            doc.text(`Impreso el: ${printDate}`, marginX, 10);
+            doc.text(`Página ${data.pageNumber} / ${data.pageCount}`, 280, 10, { align: 'right' });
+        };
+
+        // Primera página: Título e Información del Evento
+        doc.setFontSize(22);
+        doc.setTextColor(40);
+        doc.setFont('helvetica', 'bold');
+        doc.text("Balances y Deudas de Inscriptos", 148, currentY + 10, { align: 'center' });
+        
+        currentY += 25;
+        doc.setFontSize(14);
+        doc.text(`Evento: ${event?.tema}`, marginX, currentY);
+        
+        currentY += 8;
+        doc.setFontSize(11);
+        doc.setFont('helvetica', 'normal');
+        const fechaFinStr = event?.fechaFin ? ` - ${formatDate(event.fechaFin)}` : '';
+        doc.text(`Fecha: ${formatDate(event?.fechaInicio || '')}${fechaFinStr}`, marginX, currentY);
+        
+        currentY += 6;
+        if (event?.tieneCosto) {
+            doc.text(`Costo por Persona: ${formatCurrency(event.costoPersona || 0)}`, marginX, currentY);
+            currentY += 6;
+        }
+        doc.text(`Total Inscriptos: ${balanceTotals.cantInscriptos}`, marginX, currentY);
+
+        currentY += 10;
+
+        // Cuerpo de la tabla (Inscriptos Filtrados - ORDENADOS POR NOMBRE)
+        const tableBody = filteredSummaryData.map(r => {
+            let acuerdoBecaStr = 'Estándar';
+            if (r.precioLocal) acuerdoBecaStr = 'Acuerdo Local';
+            else if (r.beca !== 'Ninguna') acuerdoBecaStr = `Beca ${r.beca}`;
+
+            return [
+                r.tipo,
+                r.nombre,
+                r.registro,
+                acuerdoBecaStr,
+                formatCurrency(r.pagado),
+                formatCurrency(r.saldo)
+            ];
+        });
+
+        autoTable(doc, {
+            startY: currentY,
+            head: [['Tipo', 'Nombre', 'Reg. Salud', 'Acuerdo / Beca', 'Monto Pagado', 'Monto Pendiente']],
+            body: tableBody,
+            theme: 'striped',
+            headStyles: { fillColor: [79, 70, 229] }, // Indigo Primary
+            styles: { fontSize: 9 },
+            didDrawPage: (data) => addHeader(data),
+            margin: { top: 20 }
+        });
+
+        // Resumen Final (Última hoja)
+        const finalY = (doc as any).lastAutoTable.finalY + 15;
+        
+        // Si no hay suficiente espacio para el resumen, crear nueva página
+        let summaryY = finalY;
+        if (summaryY > 160) {
+            doc.addPage();
+            summaryY = 30;
+        }
+
+        doc.setFontSize(16);
+        doc.setFont('helvetica', 'bold');
+        doc.text("Resumen Financiero Consolidado", marginX, summaryY);
+        
+        summaryY += 10;
+        doc.setFontSize(10);
+        
+        // Bloque de Totales Monetarios
+        const totalsData = [
+            ["Cobrado en Caja:", formatCurrency(balanceTotals.pagosRealizados)],
+            ["Saldo Pendiente:", formatCurrency(balanceTotals.saldosPendientes)],
+            ["Becas (Iglesia):", formatCurrency(balanceTotals.becasCargoIglesia)],
+            ["Acuerdos Locales:", formatCurrency(balanceTotals.ahorroAcuerdoLocal)]
+        ];
+
+        autoTable(doc, {
+            startY: summaryY,
+            body: totalsData,
+            theme: 'plain',
+            styles: { cellPadding: 2, fontSize: 10 },
+            columnStyles: { 0: { fontStyle: 'bold', width: 60 } },
+            margin: { left: marginX }
+        });
+
+        // Bloque de Cantidades
+        const countsY = (doc as any).lastAutoTable.finalY + 10;
+        doc.setFontSize(16);
+        doc.setFont('helvetica', 'bold');
+        doc.text("Estadísticas de Participación", marginX, countsY);
+
+        const countsData = [
+            ["Inscriptos Totales:", balanceTotals.cantInscriptos.toString()],
+            ["Totalmente Pagados:", balanceTotals.cantPagadosFull.toString()],
+            ["Con Saldo Pendiente:", balanceTotals.cantPendientes.toString()],
+            ["Becados (Staff):", balanceTotals.cantBecados.toString()],
+            ["Acuerdos Locales:", balanceTotals.cantAcuerdosLocales.toString()]
+        ];
+
+        autoTable(doc, {
+            startY: countsY + 5,
+            body: countsData,
+            theme: 'plain',
+            styles: { cellPadding: 2, fontSize: 10 },
+            columnStyles: { 0: { fontStyle: 'bold', width: 60 } },
+            margin: { left: marginX }
+        });
+
+        // Loop final para inyectar conteo de páginas exacto
+        const totalPages = doc.internal.getNumberOfPages();
+        for (let i = 1; i <= totalPages; i++) {
+            doc.setPage(i);
+            doc.setFontSize(8);
+            doc.setTextColor(150);
+            doc.text(`Página ${i} / ${totalPages}`, 280, 10, { align: 'right' });
+        }
+
+        doc.save(`Balance_General_${event?.tema.replace(/\s+/g, '_')}.pdf`);
+    };
+
+    const handlePrintHistoryPDF = () => {
         if (!selectedEventoId || historyData.length === 0) return;
         const event = eventos.find(e => e.id === selectedEventoId);
         const doc = new jsPDF();
@@ -252,7 +394,7 @@ const ReportesFinancieros: React.FC = () => {
             head: [['Fecha', 'Nombre', 'Tipo', 'Rol', 'Monto', 'Notas']],
             body: tableData,
             theme: 'striped',
-            headStyles: { fillStyle: 'f', fillColor: [79, 70, 229] }, // Color Primary
+            headStyles: { fillColor: [79, 70, 229] }, // Indigo Primary
             foot: [['', '', '', 'TOTAL COBRADO:', formatCurrency(balanceTotals?.pagosRealizados || 0), '']],
             footStyles: { fillColor: [31, 41, 55], textColor: [255, 255, 255], fontStyle: 'bold' }
         });
@@ -301,6 +443,15 @@ const ReportesFinancieros: React.FC = () => {
                         </select>
                     </div>
                     <div className="flex gap-2">
+                        {activeReport === 'balance' && selectedEventoId && (
+                            <button 
+                                onClick={handlePrintBalancePDF}
+                                className="bg-gray-700 text-white p-3 rounded-lg hover:bg-gray-600 transition-colors shadow-md border border-border"
+                                title="Imprimir PDF del Balance"
+                            >
+                                <PrinterIcon className="w-5 h-5" />
+                            </button>
+                        )}
                         {activeReport === 'historial' && selectedEventoId && historyData.length > 0 && (
                             <>
                                 <button 
@@ -311,9 +462,9 @@ const ReportesFinancieros: React.FC = () => {
                                     <DownloadCloudIcon className="w-5 h-5" />
                                 </button>
                                 <button 
-                                    onClick={handlePrintPDF}
+                                    onClick={handlePrintHistoryPDF}
                                     className="bg-gray-700 text-white p-3 rounded-lg hover:bg-gray-600 transition-colors shadow-md border border-border"
-                                    title="Imprimir PDF"
+                                    title="Imprimir PDF del Historial"
                                 >
                                     <PrinterIcon className="w-5 h-5" />
                                 </button>
@@ -435,6 +586,7 @@ const ReportesFinancieros: React.FC = () => {
                                         <tr>
                                             <th className="p-4">Tipo</th>
                                             <th className="p-4">Nombre</th>
+                                            <th className="p-4">Reg. Salud</th>
                                             <th className="p-4">Acuerdo / Beca</th>
                                             <th className="p-4 text-right">Pagado</th>
                                             <th className="p-4 text-right">Pendiente</th>
@@ -445,6 +597,7 @@ const ReportesFinancieros: React.FC = () => {
                                             <tr key={i} className="hover:bg-background/40 transition-colors group">
                                                 <td className={`p-4 font-bold text-[10px] ${r.tipo === 'CHICO' ? 'text-primary' : 'text-purple-400'}`}>{r.tipo}</td>
                                                 <td className="p-4 font-medium text-text-primary group-hover:text-primary">{r.nombre}</td>
+                                                <td className="p-4 text-xs font-mono text-text-secondary">{r.registro}</td>
                                                 <td className="p-4">
                                                     <div className="flex flex-wrap gap-1">
                                                         {r.beca !== 'Ninguna' && !r.precioLocal && <span className="text-[8px] bg-indigo-500/20 text-indigo-400 px-2 py-0.5 rounded uppercase font-black border border-indigo-500/30">Beca {r.beca}</span>}
@@ -458,7 +611,7 @@ const ReportesFinancieros: React.FC = () => {
                                         ))}
                                         {filteredSummaryData.length === 0 && (
                                             <tr>
-                                                <td colSpan={5} className="p-10 text-center text-text-secondary italic">No se encontraron registros con los filtros aplicados.</td>
+                                                <td colSpan={6} className="p-10 text-center text-text-secondary italic">No se encontraron registros con los filtros aplicados.</td>
                                             </tr>
                                         )}
                                     </tbody>
