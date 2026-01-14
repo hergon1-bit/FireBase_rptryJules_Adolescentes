@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
-import { HomeIcon, UsersIcon, UserCheckIcon, ClipboardListIcon, HeartHandshakeIcon, CalendarDaysIcon, BarChartIcon, SettingsIcon, ChevronDownIcon, ShieldIcon, TrashIcon, UploadCloudIcon, BookOpenIcon } from '../ui/Icons';
+import { HomeIcon, UsersIcon, UserCheckIcon, ClipboardListIcon, HeartHandshakeIcon, CalendarDaysIcon, BarChartIcon, SettingsIcon, ChevronDownIcon, ShieldIcon, TrashIcon, UploadCloudIcon, BookOpenIcon, CalculatorIcon } from '../ui/Icons';
 import { Page } from '../../types';
 
 interface SidebarProps {
@@ -50,7 +50,8 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, navigateTo, isOpen, setO
     { page: 'tareas', label: 'Tareas / Devocional', icon: <BookOpenIcon />, requiredPermission: hasPermission('devocionales', 'read') || hasPermission('entregas', 'read') },
     { page: 'tutores', label: 'Tutores', icon: <HeartHandshakeIcon />, requiredPermission: hasPermission('tutores', 'read') },
     { page: 'eventos', label: 'Eventos', icon: <CalendarDaysIcon />, requiredPermission: hasPermission('eventos', 'read') },
-    { page: 'reportes', label: 'Reportes', icon: <BarChartIcon />, requiredPermission: true },
+    { page: 'reportes-financieros', label: 'Balance de Eventos', icon: <CalculatorIcon />, requiredPermission: hasPermission('eventos', 'read') },
+    { page: 'reportes', label: 'Reportes de Seguimiento', icon: <BarChartIcon />, requiredPermission: true },
   ];
 
   return (

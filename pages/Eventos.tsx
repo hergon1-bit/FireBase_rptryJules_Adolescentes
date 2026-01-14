@@ -7,12 +7,12 @@ import { formatDate, formatCurrency } from '../utils/helpers';
 import Modal from '../components/ui/Modal';
 import ConfirmationModal from '../components/ui/ConfirmationModal';
 import { useForm } from '../hooks/useForm';
-import { ChevronDownIcon, TrashIcon, UsersIcon, PencilIcon } from '../components/ui/Icons';
+import { ChevronDownIcon, TrashIcon, UsersIcon, PencilIcon, RefreshIcon, CheckCircleIcon, ClipboardListIcon, ShieldIcon, HeartHandshakeIcon, CalculatorIcon } from '../components/ui/Icons';
 
 const InputField: React.FC<React.InputHTMLAttributes<HTMLInputElement> & { label: string }> = ({ label, ...props }) => (
     <div>
-        <label htmlFor={props.name} className="block text-sm font-medium text-text-secondary">{label}</label>
-        <input {...props} id={props.name} className="mt-1 block w-full px-3 py-2 bg-background border border-border rounded-md shadow-sm focus:outline-none focus:ring-primary focus:border-primary sm:text-sm" />
+        <label htmlFor={props.name} className="block text-sm font-medium text-text-secondary mb-1">{label}</label>
+        <input {...props} id={props.name} className="block w-full px-3 py-2 bg-background border border-border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-text-primary disabled:opacity-50 transition-all sm:text-sm" />
     </div>
 );
 
@@ -40,8 +40,8 @@ const Eventos: React.FC = () => {
     const [rolServidorToInscribe, setRolServidorToInscribe] = useState<RolServidor>('Apoyo');
     const [becaServidorToInscribe, setBecaServidorToInscribe] = useState<TipoBeca>('Ninguna');
     const [montoServidorToInscribe, setMontoServidorToInscribe] = useState<string>('0');
-    const [iglesiaPagaServidorToInscribe, setIglesiaPagaServidorToInscribe] = useState<boolean>(false);
-    const [precioEspecialLocalToInscribe, setPrecioEspecialLocalToInscribe] = useState<boolean>(false);
+    const [precioEspecialToInscribe, setPrecioEspecialToInscribe] = useState<boolean>(false);
+    const [isAddConditionsModalOpen, setIsAddConditionsModalOpen] = useState(false);
     
     // Edit Enrollment State
     const [editingInscripcion, setEditingInscripcion] = useState<InscripcionServidor | null>(null);
@@ -49,10 +49,14 @@ const Eventos: React.FC = () => {
     
     const [adolescenteToInscribe, setAdolescenteToInscribe] = useState<string>('');
     
+    // Filtros de la lista interna (Modal Gestionar)
     const [searchInscribedChico, setSearchInscribedChico] = useState('');
+    const [showOnlyDeudores, setShowOnlyDeudores] = useState(false);
+    const [showOnlyPagadosFull, setShowOnlyPagadosFull] = useState(false);
+
     const [searchInscribedServidor, setSearchInscribedServidor] = useState('');
     const [showOnlyBecados, setShowOnlyBecados] = useState(false);
-    const [showOnlyDeudores, setShowOnlyDeudores] = useState(false);
+    const [showOnlyPrecioLocal, setShowOnlyPrecioLocal] = useState(false);
 
     const [newPayment, setNewPayment] = useState<{ [key: number]: string }>({});
     const [newPaymentDate, setNewPaymentDate] = useState<{ [key: number]: string }>({});
@@ -64,6 +68,12 @@ const Eventos: React.FC = () => {
     const [editingEvent, setEditingEvent] = useState<Evento | null>(null);
     const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
     const [eventToDelete, setEventToDelete] = useState<Evento | null>(null);
+
+    // Nuevos estados para eliminar inscripciones
+    const [inscripcionToDelete, setInscripcionToDelete] = useState<InscripcionEvento | null>(null);
+    const [isDeleteInscripcionConfirmOpen, setIsDeleteInscripcionConfirmOpen] = useState(false);
+    const [inscripcionServidorToDelete, setInscripcionServidorToDelete] = useState<InscripcionServidor | null>(null);
+    const [isDeleteInscripcionServidorConfirmOpen, setIsDeleteInscripcionServidorConfirmOpen] = useState(false);
 
     const initialEventFormState: Omit<Evento, 'id'> = {
         tema: '', lugar: '', fechaInicio: '', horaInicio: '', fechaFin: '', horaFin: '',
@@ -87,7 +97,17 @@ const Eventos: React.FC = () => {
     const openModalForEdit = (e: React.MouseEvent, event: Evento) => {
         e.stopPropagation();
         setEditingEvent(event);
-        setValues(event);
+        setValues({
+            tema: event.tema,
+            lugar: event.lugar,
+            fechaInicio: event.fechaInicio,
+            horaInicio: event.horaInicio || '',
+            fechaFin: event.fechaFin || '',
+            horaFin: event.horaFin || '',
+            tieneCosto: event.tieneCosto,
+            costoTotal: event.costoTotal || 0,
+            costoPersona: event.costoPersona || 0
+        });
         setIsEventModalOpen(true);
     };
 
@@ -128,7 +148,7 @@ const Eventos: React.FC = () => {
         
         const adolescentesInscritos = eventInscripciones.map(inscripcion => {
             const ado = adolescentes.find(a => a.id === inscripcion.adolescenteId);
-            const pagosRealizados = pagos.filter(p => p.inscripcionId === inscripcion.id).sort((a,b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime());
+            const pagosRealizados = pagos.filter(p => p.inscripcionId === inscripcion.id).sort((a,b) => new Date(a.fecha).getTime() - new Date(b.fecha).getTime());
             const totalPagado = pagosRealizados.reduce((sum, p) => sum + p.monto, 0);
             return {
                 adolescente: ado,
@@ -141,16 +161,16 @@ const Eventos: React.FC = () => {
         .filter(item => {
             const matchesSearch = item.adolescente && `${item.adolescente.nombre} ${item.adolescente.apellido}`.toLowerCase().includes(searchInscribedChico.toLowerCase());
             const matchesDeuda = !showOnlyDeudores || item.debe > 0;
-            return matchesSearch && matchesDeuda;
+            const matchesPagado = !showOnlyPagadosFull || item.debe <= 0;
+            return matchesSearch && matchesDeuda && matchesPagado;
         })
         .sort((a, b) => `${a.adolescente!.nombre} ${a.adolescente!.apellido}`.localeCompare(`${b.adolescente!.nombre} ${b.adolescente!.apellido}`));
 
         const inscritosServidores = inscripcionesServidores.filter(i => i.eventoId === selectedEvent.id).map(insc => {
             const s = servidores.find(ser => ser.id === insc.servidorId);
-            const pagosS = pagosServidores.filter(p => p.inscripcionServidorId === insc.id).sort((a,b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime());
+            const pagosS = pagosServidores.filter(p => p.inscripcionServidorId === insc.id).sort((a,b) => new Date(a.fecha).getTime() - new Date(b.fecha).getTime());
             const totalP = pagosS.reduce((acc, curr) => acc + curr.monto, 0);
             
-            // Lógica de saldo basada en becas y Precio Especial Local
             let costoEsperado = selectedEvent.costoPersona || 0;
             if (insc.precioEspecialLocal) {
                 costoEsperado = insc.montoAcordado || 0;
@@ -171,38 +191,19 @@ const Eventos: React.FC = () => {
         })
         .filter(item => {
             const matchesSearch = item.servidor && `${item.servidor.nombre} ${item.servidor.apellido}`.toLowerCase().includes(searchInscribedServidor.toLowerCase());
-            const matchesBeca = !showOnlyBecados || (item.inscripcion.tipoBeca !== 'Ninguna' || item.inscripcion.precioEspecialLocal);
-            return matchesSearch && matchesBeca;
+            const matchesBeca = !showOnlyBecados || (item.inscripcion.tipoBeca !== 'Ninguna');
+            const matchesPrecioLocal = !showOnlyPrecioLocal || item.inscripcion.precioEspecialLocal;
+            return matchesSearch && matchesBeca && matchesPrecioLocal;
         })
         .sort((a, b) => `${a.servidor!.nombre} ${a.servidor!.apellido}`.localeCompare(`${b.servidor!.nombre} ${b.servidor!.apellido}`));
-
-        const totalRecaudado = adolescentesInscritos.reduce((sum, i) => sum + i.totalPagado, 0) + inscritosServidores.reduce((sum, i) => sum + i.totalPagado, 0);
-        
-        const totalInscriptos = eventInscripciones.length + inscripcionesServidores.filter(i => i.eventoId === selectedEvent.id).length;
-        const totalARecaudar = totalInscriptos * (selectedEvent.costoPersona || 0);
-
-        // Cálculo de lo que la iglesia debe pagar (Total Becas)
-        const totalBecas = inscripcionesServidores.filter(i => i.eventoId === selectedEvent.id).reduce((sum, i) => {
-            const costo = selectedEvent.costoPersona || 0;
-            if (i.tipoBeca === 'Total') return sum + costo;
-            if (i.tipoBeca === 'Parcial' || i.precioEspecialLocal) return sum + (costo - (i.montoAcordado || 0));
-            return sum;
-        }, 0);
 
         return {
             inscritos: adolescentesInscritos,
             inscritosServidores,
             noInscritos: adolescentes.filter(a => a.estado === 'Activo' && !eventInscripciones.some(i => i.adolescenteId === a.id)).sort((a,b) => a.nombre.localeCompare(b.nombre)),
             noInscritosServidores: servidores.filter(s => !inscripcionesServidores.some(i => i.eventoId === selectedEvent.id && i.servidorId === s.id)).sort((a,b) => a.nombre.localeCompare(b.nombre)),
-            summary: {
-                totalRecaudado,
-                totalARecaudar,
-                totalInscriptos,
-                totalBecas,
-                costoPersona: selectedEvent.costoPersona || 0
-            }
         };
-    }, [selectedEvent, adolescentes, inscripciones, pagos, servidores, inscripcionesServidores, pagosServidores, searchInscribedChico, searchInscribedServidor, showOnlyBecados, showOnlyDeudores]);
+    }, [selectedEvent, adolescentes, inscripciones, pagos, servidores, inscripcionesServidores, pagosServidores, searchInscribedChico, showOnlyDeudores, showOnlyPagadosFull, searchInscribedServidor, showOnlyBecados, showOnlyPrecioLocal]);
 
     const handleAddPago = async (inscripcionId: number) => {
         const monto = parseFloat(newPayment[inscripcionId] || '0');
@@ -224,32 +225,29 @@ const Eventos: React.FC = () => {
         }
     };
 
-    const handleAddInscripcionServidor = async () => {
+    const handleTriggerInscripcionServidor = () => {
+        if (servidorToInscribe) {
+            setRolServidorToInscribe('Apoyo');
+            setBecaServidorToInscribe('Ninguna');
+            setMontoServidorToInscribe('0');
+            setPrecioEspecialToInscribe(false);
+            setIsAddConditionsModalOpen(true);
+        }
+    };
+
+    const handleAddInscripcionServidorConfirm = async () => {
         if (selectedEvent && servidorToInscribe) {
-            const created = await addInscripcionServidor({
+            await addInscripcionServidor({
                 eventoId: selectedEvent.id,
                 servidorId: Number(servidorToInscribe),
                 rol: rolServidorToInscribe,
                 tipoBeca: becaServidorToInscribe,
                 montoAcordado: Number(montoServidorToInscribe),
-                iglesiaPagaSaldo: iglesiaPagaServidorToInscribe,
-                precioEspecialLocal: precioEspecialLocalToInscribe
+                iglesiaPagaSaldo: false,
+                precioEspecialLocal: precioEspecialToInscribe
             });
-
-            if (iglesiaPagaServidorToInscribe && created) {
-                 await addPagoServidor(
-                     created.id, 
-                     selectedEvent.costoPersona || 0, 
-                     new Date().toISOString().split('T')[0], 
-                     'Beca total'
-                 );
-            }
-
+            setIsAddConditionsModalOpen(false);
             setServidorToInscribe('');
-            setMontoServidorToInscribe('0');
-            setBecaServidorToInscribe('Ninguna');
-            setIglesiaPagaServidorToInscribe(false);
-            setPrecioEspecialLocalToInscribe(false);
         }
     };
 
@@ -261,24 +259,28 @@ const Eventos: React.FC = () => {
     const handleUpdateInscripcionSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (editingInscripcion && selectedEvent) {
-            const oldInsc = inscripcionesServidores.find(is => is.id === editingInscripcion.id);
             await updateInscripcionServidor(editingInscripcion);
-            
-            if (editingInscripcion.iglesiaPagaSaldo && (!oldInsc || !oldInsc.iglesiaPagaSaldo)) {
-                 await addPagoServidor(
-                     editingInscripcion.id, 
-                     selectedEvent.costoPersona || 0, 
-                     new Date().toISOString().split('T')[0], 
-                     'Beca total'
-                 );
-            }
-
             setIsEditInscripcionModalOpen(false);
             setEditingInscripcion(null);
         }
     };
 
-    const rolesServidor: RolServidor[] = ['Pastor', 'Padre', 'Madre', 'Lider de Color', 'Lider de Campamento', 'Cuidador', 'Apoyo', 'Cocina', 'Sonido', 'Alabanza', 'Otro'];
+    // Handlers para eliminación de inscripciones
+    const handleConfirmDeleteInscripcion = async () => {
+        if (inscripcionToDelete) {
+            await deleteInscripcion(inscripcionToDelete.id);
+            setInscripcionToDelete(null);
+            setIsDeleteInscripcionConfirmOpen(false);
+        }
+    };
+
+    const handleConfirmDeleteInscripcionServidor = async () => {
+        if (inscripcionServidorToDelete) {
+            await deleteInscripcionServidor(inscripcionServidorToDelete.id);
+            setInscripcionServidorToDelete(null);
+            setIsDeleteInscripcionServidorConfirmOpen(false);
+        }
+    };
 
     return (
         <div className="space-y-6">
@@ -293,473 +295,150 @@ const Eventos: React.FC = () => {
             
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {eventos.map(evento => {
-                    const eventAdoInscripciones = inscripciones.filter(i => i.eventoId === evento.id);
-                    const eventServInscripciones = inscripcionesServidores.filter(i => i.eventoId === evento.id);
-                    const countChicos = eventAdoInscripciones.length;
-                    const countServidores = eventServInscripciones.length;
-                    const totalInscriptos = countChicos + countServidores;
+                    const eventAdoInsc = inscripciones.filter(i => i.eventoId === evento.id);
+                    const eventSerInsc = inscripcionesServidores.filter(i => i.eventoId === evento.id);
+                    const costoBase = evento.costoPersona || 0;
 
-                    const proyectado = totalInscriptos * (evento.costoPersona || 0);
-                    
-                    const adoInscIds = eventAdoInscripciones.map(i => i.id);
-                    const servInscIds = eventServInscripciones.map(i => i.id);
-                    
-                    const cobradoAdo = pagos.filter(p => adoInscIds.includes(p.inscripcionId)).reduce((sum, p) => sum + p.monto, 0);
-                    const cobradoServ = pagosServidores.filter(p => servInscIds.includes(p.inscripcionServidorId)).reduce((sum, p) => sum + p.monto, 0);
-                    const totalCobrado = cobradoAdo + cobradoServ;
-                    const saldoPendiente = proyectado - totalCobrado;
+                    let totalCobrado = 0;
+                    let totalEsperadoReal = 0;
+                    let becasMonto = 0;
+                    let acuerdosMonto = 0;
+                    let cantPagados = 0;
+                    let cantConSaldo = 0;
+                    let cantBecados = 0;
+                    let cantAcuerdos = 0;
 
-                    const cargoIglesia = eventServInscripciones.reduce((sum, i) => {
-                        const costo = evento.costoPersona || 0;
-                        if (i.tipoBeca === 'Total') return sum + costo;
-                        if (i.tipoBeca === 'Parcial' || i.precioEspecialLocal) return sum + (costo - (i.montoAcordado || 0));
-                        return sum;
-                    }, 0);
+                    // Procesar Chicos
+                    eventAdoInsc.forEach(i => {
+                        const personaPagos = pagos.filter(p => p.inscripcionId === i.id).reduce((sum, p) => sum + p.monto, 0);
+                        totalCobrado += personaPagos;
+                        totalEsperadoReal += costoBase;
+                        if (costoBase - personaPagos <= 0) cantPagados++;
+                        else cantConSaldo++;
+                    });
+
+                    // Procesar Servidores
+                    eventSerInsc.forEach(i => {
+                        const personaPagos = pagosServidores.filter(p => p.inscripcionServidorId === i.id).reduce((sum, p) => sum + p.monto, 0);
+                        totalCobrado += personaPagos;
+                        
+                        let miEsperado = costoBase;
+                        if (i.precioEspecialLocal) {
+                            miEsperado = i.montoAcordado || 0;
+                            acuerdosMonto += miEsperado;
+                            cantAcuerdos++;
+                        } else if (i.tipoBeca === 'Total') {
+                            miEsperado = 0;
+                            becasMonto += costoBase;
+                            cantBecados++;
+                        } else if (i.tipoBeca === 'Parcial') {
+                            miEsperado = i.montoAcordado || 0;
+                            becasMonto += (costoBase - miEsperado);
+                            cantBecados++;
+                        }
+
+                        totalEsperadoReal += miEsperado;
+                        if (miEsperado - personaPagos <= 0) cantPagados++;
+                        else cantConSaldo++;
+                    });
+
+                    const saldoPendiente = totalEsperadoReal - totalCobrado;
+                    const cantTotal = eventAdoInsc.length + eventSerInsc.length;
 
                     return (
-                        <div key={evento.id} className="bg-surface p-5 rounded-lg shadow-lg flex flex-col justify-between cursor-pointer hover:ring-2 ring-primary transition-all relative group" onClick={() => { setSelectedEvent(evento); setActiveTabModal('chicos'); setSearchInscribedChico(''); setSearchInscribedServidor(''); setShowOnlyBecados(false); setShowOnlyDeudores(false); }}>
+                        <div key={evento.id} className="bg-surface p-5 rounded-lg shadow-lg flex flex-col justify-between cursor-pointer hover:ring-2 ring-primary transition-all relative group" onClick={() => setSelectedEvent(evento)}>
                             <div>
-                                <div className="flex justify-between items-start">
-                                    <h2 className="text-lg font-bold text-text-primary mb-1 pr-12">{evento.tema}</h2>
-                                    <div className="absolute top-4 right-4 flex space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                        <button onClick={(e) => openModalForEdit(e, evento)} className="bg-gray-700 text-white p-1.5 rounded-md hover:bg-gray-600"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg></button>
-                                        <button onClick={(e) => handleDeleteClick(e, evento)} className="bg-red-600/80 text-white p-1.5 rounded-md hover:bg-red-600"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg></button>
+                                <div className="flex justify-between items-start mb-3">
+                                    <h2 className="text-xl font-bold text-text-primary pr-12 line-clamp-1">{evento.tema}</h2>
+                                    <div className="absolute top-4 right-4 flex space-x-1">
+                                        <button onClick={(e) => openModalForEdit(e, evento)} className="bg-gray-700 text-white p-2 rounded-md hover:bg-gray-600 transition shadow" title="Editar Evento"><PencilIcon className="w-4 h-4" /></button>
+                                        <button onClick={(e) => handleDeleteClick(e, evento)} className="bg-red-600/80 text-white p-2 rounded-md hover:bg-red-600 transition shadow" title="Borrar Evento"><TrashIcon className="w-4 h-4" /></button>
                                     </div>
                                 </div>
-                                <p className="text-xs text-text-secondary uppercase font-bold tracking-widest">{evento.lugar}</p>
-                                <p className="text-sm text-text-secondary mb-3">{formatDate(evento.fechaInicio)}</p>
-                                <div className="flex gap-2 mb-4">
-                                    <span className="text-[10px] bg-primary/20 text-primary px-2 py-0.5 rounded-full font-bold">{countChicos} Chicos</span>
-                                    <span className="text-[10px] bg-secondary/20 text-secondary px-2 py-0.5 rounded-full font-bold">{countServidores} Servidores</span>
+                                <div className="space-y-1 mb-4">
+                                    <p className="text-xs text-text-secondary uppercase font-bold tracking-widest">{evento.lugar}</p>
+                                    <p className="text-sm text-text-secondary">{formatDate(evento.fechaInicio)} {evento.horaInicio ? ` - ${evento.horaInicio}` : ''}</p>
                                 </div>
-
+                                
                                 {evento.tieneCosto && (
-                                    <div className="bg-background/40 p-3 rounded-md border border-border/50 space-y-2">
-                                        <div className="grid grid-cols-2 gap-y-2 text-[11px]">
+                                    <div className="space-y-4">
+                                        <div className="grid grid-cols-2 gap-3 bg-background/40 p-3 rounded-lg border border-border/50">
                                             <div className="flex flex-col">
-                                                <span className="text-text-secondary uppercase font-bold">A Recaudar</span>
-                                                <span className="text-primary font-black text-sm">{formatCurrency(proyectado)}</span>
+                                                <span className="text-[9px] text-text-secondary uppercase font-black">Cobrado en Caja</span>
+                                                <span className="text-sm font-black text-green-400">{formatCurrency(totalCobrado)}</span>
                                             </div>
                                             <div className="flex flex-col text-right">
-                                                <span className="text-text-secondary uppercase font-bold">Cobrado</span>
-                                                <span className="text-green-400 font-black text-sm">{formatCurrency(totalCobrado)}</span>
+                                                <span className="text-[9px] text-text-secondary uppercase font-black">Saldo Pendiente</span>
+                                                <span className={`text-sm font-black ${saldoPendiente > 0 ? 'text-red-400' : 'text-green-500'}`}>{formatCurrency(saldoPendiente)}</span>
                                             </div>
-                                            <div className="flex flex-col border-t border-border/30 pt-1">
-                                                <span className="text-text-secondary uppercase font-bold">Costo p/p</span>
-                                                <span className="text-text-primary font-bold">{formatCurrency(evento.costoPersona || 0)}</span>
+                                            <div className="flex flex-col border-t border-border/20 pt-1">
+                                                <span className="text-[9px] text-indigo-300 uppercase font-black">Becas (Iglesia)</span>
+                                                <span className="text-xs font-bold text-indigo-400">{formatCurrency(becasMonto)}</span>
                                             </div>
-                                            <div className="flex flex-col text-right border-t border-border/30 pt-1">
-                                                <span className="text-text-secondary uppercase font-bold">Saldo</span>
-                                                <span className={`font-black text-sm ${saldoPendiente > 0 ? 'text-red-400' : 'text-green-500'}`}>{formatCurrency(saldoPendiente)}</span>
+                                            <div className="flex flex-col text-right border-t border-border/20 pt-1">
+                                                <span className="text-[9px] text-orange-300 uppercase font-black">Acuerdos Locales</span>
+                                                <span className="text-xs font-bold text-orange-400">{formatCurrency(acuerdosMonto)}</span>
                                             </div>
                                         </div>
-                                        {cargoIglesia > 0 && (
-                                            <div className="border-t border-indigo-500/30 pt-1 flex justify-between items-center text-[10px]">
-                                                <span className="text-indigo-300 uppercase font-bold">Cargo Iglesia (Becas)</span>
-                                                <span className="text-indigo-400 font-black">{formatCurrency(cargoIglesia)}</span>
+
+                                        <div className="grid grid-cols-3 gap-2">
+                                            <div className="bg-background/20 rounded p-2 text-center border border-border/30">
+                                                <p className="text-[8px] uppercase text-text-secondary font-bold">Inscriptos</p>
+                                                <p className="text-sm font-black">{cantTotal}</p>
                                             </div>
-                                        )}
+                                            <div className="bg-background/20 rounded p-2 text-center border border-border/30">
+                                                <p className="text-[8px] uppercase text-green-400/70 font-bold">Pagados</p>
+                                                <p className="text-sm font-black text-green-400">{cantPagados}</p>
+                                            </div>
+                                            <div className="bg-background/20 rounded p-2 text-center border border-border/30">
+                                                <p className="text-[8px] uppercase text-red-400/70 font-bold">Con Saldo</p>
+                                                <p className="text-sm font-black text-red-400">{cantConSaldo}</p>
+                                            </div>
+                                            <div className="bg-indigo-500/5 rounded p-2 text-center border border-indigo-500/20">
+                                                <p className="text-[8px] uppercase text-indigo-300 font-bold">Becados</p>
+                                                <p className="text-xs font-black text-indigo-400">{cantBecados}</p>
+                                            </div>
+                                            <div className="bg-orange-500/5 rounded p-2 text-center border border-orange-500/20 col-span-2">
+                                                <p className="text-[8px] uppercase text-orange-300 font-bold">Acuerdos Locales</p>
+                                                <p className="text-xs font-black text-orange-400">{cantAcuerdos}</p>
+                                            </div>
+                                        </div>
                                     </div>
                                 )}
                             </div>
-                            <div className="mt-4 pt-3 border-t border-border flex justify-between items-center">
-                                <span className={`font-bold text-xs uppercase ${evento.tieneCosto ? 'text-secondary' : 'text-green-400'}`}>
-                                    {evento.tieneCosto ? 'Evento con Costo' : 'Evento Gratuito'}
+                            <div className="mt-4 pt-3 border-t border-border flex justify-between items-center text-[10px]">
+                                <span className="text-text-secondary uppercase italic">Click para gestionar inscriptos</span>
+                                <span className={`font-black uppercase px-2 py-0.5 rounded ${evento.tieneCosto ? 'bg-indigo-500/20 text-indigo-400 border border-indigo-500/30' : 'bg-green-500/20 text-green-400 border border-green-500/30'}`}>
+                                    {evento.tieneCosto ? 'Evento con Costo' : 'Gratuito'}
                                 </span>
-                                <span className="text-[10px] text-text-secondary uppercase">Click para gestionar</span>
                             </div>
                         </div>
                     );
                 })}
             </div>
 
-            {selectedEvent && eventDetails && (
-                <Modal isOpen={!!selectedEvent} onClose={() => setSelectedEvent(null)} title={`Gestionar: ${selectedEvent.tema}`} size="3xl">
-                    <div className="space-y-6">
-                        {selectedEvent.tieneCosto && (
-                            <div className="bg-background/40 p-4 rounded-lg border border-border grid grid-cols-1 sm:grid-cols-4 gap-4 items-center shadow-inner">
-                                <div>
-                                    <p className="text-[10px] text-text-secondary uppercase font-bold">Total Cobrado</p>
-                                    <p className="text-xl font-black text-green-400">{formatCurrency(eventDetails.summary.totalRecaudado)}</p>
-                                    <p className="text-[10px] text-text-secondary italic">Abonos registrados</p>
-                                </div>
-                                <div className="sm:text-center sm:border-l border-border/50 px-2">
-                                    <p className="text-[10px] text-text-secondary uppercase font-bold">Total a Recaudar</p>
-                                    <p className="text-xl font-black text-primary">{formatCurrency(eventDetails.summary.totalARecaudar)}</p>
-                                    <p className="text-[10px] text-text-secondary italic">({eventDetails.summary.totalInscriptos} inscriptos)</p>
-                                </div>
-                                <div className="sm:text-center sm:border-l border-border/50 px-2">
-                                    <p className="text-[10px] text-indigo-300 uppercase font-bold">Total Becas</p>
-                                    <p className="text-xl font-black text-indigo-400">{formatCurrency(eventDetails.summary.totalBecas)}</p>
-                                    <p className="text-[10px] text-text-secondary italic">Cargo Iglesia</p>
-                                </div>
-                                <div className="text-right">
-                                    <p className="text-[10px] text-text-secondary uppercase font-bold">Costo Individual</p>
-                                    <p className="text-lg font-bold text-text-primary">{formatCurrency(eventDetails.summary.costoPersona)}</p>
-                                </div>
-                            </div>
-                        )}
-
-                        <div className="flex border-b border-border">
-                            <button onClick={() => setActiveTabModal('chicos')} className={`px-4 py-2 font-bold transition ${activeTabModal === 'chicos' ? 'border-b-2 border-primary text-primary' : 'text-text-secondary'}`}>Chicos ({eventDetails.inscritos.length})</button>
-                            <button onClick={() => setActiveTabModal('servidores')} className={`px-4 py-2 font-bold transition ${activeTabModal === 'servidores' ? 'border-b-2 border-primary text-primary' : 'text-text-secondary'}`}>Servidores Apoyo ({eventDetails.inscritosServidores.length})</button>
-                        </div>
-
-                        {activeTabModal === 'chicos' && (
-                            <div className="space-y-4">
-                                <div className="flex flex-col sm:flex-row gap-2 p-3 bg-background/30 rounded-lg">
-                                    <select value={adolescenteToInscribe} onChange={e => setAdolescenteToInscribe(e.target.value)} className="flex-1 bg-surface border border-border rounded-md p-2 text-sm">
-                                        <option value="">-- Inscribir Nuevo Adolescente --</option>
-                                        {eventDetails.noInscritos.map(ado => <option key={ado.id} value={ado.id}>{ado.nombre} {ado.apellido}</option>)}
-                                    </select>
-                                    <button onClick={() => { if (selectedEvent && adolescenteToInscribe) addInscripcion(selectedEvent.id, Number(adolescenteToInscribe)); setAdolescenteToInscribe(''); }} disabled={!adolescenteToInscribe} className="bg-primary text-white px-4 py-2 rounded-lg font-bold disabled:opacity-50 whitespace-nowrap">Inscribir</button>
-                                </div>
-
-                                <div className="flex flex-col sm:flex-row gap-4 items-center">
-                                    <div className="relative flex-1 w-full">
-                                        <input 
-                                            type="text" 
-                                            placeholder="🔍 Buscar chico inscripto para cargar pago..." 
-                                            value={searchInscribedChico}
-                                            onChange={(e) => setSearchInscribedChico(e.target.value)}
-                                            className="w-full bg-background border border-border p-2 pl-10 rounded-md text-sm outline-none focus:ring-1 ring-primary"
-                                        />
-                                        <UsersIcon className="w-4 h-4 absolute left-3 top-3 text-text-secondary" />
-                                    </div>
-                                    <label className="flex items-center gap-2 text-xs font-bold text-text-secondary cursor-pointer bg-background/40 px-3 py-2 rounded-md border border-border/50 hover:bg-background/60 transition whitespace-nowrap select-none">
-                                        <input 
-                                            type="checkbox" 
-                                            checked={showOnlyDeudores} 
-                                            onChange={(e) => setShowOnlyDeudores(e.target.checked)}
-                                            className="h-4 w-4 text-primary rounded border-border focus:ring-primary bg-background"
-                                        />
-                                        <span>Solo con saldo pendiente</span>
-                                    </label>
-                                </div>
-
-                                <div className="max-h-[500px] overflow-y-auto space-y-4 pr-2 custom-scrollbar">
-                                    {eventDetails.inscritos.map(item => (
-                                        <div key={item.inscripcion.id} className="bg-background/20 p-4 rounded-lg border border-border space-y-3">
-                                            <div className="flex justify-between items-start">
-                                                <div className="flex-1">
-                                                    <p className="font-bold text-lg">{item.adolescente!.nombre} {item.adolescente!.apellido}</p>
-                                                    <div className="flex gap-3 items-center mt-1">
-                                                        <span className={`text-xs px-2 py-0.5 rounded font-bold ${item.debe <= 0 ? 'bg-green-500/20 text-green-400' : 'bg-yellow-500/20 text-yellow-400'}`}>
-                                                            Pagado: {formatCurrency(item.totalPagado)}
-                                                        </span>
-                                                        {item.debe > 0 && <span className="text-xs text-red-400 font-bold">Deuda: {formatCurrency(item.debe)}</span>}
-                                                    </div>
-                                                </div>
-                                                <div className="flex items-center gap-2">
-                                                    <button onClick={() => toggleHistory('ado', item.inscripcion.id)} className="text-[10px] text-primary uppercase font-bold hover:underline flex items-center gap-1">
-                                                        Historial <ChevronDownIcon className={`w-3 h-3 transition-transform ${expandedHistory[`ado-${item.inscripcion.id}`] ? 'rotate-180' : ''}`} />
-                                                    </button>
-                                                    <button onClick={() => deleteInscripcion(item.inscripcion.id)} className="text-red-500 text-[10px] uppercase font-bold hover:underline">Eliminar</button>
-                                                </div>
-                                            </div>
-
-                                            {selectedEvent.tieneCosto && (
-                                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 bg-background/40 p-2 rounded-md border border-border/50">
-                                                    <div className="col-span-1">
-                                                        <label className="text-[10px] text-text-secondary uppercase font-bold ml-1">Fecha Pago</label>
-                                                        <input type="date" value={newPaymentDate[item.inscripcion.id] || new Date().toISOString().split('T')[0]} onChange={e => setNewPaymentDate({...newPaymentDate, [item.inscripcion.id]: e.target.value})} className="w-full bg-surface border border-border p-1.5 text-sm rounded outline-none focus:ring-1 ring-primary" />
-                                                    </div>
-                                                    <div className="col-span-1">
-                                                        <label className="text-[10px] text-text-secondary uppercase font-bold ml-1">Monto a Cuenta</label>
-                                                        <input type="number" placeholder="Ej: 50000" value={newPayment[item.inscripcion.id] || ''} onChange={e => setNewPayment({...newPayment, [item.inscripcion.id]: e.target.value})} className="w-full bg-surface border border-border p-1.5 text-sm rounded outline-none focus:ring-1 ring-primary" />
-                                                    </div>
-                                                    <div className="flex items-end">
-                                                        <button onClick={() => handleAddPago(item.inscripcion.id)} className="w-full bg-secondary text-white py-1.5 rounded text-sm font-bold shadow-md hover:bg-emerald-600 transition">Abonar Pago</button>
-                                                    </div>
-                                                </div>
-                                            )}
-
-                                            {expandedHistory[`ado-${item.inscripcion.id}`] && (
-                                                <div className="bg-background/60 p-3 rounded-md border border-border border-dashed animate-fade-in">
-                                                    <p className="text-[10px] text-text-secondary uppercase font-bold mb-2">Desglose de Abonos:</p>
-                                                    {item.pagos.length === 0 ? (
-                                                        <p className="text-xs text-text-secondary italic">No se han registrado pagos aún.</p>
-                                                    ) : (
-                                                        <div className="space-y-1">
-                                                            {item.pagos.map(p => (
-                                                                <div key={p.id} className="flex justify-between items-center text-xs py-1 border-b border-border/30 last:border-0">
-                                                                    <div className="flex gap-4">
-                                                                        <span className="font-mono text-text-secondary">{formatDate(p.fecha)}</span>
-                                                                        <span className="font-bold text-green-400">{formatCurrency(p.monto)}</span>
-                                                                    </div>
-                                                                    <button onClick={() => deletePago(p.id)} className="text-red-500 hover:text-red-400 p-1" title="Eliminar abono">
-                                                                        <TrashIcon className="w-3.5 h-3.5" />
-                                                                    </button>
-                                                                </div>
-                                                            ))}
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            )}
-                                        </div>
-                                    ))}
-                                    {eventDetails.inscritos.length === 0 && <p className="text-center text-text-secondary text-sm py-4">No se encontraron inscritos con los filtros aplicados.</p>}
-                                </div>
-                            </div>
-                        )}
-
-                        {activeTabModal === 'servidores' && (
-                            <div className="space-y-4">
-                                <div className="bg-background/30 p-4 rounded-lg border border-border space-y-4">
-                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                        <select value={servidorToInscribe} onChange={e => setServidorToInscribe(e.target.value)} className="bg-surface border border-border rounded-md p-2 text-sm">
-                                            <option value="">-- Seleccionar Servidor --</option>
-                                            {eventDetails.noInscritosServidores.map(s => <option key={s.id} value={s.id}>{s.nombre} {s.apellido}</option>)}
-                                        </select>
-                                        <select value={rolServidorToInscribe} onChange={e => setRolServidorToInscribe(e.target.value as RolServidor)} className="bg-surface border border-border rounded-md p-2 text-sm">
-                                            {rolesServidor.map(r => <option key={r} value={r}>{r}</option>)}
-                                        </select>
-                                    </div>
-                                    
-                                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-end">
-                                        <div>
-                                            <label className="text-[10px] text-text-secondary uppercase font-bold">¿Cuenta con Beca?</label>
-                                            <select value={becaServidorToInscribe} onChange={e => setBecaServidorToInscribe(e.target.value as TipoBeca)} className="w-full bg-surface border border-border rounded-md p-2 text-sm">
-                                                <option value="Ninguna">Ninguna</option>
-                                                <option value="Parcial">Beca Parcial</option>
-                                                <option value="Total">Beca Total (100%)</option>
-                                            </select>
-                                        </div>
-                                        
-                                        {(becaServidorToInscribe === 'Parcial' || precioEspecialLocalToInscribe) && (
-                                            <div>
-                                                <label className="text-[10px] text-text-secondary uppercase font-bold">Monto que puede pagar</label>
-                                                <input type="number" value={montoServidorToInscribe} onChange={e => setMontoServidorToInscribe(e.target.value)} className="w-full bg-surface border border-border rounded-md p-2 text-sm" placeholder="Monto acordado" />
-                                            </div>
-                                        )}
-                                        
-                                        <div className="flex flex-col gap-2 pb-2">
-                                            <div className="flex items-center gap-2">
-                                                <input type="checkbox" checked={precioEspecialLocalToInscribe} onChange={e => setPrecioEspecialLocalToInscribe(e.target.checked)} className="h-4 w-4 text-primary rounded" />
-                                                <label className="text-xs font-medium text-text-secondary">Precio Especial Local</label>
-                                            </div>
-                                            {(becaServidorToInscribe === 'Parcial' || becaServidorToInscribe === 'Total') && (
-                                                <div className="flex items-center gap-2">
-                                                    <input type="checkbox" checked={iglesiaPagaServidorToInscribe} onChange={e => setIglesiaPagaServidorToInscribe(e.target.checked)} className="h-4 w-4 text-primary rounded" />
-                                                    <label className="text-xs font-medium text-text-secondary">Iglesia paga saldo</label>
-                                                </div>
-                                            )}
-                                        </div>
-                                        
-                                        <button onClick={handleAddInscripcionServidor} disabled={!servidorToInscribe} className={`bg-primary text-white px-4 py-2 rounded-lg font-bold disabled:opacity-50 whitespace-nowrap ${(becaServidorToInscribe === 'Ninguna' && !precioEspecialLocalToInscribe) ? 'sm:col-span-2' : ''}`}>Inscribir Apoyo</button>
-                                    </div>
-                                </div>
-
-                                <div className="flex flex-col sm:flex-row gap-4 items-center">
-                                    <div className="relative flex-1 w-full">
-                                        <input 
-                                            type="text" 
-                                            placeholder="🔍 Buscar servidor inscripto para cargar pago..." 
-                                            value={searchInscribedServidor}
-                                            onChange={(e) => setSearchInscribedServidor(e.target.value)}
-                                            className="w-full bg-background border border-border p-2 pl-10 rounded-md text-sm outline-none focus:ring-1 ring-primary"
-                                        />
-                                        <UsersIcon className="w-4 h-4 absolute left-3 top-3 text-text-secondary" />
-                                    </div>
-                                    <label className="flex items-center gap-2 text-xs font-bold text-text-secondary cursor-pointer bg-background/40 px-3 py-2 rounded-md border border-border/50 hover:bg-background/60 transition whitespace-nowrap select-none">
-                                        <input 
-                                            type="checkbox" 
-                                            checked={showOnlyBecados} 
-                                            onChange={(e) => setShowOnlyBecados(e.target.checked)}
-                                            className="h-4 w-4 text-primary rounded border-border focus:ring-primary bg-background"
-                                        />
-                                        <span>Ver solo becados</span>
-                                    </label>
-                                </div>
-
-                                <div className="max-h-[500px] overflow-y-auto space-y-4 pr-2 custom-scrollbar">
-                                    {eventDetails.inscritosServidores.map(item => (
-                                        <div key={item.inscripcion.id} className="bg-background/20 p-4 rounded-lg border border-border space-y-3">
-                                            <div className="flex justify-between items-start">
-                                                <div className="flex-1">
-                                                    <div className="flex items-center gap-2">
-                                                        <p className="font-bold text-lg">{item.servidor!.nombre} {item.servidor!.apellido}</p>
-                                                        <span className="text-[10px] bg-purple-500/30 text-purple-300 px-2 py-0.5 rounded uppercase font-bold">{item.inscripcion.rol}</span>
-                                                        {item.inscripcion.precioEspecialLocal && (
-                                                            <span className="text-[10px] bg-orange-500/30 text-orange-300 px-2 py-0.5 rounded uppercase font-bold">Precio Especial</span>
-                                                        )}
-                                                        {item.inscripcion.tipoBeca !== 'Ninguna' && (
-                                                            <span className={`text-[10px] px-2 py-0.5 rounded uppercase font-bold ${item.inscripcion.tipoBeca === 'Total' ? 'bg-green-500/20 text-green-400' : 'bg-blue-500/20 text-blue-400'}`}>
-                                                                Beca {item.inscripcion.tipoBeca}
-                                                            </span>
-                                                        )}
-                                                    </div>
-                                                    <div className="flex flex-wrap gap-x-4 gap-y-1 items-center mt-1">
-                                                        <span className={`text-xs px-2 py-0.5 rounded font-bold ${item.debe <= 0 ? 'bg-green-500/20 text-green-400' : 'bg-yellow-500/20 text-yellow-400'}`}>
-                                                            Pagado: {formatCurrency(item.totalPagado)} / {formatCurrency(item.costoEsperado)}
-                                                        </span>
-                                                        {item.debe > 0 && <span className="text-xs text-red-400 font-bold">Deuda: {formatCurrency(item.debe)}</span>}
-                                                        {item.inscripcion.iglesiaPagaSaldo && (
-                                                            <span className="text-[10px] text-text-secondary italic">Iglesia cubre saldo</span>
-                                                        )}
-                                                    </div>
-                                                </div>
-                                                <div className="flex items-center gap-3">
-                                                    <button onClick={() => handleOpenEditInscripcion(item.inscripcion)} className="text-[10px] text-indigo-400 uppercase font-bold hover:underline flex items-center gap-1">
-                                                        <PencilIcon className="w-3.5 h-3.5" /> Editar Beca
-                                                    </button>
-                                                    <button onClick={() => toggleHistory('ser', item.inscripcion.id)} className="text-[10px] text-primary uppercase font-bold hover:underline flex items-center gap-1">
-                                                        Historial <ChevronDownIcon className={`w-3 h-3 transition-transform ${expandedHistory[`ser-${item.inscripcion.id}`] ? 'rotate-180' : ''}`} />
-                                                    </button>
-                                                    <button onClick={() => deleteInscripcionServidor(item.inscripcion.id)} className="text-red-500 text-[10px] uppercase font-bold hover:underline">Eliminar</button>
-                                                </div>
-                                            </div>
-
-                                            {selectedEvent.tieneCosto && item.inscripcion.tipoBeca !== 'Total' && (
-                                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 bg-background/40 p-2 rounded-md border border-border/50">
-                                                    <div className="col-span-1">
-                                                        <label className="text-[10px] text-text-secondary uppercase font-bold ml-1">Fecha Pago</label>
-                                                        <input type="date" value={newPaymentDateServidor[item.inscripcion.id] || new Date().toISOString().split('T')[0]} onChange={e => setNewPaymentDateServidor({...newPaymentDateServidor, [item.inscripcion.id]: e.target.value})} className="w-full bg-surface border border-border p-1.5 text-sm rounded outline-none focus:ring-1 ring-primary" />
-                                                    </div>
-                                                    <div className="col-span-1">
-                                                        <label className="text-[10px] text-text-secondary uppercase font-bold ml-1">Monto a Cuenta</label>
-                                                        <input type="number" placeholder="Ej: 100000" value={newPaymentServidor[item.inscripcion.id] || ''} onChange={e => setNewPaymentServidor({...newPaymentServidor, [item.inscripcion.id]: e.target.value})} className="w-full bg-surface border border-border p-1.5 text-sm rounded outline-none focus:ring-1 ring-primary" />
-                                                    </div>
-                                                    <div className="flex items-end">
-                                                        <button onClick={() => handleAddPagoServidor(item.inscripcion.id)} className="w-full bg-secondary text-white py-1.5 rounded text-sm font-bold shadow-md hover:bg-emerald-600 transition">Abonar Pago</button>
-                                                    </div>
-                                                </div>
-                                            )}
-
-                                            {expandedHistory[`ser-${item.inscripcion.id}`] && (
-                                                <div className="bg-background/60 p-3 rounded-md border border-border border-dashed animate-fade-in">
-                                                    <p className="text-[10px] text-text-secondary uppercase font-bold mb-2">Desglose de Abonos:</p>
-                                                    {item.pagos.length === 0 ? (
-                                                        <p className="text-xs text-text-secondary italic">No se han registrado pagos aún.</p>
-                                                    ) : (
-                                                        <div className="space-y-1">
-                                                            {item.pagos.map(p => (
-                                                                <div key={p.id} className="flex justify-between items-center text-xs py-1 border-b border-border/30 last:border-0">
-                                                                    <div className="flex gap-4">
-                                                                        <span className="font-mono text-text-secondary">{formatDate(p.fecha)}</span>
-                                                                        <span className="font-bold text-green-400">{formatCurrency(p.monto)}</span>
-                                                                    </div>
-                                                                    <button onClick={() => deletePagoServidor(p.id)} className="text-red-500 hover:text-red-400 p-1" title="Eliminar abono">
-                                                                        <TrashIcon className="w-3.5 h-3.5" />
-                                                                    </button>
-                                                                </div>
-                                                            ))}
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            )}
-                                        </div>
-                                    ))}
-                                    {eventDetails.inscritosServidores.length === 0 && <p className="text-center text-text-secondary text-sm py-4">No se encontraron servidores con los filtros aplicados.</p>}
-                                </div>
-                            </div>
-                        )}
-                        <div className="flex justify-end pt-4 border-t border-border">
-                            <button onClick={() => setSelectedEvent(null)} className="bg-gray-600 text-white px-6 py-2 rounded-lg hover:bg-gray-700 font-bold">Cerrar Gestión</button>
-                        </div>
-                    </div>
-                </Modal>
-            )}
-
-            {/* MODAL PARA EDITAR CONDICIONES DE INSCRIPCIÓN DE SERVIDOR */}
-            <Modal isOpen={isEditInscripcionModalOpen} onClose={() => setIsEditInscripcionModalOpen(false)} title="Editar Condiciones del Servidor">
-                {editingInscripcion && (
-                    <form onSubmit={handleUpdateInscripcionSubmit} className="space-y-4">
-                        <div className="bg-background/50 p-4 rounded-lg mb-4">
-                            <p className="text-sm font-bold text-primary uppercase">Servidor:</p>
-                            <p className="text-xl font-bold">
-                                {servidores.find(s => s.id === editingInscripcion.servidorId)?.nombre} {servidores.find(s => s.id === editingInscripcion.servidorId)?.apellido}
-                            </p>
-                        </div>
-
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                            <div>
-                                <label className="block text-sm font-medium text-text-secondary">Función / Rol</label>
-                                <select 
-                                    value={editingInscripcion.rol} 
-                                    onChange={e => setEditingInscripcion({...editingInscripcion, rol: e.target.value as RolServidor})}
-                                    className="mt-1 block w-full px-3 py-2 bg-background border border-border rounded-md shadow-sm focus:ring-primary text-text-primary"
-                                >
-                                    {rolesServidor.map(r => <option key={r} value={r}>{r}</option>)}
-                                </select>
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium text-text-secondary">Tipo de Beca</label>
-                                <select 
-                                    value={editingInscripcion.tipoBeca} 
-                                    onChange={e => setEditingInscripcion({...editingInscripcion, tipoBeca: e.target.value as TipoBeca})}
-                                    className="mt-1 block w-full px-3 py-2 bg-background border border-border rounded-md shadow-sm focus:ring-primary text-text-primary"
-                                >
-                                    <option value="Ninguna">Ninguna</option>
-                                    <option value="Parcial">Beca Parcial</option>
-                                    <option value="Total">Beca Total (100%)</option>
-                                </select>
-                            </div>
-                        </div>
-
-                        <div className="flex items-center gap-4 mt-2">
-                             <div className="flex items-center gap-2">
-                                <input 
-                                    type="checkbox" 
-                                    checked={editingInscripcion.precioEspecialLocal} 
-                                    onChange={e => setEditingInscripcion({...editingInscripcion, precioEspecialLocal: e.target.checked})}
-                                    className="h-5 w-5 text-primary rounded border-border focus:ring-primary bg-background"
-                                />
-                                <label className="text-sm font-bold text-text-secondary">Precio Especial Local</label>
-                            </div>
-                        </div>
-
-                        {(editingInscripcion.tipoBeca === 'Parcial' || editingInscripcion.precioEspecialLocal) && (
-                            <InputField 
-                                label="Monto Acordado (Monto final a pagar)" 
-                                type="number" 
-                                value={editingInscripcion.montoAcordado || 0} 
-                                onChange={e => setEditingInscripcion({...editingInscripcion, montoAcordado: Number(e.target.value)})}
-                            />
-                        )}
-
-                        {(editingInscripcion.tipoBeca === 'Parcial' || editingInscripcion.tipoBeca === 'Total') && (
-                            <div className="flex items-center gap-2 bg-background/30 p-3 rounded-md">
-                                <input 
-                                    type="checkbox" 
-                                    checked={editingInscripcion.iglesiaPagaSaldo} 
-                                    onChange={e => setEditingInscripcion({...editingInscripcion, iglesiaPagaSaldo: e.target.checked})}
-                                    className="h-5 w-5 text-primary rounded border-border focus:ring-primary bg-background"
-                                />
-                                <label className="text-sm font-medium text-text-secondary italic">La iglesia cubre el saldo restante del costo</label>
-                            </div>
-                        )}
-
-                        <div className="flex justify-end space-x-3 pt-6 border-t border-border">
-                            <button type="button" onClick={() => setIsEditInscripcionModalOpen(false)} className="bg-gray-600 text-white px-5 py-2 rounded-lg hover:bg-gray-700">Cancelar</button>
-                            <button type="submit" className="bg-indigo-600 text-white px-8 py-2 rounded-lg hover:bg-indigo-700 font-bold shadow-lg">Actualizar Condiciones</button>
-                        </div>
-                    </form>
-                )}
-            </Modal>
-
             <Modal isOpen={isEventModalOpen} onClose={() => setIsEventModalOpen(false)} title={editingEvent ? "Editar Evento" : "Crear Nuevo Evento"}>
                 <form onSubmit={handleEventSubmit} className="space-y-4">
-                    <InputField label="Tema / Nombre del Evento" name="tema" value={values.tema} onChange={handleInputChange} required />
+                    <InputField label="Tema / Título del Evento" name="tema" value={values.tema} onChange={handleInputChange} required />
                     <InputField label="Lugar" name="lugar" value={values.lugar} onChange={handleInputChange} required />
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <InputField label="Fecha Inicio" name="fechaInicio" type="date" value={values.fechaInicio} onChange={handleInputChange} required />
-                        <InputField label="Hora Inicio" name="horaInicio" type="time" value={values.horaInicio} onChange={handleInputChange} required />
+                        <InputField label="Hora Inicio" name="horaInicio" type="time" value={values.horaInicio} onChange={handleInputChange} />
+                        <InputField label="Fecha Fin" name="fechaFin" type="date" value={values.fechaFin} onChange={handleInputChange} />
+                        <InputField label="Hora Fin" name="horaFin" type="time" value={values.horaFin} onChange={handleInputChange} />
                     </div>
-                    <div className="grid grid-cols-2 gap-4">
-                        <InputField label="Fecha Fin" name="fechaFin" type="date" value={values.fechaFin} onChange={handleInputChange} required />
-                        <InputField label="Hora Fin" name="horaFin" type="time" value={values.horaFin} onChange={handleInputChange} required />
-                    </div>
-                    <CheckboxField label="¿Tiene Costo?" name="tieneCosto" checked={values.tieneCosto} onChange={handleInputChange} />
+                    <CheckboxField label="Este evento tiene costo de inscripción" name="tieneCosto" checked={values.tieneCosto} onChange={handleInputChange} />
                     {values.tieneCosto && (
-                        <div className="grid grid-cols-2 gap-4 bg-background/50 p-3 rounded-md border border-border">
-                            <InputField label="Costo por Persona" name="costoPersona" type="number" value={values.costoPersona || 0} onChange={handleInputChange} />
-                            <InputField label="Costo Total (Opcional)" name="costoTotal" type="number" value={values.costoTotal || 0} onChange={handleInputChange} />
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <InputField label="Costo Total Proyectado" name="costoTotal" type="number" value={values.costoTotal} onChange={handleInputChange} />
+                            <InputField label="Costo por Persona" name="costoPersona" type="number" value={values.costoPersona} onChange={handleInputChange} required />
                         </div>
                     )}
-                    <div className="flex justify-end space-x-2 pt-4">
-                        <button type="button" onClick={() => setIsEventModalOpen(false)} className="bg-gray-600 text-white px-4 py-2 rounded-lg hover:bg-gray-700">Cancelar</button>
-                        <button type="submit" className="bg-primary text-white px-4 py-2 rounded-lg hover:bg-indigo-700 font-bold shadow-lg">Guardar Evento</button>
+                    <div className="flex justify-end space-x-3 pt-4 border-t border-border mt-4">
+                        <button type="button" onClick={() => setIsEventModalOpen(false)} className="bg-gray-600 text-white px-6 py-2 rounded-lg hover:bg-gray-700 font-bold transition-all">Cancelar</button>
+                        <button type="submit" className="bg-primary text-white px-8 py-2 rounded-lg hover:bg-indigo-700 font-bold shadow-lg transition-all">
+                            {editingEvent ? 'Actualizar Evento' : 'Crear Evento'}
+                        </button>
                     </div>
                 </form>
             </Modal>
@@ -768,8 +447,288 @@ const Eventos: React.FC = () => {
                 isOpen={isDeleteConfirmOpen}
                 onClose={() => setIsDeleteConfirmOpen(false)}
                 onConfirm={handleConfirmDelete}
-                title="Eliminar Evento"
-                message={<>¿Estás seguro de eliminar <strong>{eventToDelete?.tema}</strong>? Se borrarán todas las inscripciones y pagos de chicos y servidores.</>}
+                title="Confirmar Eliminación de Evento"
+                message={<>¿Estás seguro de que deseas eliminar el evento <strong>{eventToDelete?.tema}</strong>? Esta acción es irreversible y borrará todos los pagos e inscripciones asociados.</>}
+                confirmText="Eliminar Evento"
+            />
+
+            {selectedEvent && eventDetails && (
+                <Modal isOpen={!!selectedEvent} onClose={() => setSelectedEvent(null)} title={`Gestionar: ${selectedEvent.tema}`} size="3xl">
+                    <div className="space-y-6">
+                        <div className="flex border-b border-border">
+                            <button onClick={() => setActiveTabModal('chicos')} className={`px-4 py-2 font-bold transition ${activeTabModal === 'chicos' ? 'border-b-2 border-primary text-primary' : 'text-text-secondary'}`}>Chicos ({eventDetails.inscritos.length})</button>
+                            <button onClick={() => setActiveTabModal('servidores')} className={`px-4 py-2 font-bold transition ${activeTabModal === 'servidores' ? 'border-b-2 border-primary text-primary' : 'text-text-secondary'}`}>Servidores Apoyo ({eventDetails.inscritosServidores.length})</button>
+                        </div>
+
+                        {activeTabModal === 'chicos' ? (
+                            <div className="space-y-4">
+                                <div className="flex flex-col md:flex-row gap-4 p-4 bg-background/30 rounded-lg border border-border/50">
+                                    <div className="relative flex-1">
+                                        <input type="text" placeholder="🔍 Buscar por nombre..." value={searchInscribedChico} onChange={(e) => setSearchInscribedChico(e.target.value)} className="w-full bg-background border border-border p-2 pl-10 rounded-md text-sm outline-none focus:ring-1 ring-primary" />
+                                        <UsersIcon className="w-4 h-4 absolute left-3 top-3 text-text-secondary" />
+                                    </div>
+                                    <div className="flex gap-2">
+                                        <label className="flex items-center gap-2 text-xs font-bold text-text-secondary cursor-pointer bg-background/40 px-3 py-2 rounded-md border border-border/50 hover:bg-background/60">
+                                            <input type="checkbox" checked={showOnlyDeudores} onChange={(e) => { setShowOnlyDeudores(e.target.checked); if(e.target.checked) setShowOnlyPagadosFull(false); }} className="h-4 w-4 text-primary rounded border-border" />
+                                            <span>Solo con Deuda</span>
+                                        </label>
+                                        <label className="flex items-center gap-2 text-xs font-bold text-text-secondary cursor-pointer bg-background/40 px-3 py-2 rounded-md border border-border/50 hover:bg-background/60">
+                                            <input type="checkbox" checked={showOnlyPagadosFull} onChange={(e) => { setShowOnlyPagadosFull(e.target.checked); if(e.target.checked) setShowOnlyDeudores(false); }} className="h-4 w-4 text-primary rounded border-border" />
+                                            <span>Solo Pagados</span>
+                                        </label>
+                                    </div>
+                                </div>
+                                <div className="flex flex-col sm:flex-row gap-2 p-3 bg-background/30 rounded-lg">
+                                    <select value={adolescenteToInscribe} onChange={e => setAdolescenteToInscribe(e.target.value)} className="flex-1 bg-surface border border-border rounded-md p-2 text-sm">
+                                        <option value="">-- Inscribir Nuevo Adolescente --</option>
+                                        {eventDetails.noInscritos.map(ado => <option key={ado.id} value={ado.id}>{ado.nombre} {ado.apellido}</option>)}
+                                    </select>
+                                    <button onClick={() => { if (selectedEvent && adolescenteToInscribe) addInscripcion(selectedEvent.id, Number(adolescenteToInscribe)); setAdolescenteToInscribe(''); }} disabled={!adolescenteToInscribe} className="bg-primary text-white px-4 py-2 rounded-lg font-bold disabled:opacity-50 whitespace-nowrap">Inscribir</button>
+                                </div>
+                                <div className="max-h-[400px] overflow-y-auto space-y-3 pr-2 custom-scrollbar">
+                                    {eventDetails.inscritos.map(item => (
+                                        <div key={item.inscripcion.id} className="bg-background/20 p-4 rounded-lg border border-border">
+                                            <div className="flex justify-between items-start mb-3">
+                                                <div>
+                                                    <div className="flex items-center gap-2">
+                                                        <p className="font-bold text-lg">{item.adolescente!.nombre} {item.adolescente!.apellido}</p>
+                                                        <button 
+                                                            onClick={() => { setInscripcionToDelete(item.inscripcion); setIsDeleteInscripcionConfirmOpen(true); }}
+                                                            className="text-red-500 hover:text-red-400 p-1"
+                                                            title="Eliminar Inscripción"
+                                                        >
+                                                            <TrashIcon className="w-3.5 h-3.5" />
+                                                        </button>
+                                                    </div>
+                                                    <p className="text-xs text-text-secondary">Pagado: {formatCurrency(item.totalPagado)} | Deuda: <span className={item.debe > 0 ? 'text-red-400 font-bold' : 'text-green-400'}>{formatCurrency(item.debe)}</span></p>
+                                                </div>
+                                                <button onClick={() => toggleHistory('ado', item.inscripcion.id)} className={`text-[10px] uppercase font-black transition-colors ${expandedHistory[`ado-${item.inscripcion.id}`] ? 'text-text-primary' : 'text-primary hover:underline'}`}>
+                                                    {expandedHistory[`ado-${item.inscripcion.id}`] ? 'Cerrar Historial' : 'Ver Historial'}
+                                                </button>
+                                            </div>
+                                            {expandedHistory[`ado-${item.inscripcion.id}`] && (
+                                                <div className="mb-4 bg-background/50 rounded-lg border border-border/50 overflow-hidden animate-fade-in">
+                                                    <table className="min-w-full text-[11px]">
+                                                        <tbody className="divide-y divide-border/20">
+                                                            {item.pagos.map(p => (
+                                                                <tr key={p.id} className="hover:bg-primary/5">
+                                                                    <td className="p-2 font-mono text-text-secondary">{formatDate(p.fecha)}</td>
+                                                                    <td className="p-2 font-bold text-green-400">{formatCurrency(p.monto)}</td>
+                                                                    <td className="p-2 text-right"><button onClick={() => deletePago(p.id)} className="text-red-500 hover:bg-red-500/10 p-1 rounded transition-colors"><TrashIcon className="w-3.5 h-3.5" /></button></td>
+                                                                </tr>
+                                                            ))}
+                                                            {item.pagos.length === 0 && <tr><td colSpan={3} className="p-4 text-center italic text-text-secondary">No hay pagos registrados.</td></tr>}
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+                                            )}
+                                            {selectedEvent.tieneCosto && item.debe > 0 && (
+                                                <div className="flex gap-2">
+                                                    <input type="number" placeholder="Monto a cuenta" value={newPayment[item.inscripcion.id] || ''} onChange={e => setNewPayment({...newPayment, [item.inscripcion.id]: e.target.value})} className="flex-1 bg-surface border border-border p-1.5 text-sm rounded outline-none focus:ring-1 ring-primary" />
+                                                    <button onClick={() => handleAddPago(item.inscripcion.id)} className="bg-secondary text-white px-4 py-1 rounded text-sm font-bold shadow-md hover:bg-emerald-600 transition-colors">Abonar</button>
+                                                </div>
+                                            )}
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="space-y-4">
+                                <div className="flex flex-col gap-4">
+                                    <div className="relative flex-1 w-full">
+                                        <input type="text" placeholder="🔍 Buscar servidor inscripto..." value={searchInscribedServidor} onChange={(e) => setSearchInscribedServidor(e.target.value)} className="w-full bg-background border border-border p-2 pl-10 rounded-md text-sm outline-none focus:ring-1 ring-primary" />
+                                        <UsersIcon className="w-4 h-4 absolute left-3 top-3 text-text-secondary" />
+                                    </div>
+                                    <div className="flex flex-wrap gap-2">
+                                        <label className="flex items-center gap-2 text-xs font-bold text-text-secondary cursor-pointer bg-background/40 px-3 py-2 rounded-md border border-border/50 hover:bg-background/60">
+                                            <input type="checkbox" checked={showOnlyBecados} onChange={(e) => setShowOnlyBecados(e.target.checked)} className="h-4 w-4 text-primary rounded border-border" />
+                                            <span>Solo Becados</span>
+                                        </label>
+                                        <label className="flex items-center gap-2 text-xs font-bold text-text-secondary cursor-pointer bg-background/40 px-3 py-2 rounded-md border border-border/50 hover:bg-background/60">
+                                            <input type="checkbox" checked={showOnlyPrecioLocal} onChange={(e) => setShowOnlyPrecioLocal(e.target.checked)} className="h-4 w-4 text-primary rounded border-border" />
+                                            <span>Solo Acuerdo Local</span>
+                                        </label>
+                                    </div>
+                                </div>
+                                <div className="flex flex-col sm:flex-row gap-2 p-3 bg-background/30 rounded-lg">
+                                    <select value={servidorToInscribe} onChange={e => setServidorToInscribe(e.target.value)} className="flex-1 bg-surface border border-border rounded-md p-2 text-sm">
+                                        <option value="">-- Seleccionar Servidor --</option>
+                                        {eventDetails.noInscritosServidores.map(s => <option key={s.id} value={s.id}>{s.nombre} {s.apellido}</option>)}
+                                    </select>
+                                    <button onClick={handleTriggerInscripcionServidor} disabled={!servidorToInscribe} className="bg-primary text-white px-4 py-2 rounded-lg font-bold disabled:opacity-50 whitespace-nowrap">Inscribir</button>
+                                </div>
+                                <div className="max-h-[400px] overflow-y-auto space-y-3 pr-2 custom-scrollbar">
+                                    {eventDetails.inscritosServidores.map(item => (
+                                        <div key={item.inscripcion.id} className="bg-background/20 p-4 rounded-lg border border-border">
+                                            <div className="flex justify-between items-start">
+                                                <div className="flex-1">
+                                                    <div className="flex items-center gap-2">
+                                                        <p className="font-bold text-lg">{item.servidor!.nombre} {item.servidor!.apellido}</p>
+                                                        <span className="text-[10px] bg-purple-500/30 text-purple-300 px-2 py-0.5 rounded uppercase font-bold">{item.inscripcion.rol}</span>
+                                                        <button 
+                                                            onClick={() => { setInscripcionServidorToDelete(item.inscripcion); setIsDeleteInscripcionServidorConfirmOpen(true); }}
+                                                            className="text-red-500 hover:text-red-400 p-1"
+                                                            title="Eliminar Inscripción Servidor"
+                                                        >
+                                                            <TrashIcon className="w-3.5 h-3.5" />
+                                                        </button>
+                                                    </div>
+                                                    <p className="text-xs text-text-secondary mt-1">Pagado: {formatCurrency(item.totalPagado)} / Compromiso: {formatCurrency(item.costoEsperado)}{item.debe > 0 && <span className="ml-2 text-red-400 font-bold">Adeuda: {formatCurrency(item.debe)}</span>}</p>
+                                                </div>
+                                                <div className="flex flex-col items-end gap-2">
+                                                    <button onClick={() => toggleHistory('ser', item.inscripcion.id)} className="text-[10px] text-primary font-black uppercase hover:underline">{expandedHistory[`ser-${item.inscripcion.id}`] ? 'Ocultar Pagos' : 'Historial Pagos'}</button>
+                                                    <button onClick={() => handleOpenEditInscripcion(item.inscripcion)} className="text-[10px] text-indigo-400 uppercase font-bold hover:underline flex items-center gap-1"><PencilIcon className="w-3.5 h-3.5" /> Editar</button>
+                                                </div>
+                                            </div>
+                                            {expandedHistory[`ser-${item.inscripcion.id}`] && (
+                                                <div className="my-3 bg-background/50 rounded-lg border border-border/50 overflow-hidden animate-fade-in">
+                                                    <table className="min-w-full text-[11px]">
+                                                        <tbody className="divide-y divide-border/20">
+                                                            {item.pagos.map(p => (
+                                                                <tr key={p.id} className="hover:bg-primary/5">
+                                                                    <td className="p-2 font-mono text-text-secondary">{formatDate(p.fecha)}</td>
+                                                                    <td className="p-2 font-bold text-green-400">{formatCurrency(p.monto)}</td>
+                                                                    <td className="p-2 text-right"><button onClick={() => deletePagoServidor(p.id)} className="text-red-500 hover:bg-red-500/10 p-1 rounded"><TrashIcon className="w-3.5 h-3.5" /></button></td>
+                                                                </tr>
+                                                            ))}
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+                                            )}
+                                            {item.inscripcion.tipoBeca !== 'Total' && item.debe > 0 && (
+                                                <div className="flex gap-2 mt-3">
+                                                    <input type="number" placeholder="Monto a cuenta" value={newPaymentServidor[item.inscripcion.id] || ''} onChange={e => setNewPaymentServidor({...newPaymentServidor, [item.inscripcion.id]: e.target.value})} className="flex-1 bg-surface border border-border p-1.5 text-sm rounded outline-none focus:ring-1 ring-primary" />
+                                                    <button onClick={() => handleAddPagoServidor(item.inscripcion.id)} className="bg-secondary text-white px-4 py-1 rounded text-sm font-bold shadow-md hover:bg-emerald-600">Abonar</button>
+                                                </div>
+                                            )}
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+                        <div className="flex justify-end pt-4 border-t border-border"><button onClick={() => setSelectedEvent(null)} className="bg-gray-600 text-white px-6 py-2 rounded-lg hover:bg-gray-700 font-bold">Cerrar Gestión</button></div>
+                    </div>
+                </Modal>
+            )}
+
+            {/* MODAL PARA INDICAR CONDICIONES AL INSCRIBIR NUEVO SERVIDOR */}
+            <Modal isOpen={isAddConditionsModalOpen} onClose={() => setIsAddConditionsModalOpen(false)} title="Condiciones de Inscripción">
+                <div className="space-y-4">
+                    <div className="bg-background/50 p-4 rounded-lg mb-4 border border-border/50">
+                        <p className="text-xs font-bold text-primary uppercase">Inscribiendo a:</p>
+                        <p className="text-xl font-bold">
+                            {servidores.find(s => s.id === Number(servidorToInscribe))?.nombre} {servidores.find(s => s.id === Number(servidorToInscribe))?.apellido}
+                        </p>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div>
+                            <label className="block text-sm font-medium text-text-secondary mb-1">Rol en el Evento</label>
+                            <select 
+                                value={rolServidorToInscribe} 
+                                onChange={e => setRolServidorToInscribe(e.target.value as RolServidor)}
+                                className="block w-full px-3 py-2 bg-background border border-border rounded-md shadow-sm focus:ring-primary text-text-primary text-sm"
+                            >
+                                <option value="Pastor">Pastor</option>
+                                <option value="Lider de Color">Lider de Color</option>
+                                <option value="Lider de Campamento">Lider de Campamento</option>
+                                <option value="Cuidador">Cuidador</option>
+                                <option value="Cocina">Cocina</option>
+                                <option value="Apoyo">Apoyo</option>
+                                <option value="Alabanza">Alabanza</option>
+                                <option value="Otro">Otro</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-text-secondary mb-1">Tipo de Beca</label>
+                            <select 
+                                value={becaServidorToInscribe} 
+                                onChange={e => setBecaServidorToInscribe(e.target.value as TipoBeca)}
+                                className="block w-full px-3 py-2 bg-background border border-border rounded-md shadow-sm focus:ring-primary text-text-primary text-sm"
+                            >
+                                <option value="Ninguna">Ninguna</option>
+                                <option value="Parcial">Beca Parcial</option>
+                                <option value="Total">Beca Total (100%)</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 p-2 bg-orange-500/5 border border-orange-500/20 rounded-lg">
+                        <input 
+                            type="checkbox" 
+                            id="chk-local-new"
+                            checked={precioEspecialToInscribe} 
+                            onChange={e => setPrecioEspecialToInscribe(e.target.checked)}
+                            className="h-5 w-5 text-primary rounded border-border focus:ring-primary bg-background"
+                        />
+                        <label htmlFor="chk-local-new" className="text-sm font-bold text-orange-400 cursor-pointer">Aplicar Precio Acuerdo Local</label>
+                    </div>
+
+                    {(becaServidorToInscribe === 'Parcial' || precioEspecialToInscribe) && (
+                        <InputField 
+                            label="Monto Acordado (Su compromiso a pagar)" 
+                            type="number" 
+                            value={montoServidorToInscribe} 
+                            onChange={e => setMontoServidorToInscribe(e.target.value)}
+                        />
+                    )}
+
+                    <div className="flex justify-end space-x-3 pt-6 border-t border-border">
+                        <button type="button" onClick={() => setIsAddConditionsModalOpen(false)} className="bg-gray-600 text-white px-5 py-2 rounded-lg font-bold">Cancelar</button>
+                        <button onClick={handleAddInscripcionServidorConfirm} className="bg-indigo-600 text-white px-8 py-2 rounded-lg font-bold shadow-lg transition-all hover:bg-indigo-700">Confirmar e Inscribir</button>
+                    </div>
+                </div>
+            </Modal>
+
+            <Modal isOpen={isEditInscripcionModalOpen} onClose={() => setIsEditInscripcionModalOpen(false)} title="Editar Condiciones del Servidor">
+                {editingInscripcion && (
+                    <form onSubmit={handleUpdateInscripcionSubmit} className="space-y-4">
+                        <div className="bg-background/50 p-4 rounded-lg mb-4 border border-border/50">
+                            <p className="text-xs font-bold text-primary uppercase">Servidor:</p>
+                            <p className="text-xl font-bold">{servidores.find(s => s.id === editingInscripcion.servidorId)?.nombre} {servidores.find(s => s.id === editingInscripcion.servidorId)?.apellido}</p>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div>
+                                <label className="block text-sm font-medium text-text-secondary">Tipo de Beca</label>
+                                <select value={editingInscripcion.tipoBeca} onChange={e => setEditingInscripcion({...editingInscripcion, tipoBeca: e.target.value as TipoBeca})} className="mt-1 block w-full px-3 py-2 bg-background border border-border rounded-md shadow-sm focus:ring-primary text-text-primary text-sm">
+                                    <option value="Ninguna">Ninguna</option>
+                                    <option value="Parcial">Beca Parcial</option>
+                                    <option value="Total">Beca Total (100%)</option>
+                                </select>
+                            </div>
+                            <div className="flex items-center gap-2 mt-6">
+                                <input type="checkbox" checked={editingInscripcion.precioEspecialLocal} onChange={e => setEditingInscripcion({...editingInscripcion, precioEspecialLocal: e.target.checked})} className="h-5 w-5 text-primary rounded border-border focus:ring-primary bg-background" />
+                                <label className="text-sm font-bold text-orange-400">Precio Acuerdo Local</label>
+                            </div>
+                        </div>
+                        {(editingInscripcion.tipoBeca === 'Parcial' || editingInscripcion.precioEspecialLocal) && (
+                            <InputField label="Monto Acordado (Su compromiso)" type="number" value={editingInscripcion.montoAcordado || 0} onChange={e => setEditingInscripcion({...editingInscripcion, montoAcordado: Number(e.target.value)})} />
+                        )}
+                        <div className="flex justify-end space-x-3 pt-6 border-t border-border">
+                            <button type="button" onClick={() => setIsEditInscripcionModalOpen(false)} className="bg-gray-600 text-white px-5 py-2 rounded-lg font-bold">Cancelar</button>
+                            <button type="submit" className="bg-indigo-600 text-white px-8 py-2 rounded-lg font-bold shadow-lg transition-all hover:bg-indigo-700">Actualizar</button>
+                        </div>
+                    </form>
+                )}
+            </Modal>
+
+            {/* Modales de Confirmación para eliminar inscripciones */}
+            <ConfirmationModal
+                isOpen={isDeleteInscripcionConfirmOpen}
+                onClose={() => setIsDeleteInscripcionConfirmOpen(false)}
+                onConfirm={handleConfirmDeleteInscripcion}
+                title="Quitar Adolescente del Evento"
+                message={<>¿Estás seguro de que quieres quitar al adolescente del evento? Se perderán también sus pagos registrados en este evento.</>}
+                confirmText="Quitar del Evento"
+            />
+
+            <ConfirmationModal
+                isOpen={isDeleteInscripcionServidorConfirmOpen}
+                onClose={() => setIsDeleteInscripcionServidorConfirmOpen(false)}
+                onConfirm={handleConfirmDeleteInscripcionServidor}
+                title="Quitar Servidor del Evento"
+                message={<>¿Estás seguro de que quieres quitar a este servidor del evento? Se perderán también sus pagos registrados en este evento.</>}
+                confirmText="Quitar del Evento"
             />
         </div>
     );

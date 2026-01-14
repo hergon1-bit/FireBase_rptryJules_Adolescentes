@@ -15,6 +15,7 @@ import Tareas from './pages/Tareas';
 import Tutores from './pages/Tutores';
 import Eventos from './pages/Eventos';
 import Reportes from './pages/Reportes';
+import ReportesFinancieros from './pages/ReportesFinancieros';
 import Usuarios from './pages/Usuarios';
 import Roles from './pages/Roles';
 import LimpiarTablas from './pages/LimpiarTablas';
@@ -56,6 +57,7 @@ const AppContent: React.FC = () => {
       case 'tutores': return <Tutores />;
       case 'eventos': return <Eventos />;
       case 'reportes': return <Reportes />;
+      case 'reportes-financieros': return <ReportesFinancieros />;
       case 'usuarios': return <Usuarios />;
       case 'roles': return <Roles />;
       case 'limpiar-tablas': return <LimpiarTablas />;
