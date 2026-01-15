@@ -74,8 +74,9 @@ const normalizeRol = (rol: any): Rol => {
 
 const handleSupabaseData = <T>(data: T | null, error: any, context: string): T => {
     if (error) {
+        const errorMsg = error.message || (typeof error === 'string' ? error : JSON.stringify(error));
         console.error(`Error crítico en API (${context}):`, error);
-        throw new Error(error.message || "Error inesperado de red.");
+        throw new Error(errorMsg);
     }
     return data as T;
 };
@@ -225,7 +226,6 @@ export const api = {
             tipo_beca: i.tipoBeca || 'Ninguna',
             monto_acordado: i.montoAcordado || 0,
             iglesia_paga_saldo: i.iglesiaPagaSaldo || false,
-            // Fixed typo: use precioEspecialLocal from input object i
             precio_especial_local: i.precioEspecialLocal,
             notas: i.notas 
         }).select().single();
@@ -250,7 +250,6 @@ export const api = {
             rol: i.rol, 
             tipo_beca: i.tipoBeca,
             monto_acordado: i.montoAcordado,
-            // Fixed typo: use iglesiaPagaSaldo from input object i
             iglesia_paga_saldo: i.iglesiaPagaSaldo,
             precio_especial_local: i.precioEspecialLocal,
             notas: i.notas 
@@ -364,15 +363,29 @@ export const api = {
   },
 
   getInscripciones: async (): Promise<InscripcionEvento[]> => {
-    const { data, error } = await supabase.from('inscripciones_eventos').select('*').range(0, MAX_ROWS);
-    if (error) return [];
-    return (data || []).map((i: any) => ({ id: i.id, eventoId: i.evento_id, adolescenteId: i.adolescente_id, fechaInscripcion: i.fecha_inscripcion, notas: i.notas }));
+    try {
+        const data = await fetchAllRows('inscripciones_eventos', '*');
+        return (data || []).map((i: any) => ({ 
+            id: i.id, 
+            eventoId: i.evento_id, 
+            adolescenteId: i.adolescente_id, 
+            fechaInscripcion: i.fecha_inscripcion, 
+            notas: i.notas 
+        }));
+    } catch (e) { return []; }
   },
 
   getPagos: async (): Promise<PagoEvento[]> => {
-    const { data, error } = await supabase.from('pagos_eventos').select('*').range(0, MAX_ROWS);
-    if (error) return [];
-    return (data || []).map((p: any) => ({ id: p.id, inscripcionId: p.inscripcion_id, fecha: p.fecha, monto: p.monto, notas: p.notas }));
+    try {
+        const data = await fetchAllRows('pagos_eventos', '*');
+        return (data || []).map((p: any) => ({ 
+            id: p.id, 
+            inscripcionId: p.inscripcion_id, 
+            fecha: p.fecha, 
+            monto: p.monto, 
+            notas: p.notas 
+        }));
+    } catch (e) { return []; }
   },
 
   getParticipantes: async (): Promise<ParticipanteEvento[]> => {
@@ -469,6 +482,7 @@ export const api = {
 
   createAdolescentesBulk: async (adolescentes: Omit<Adolescente, 'id'>[]): Promise<void> => {
     return withRetry(async () => {
+        // Fix: Use a.fechaNacimiento instead of a.fecha_nacimiento (camelCase vs snake_case mismatch)
         await supabase.from('adolescentes').insert(adolescentes.map(a => ({ nombre: a.nombre, apellido: a.apellido, cedula: a.cedula, registro: a.registro, fecha_nacimiento: a.fechaNacimiento, barrio: a.barrio, ciudad: a.ciudad, telefono: a.telefono, sexo: a.sexo, estado: a.estado })));
     });
   },
@@ -484,6 +498,7 @@ export const api = {
   updateEncargado: async (encargado: Encargado): Promise<Encargado> => {
     return withRetry(async () => {
         const { id, ...updateData } = encargado;
+        // Fix: Use updateData.fechaNacimiento instead of updateData.fecha_nacimiento
         const { error } = await supabase.from('encargados').update({ nombre: updateData.nombre, apellido: updateData.apellido, cedula: updateData.cedula, fecha_nacimiento: updateData.fechaNacimiento || null, barrio: updateData.barrio, ciudad: updateData.ciudad, telefono: updateData.telefono, email: updateData.email || null }).eq('id', id);
         if (error) throw new Error(error.message);
         return encargado;
@@ -494,6 +509,7 @@ export const api = {
 
   createEncargadosBulk: async (encargados: Omit<Encargado, 'id'>[]): Promise<void> => {
     return withRetry(async () => {
+        // Fix: Use e.fechaNacimiento instead of e.fecha_nacimiento
         await supabase.from('encargados').insert(encargados.map(e => ({ nombre: e.nombre, apellido: e.apellido, cedula: e.cedula, fecha_nacimiento: e.fechaNacimiento || null, barrio: e.barrio, ciudad: e.ciudad, telefono: e.telefono, email: e.email || null })));
     });
   },
@@ -637,32 +653,54 @@ export const api = {
 
   deleteEvento: async (id: number): Promise<void> => { await supabase.from('eventos').delete().eq('id', id); },
 
-  createPago: async (pago: Omit<PagoEvento, 'id'>): Promise<PagoEvento> => {
+  createPago: async (p: Omit<PagoEvento, 'id'>): Promise<PagoEvento> => {
     return withRetry(async () => {
         const { data, error } = await supabase.from('pagos_eventos').insert({ 
-            inscripcion_id: pago.inscripcionId, 
-            monto: pago.monto, 
-            fecha: pago.fecha,
-            notas: pago.notas
+            inscripcion_id: p.inscripcionId, 
+            monto: p.monto, 
+            fecha: p.fecha,
+            notas: p.notas
         }).select().single();
         const result = handleSupabaseData(data, error, 'createPago');
-        return { ...pago, id: result.id };
+        return { 
+            id: result.id,
+            inscripcionId: result.inscripcion_id,
+            fecha: result.fecha,
+            monto: result.monto,
+            notas: result.notas
+        };
     });
   },
 
   deletePago: async (id: number): Promise<void> => { await supabase.from('pagos_eventos').delete().eq('id', id); },
 
-  createInscripcion: async (inscripcion: Omit<InscripcionEvento, 'id'>): Promise<InscripcionEvento> => {
+  createInscripcion: async (i: Omit<InscripcionEvento, 'id'>): Promise<InscripcionEvento> => {
     return withRetry(async () => {
-        const { data, error } = await supabase.from('inscripciones_eventos').insert({ evento_id: inscripcion.eventoId, adolescente_id: inscripcion.adolescenteId, fecha_inscripcion: inscripcion.fechaInscripcion, notas: inscripcion.notas }).select().single();
+        const { data, error } = await supabase.from('inscripciones_eventos').insert({ 
+            evento_id: i.eventoId, 
+            adolescente_id: i.adolescenteId, 
+            fecha_inscripcion: i.fechaInscripcion, 
+            notas: i.notas 
+        }).select().single();
         const result = handleSupabaseData(data, error, 'createInscripcion');
-        return { ...inscripcion, id: result.id };
+        return { 
+            id: result.id,
+            eventoId: result.evento_id,
+            adolescenteId: result.adolescente_id,
+            fechaInscripcion: result.fecha_inscripcion,
+            notas: result.notas
+        };
     });
   },
 
   updateInscripcion: async (i: InscripcionEvento): Promise<InscripcionEvento> => {
     return withRetry(async () => {
-        const { error } = await supabase.from('inscripciones_eventos').update({ evento_id: i.eventoId, adolescente_id: i.adolescenteId, fecha_inscripcion: i.fechaInscripcion, notas: i.notas }).eq('id', i.id);
+        const { error } = await supabase.from('inscripciones_eventos').update({ 
+            evento_id: i.eventoId, 
+            adolescente_id: i.adolescenteId, 
+            fecha_inscripcion: i.fechaInscripcion, 
+            notas: i.notas 
+        }).eq('id', i.id);
         if (error) throw new Error(error.message);
         return i;
     });

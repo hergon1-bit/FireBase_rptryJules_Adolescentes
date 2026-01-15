@@ -208,7 +208,9 @@ export const DataProvider: React.FC<{children: React.ReactNode}> = ({ children }
     setInscripcionesServidores(prev => prev.filter(item => item.id !== id));
   };
   const addPagoServidor = async (iId: number, m: number, fecha: string, notas?: string) => {
-    await api.createPagoServidor({ inscripcionServidorId: iId, monto: m, fecha, notas });
+    const newPago = await api.createPagoServidor({ inscripcionServidorId: iId, monto: m, fecha, notas });
+    setPagosServidores(prev => [...prev, newPago]);
+    // Refresco de seguridad
     const fresh = await api.getPagosServidores();
     setPagosServidores(fresh);
   };
@@ -295,7 +297,9 @@ export const DataProvider: React.FC<{children: React.ReactNode}> = ({ children }
   };
 
   const addPago = async (iId: number, m: number, fecha: string, notas?: string) => { 
-    await api.createPago({ inscripcionId: iId, monto: m, fecha, notas }); 
+    const newPago = await api.createPago({ inscripcionId: iId, monto: m, fecha, notas }); 
+    setPagos(prev => [...prev, newPago]);
+    // Refresco de seguridad desde el servidor
     const freshPagos = await api.getPagos();
     setPagos(freshPagos);
   };

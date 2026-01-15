@@ -35,12 +35,16 @@ const Eventos: React.FC = () => {
     const [selectedEvent, setSelectedEvent] = useState<Evento | null>(null);
     const [activeTabModal, setActiveTabModal] = useState<'chicos' | 'servidores'>('chicos');
     
+    // States for Loading / Actions
+    const [isSavingPayment, setIsSavingPayment] = useState<{ [key: number]: boolean }>({});
+
     // Server Enrollment State
     const [servidorToInscribe, setServidorToInscribe] = useState<string>('');
     const [rolServidorToInscribe, setRolServidorToInscribe] = useState<RolServidor>('Apoyo');
     const [becaServidorToInscribe, setBecaServidorToInscribe] = useState<TipoBeca>('Ninguna');
     const [montoServidorToInscribe, setMontoServidorToInscribe] = useState<string>('0');
     const [precioEspecialToInscribe, setPrecioEspecialToInscribe] = useState<boolean>(false);
+    const [iglesiaPagaSaldoToInscribe, setIglesiaPagaSaldoToInscribe] = useState<boolean>(false);
     const [isAddConditionsModalOpen, setIsAddConditionsModalOpen] = useState(false);
     
     // Edit Enrollment State
@@ -151,7 +155,7 @@ const Eventos: React.FC = () => {
         
         const adolescentesInscritos = eventInscripciones.map(inscripcion => {
             const ado = adolescentes.find(a => a.id === inscripcion.adolescenteId);
-            const pagosRealizados = pagos.filter(p => p.inscripcionId === inscripcion.id).sort((a,b) => new Date(a.fecha).getTime() - new Date(b.fecha).getTime());
+            const pagosRealizados = pagos.filter(p => Number(p.inscripcionId) === Number(inscripcion.id)).sort((a,b) => new Date(a.fecha).getTime() - new Date(b.fecha).getTime());
             const totalPagado = pagosRealizados.reduce((sum, p) => sum + p.monto, 0);
             return {
                 adolescente: ado,
@@ -171,7 +175,7 @@ const Eventos: React.FC = () => {
 
         const inscritosServidores = inscripcionesServidores.filter(i => i.eventoId === selectedEvent.id).map(insc => {
             const s = servidores.find(ser => ser.id === insc.servidorId);
-            const pagosS = pagosServidores.filter(p => p.inscripcionServidorId === insc.id).sort((a,b) => new Date(a.fecha).getTime() - new Date(b.fecha).getTime());
+            const pagosS = pagosServidores.filter(p => Number(p.inscripcionServidorId) === Number(insc.id)).sort((a,b) => new Date(a.fecha).getTime() - new Date(b.fecha).getTime());
             const totalP = pagosS.reduce((acc, curr) => acc + curr.monto, 0);
             
             let costoEsperado = selectedEvent.costoPersona || 0;
@@ -209,26 +213,53 @@ const Eventos: React.FC = () => {
     }, [selectedEvent, adolescentes, inscripciones, pagos, servidores, inscripcionesServidores, pagosServidores, searchInscribedChico, showOnlyDeudores, showOnlyPagadosFull, searchInscribedServidor, showOnlyBecados, showOnlyPrecioLocal]);
 
     const handleAddPago = async (inscripcionId: number) => {
-        const monto = parseFloat(newPayment[inscripcionId] || '0');
+        // Limpiamos el valor de posibles puntos de miles que el usuario pueda escribir (Gs. 270.000 -> 270000)
+        const rawMonto = String(newPayment[inscripcionId] || '0').replace(/\./g, '');
+        const monto = parseFloat(rawMonto);
         const fecha = newPaymentDate[inscripcionId] || new Date().toISOString().split('T')[0];
         const notas = newPaymentNote[inscripcionId] || '';
-        if (monto > 0) {
+        
+        if (monto <= 0) {
+            alert("Por favor, ingrese un monto válido mayor a cero.");
+            return;
+        }
+
+        setIsSavingPayment(prev => ({ ...prev, [inscripcionId]: true }));
+        try {
             await addPago(inscripcionId, monto, fecha, notas);
             setNewPayment(prev => ({ ...prev, [inscripcionId]: '' }));
             setNewPaymentDate(prev => ({ ...prev, [inscripcionId]: '' }));
             setNewPaymentNote(prev => ({ ...prev, [inscripcionId]: '' }));
+        } catch (error: any) {
+            console.error("Error al registrar pago:", error);
+            alert("Hubo un error al grabar el pago: " + (error.message || "Error desconocido."));
+        } finally {
+            setIsSavingPayment(prev => ({ ...prev, [inscripcionId]: false }));
         }
     };
 
     const handleAddPagoServidor = async (inscId: number) => {
-        const monto = parseFloat(newPaymentServidor[inscId] || '0');
+        const rawMonto = String(newPaymentServidor[inscId] || '0').replace(/\./g, '');
+        const monto = parseFloat(rawMonto);
         const fecha = newPaymentDateServidor[inscId] || new Date().toISOString().split('T')[0];
         const notas = newPaymentNoteServidor[inscId] || '';
-        if (monto > 0) {
+        
+        if (monto <= 0) {
+            alert("Por favor, ingrese un monto válido mayor a cero.");
+            return;
+        }
+
+        setIsSavingPayment(prev => ({ ...prev, [inscId]: true }));
+        try {
             await addPagoServidor(inscId, monto, fecha, notas);
             setNewPaymentServidor(prev => ({ ...prev, [inscId]: '' }));
             setNewPaymentDateServidor(prev => ({ ...prev, [inscId]: '' }));
             setNewPaymentNoteServidor(prev => ({ ...prev, [inscId]: '' }));
+        } catch (error: any) {
+            console.error("Error al registrar pago servidor:", error);
+            alert("Hubo un error al grabar el pago: " + (error.message || "Error desconocido."));
+        } finally {
+            setIsSavingPayment(prev => ({ ...prev, [inscId]: false }));
         }
     };
 
@@ -238,6 +269,7 @@ const Eventos: React.FC = () => {
             setBecaServidorToInscribe('Ninguna');
             setMontoServidorToInscribe('0');
             setPrecioEspecialToInscribe(false);
+            setIglesiaPagaSaldoToInscribe(false);
             setIsAddConditionsModalOpen(true);
         }
     };
@@ -250,7 +282,7 @@ const Eventos: React.FC = () => {
                 rol: rolServidorToInscribe,
                 tipoBeca: becaServidorToInscribe,
                 montoAcordado: Number(montoServidorToInscribe),
-                iglesiaPagaSaldo: false,
+                iglesiaPagaSaldo: iglesiaPagaSaldoToInscribe,
                 precioEspecialLocal: precioEspecialToInscribe
             });
             setIsAddConditionsModalOpen(false);
@@ -317,7 +349,7 @@ const Eventos: React.FC = () => {
 
                     // Procesar Chicos
                     eventAdoInsc.forEach(i => {
-                        const personaPagos = pagos.filter(p => p.inscripcionId === i.id).reduce((sum, p) => sum + p.monto, 0);
+                        const personaPagos = pagos.filter(p => Number(p.inscripcionId) === Number(i.id)).reduce((sum, p) => sum + p.monto, 0);
                         totalCobrado += personaPagos;
                         totalEsperadoReal += costoBase;
                         if (costoBase - personaPagos <= 0) cantPagados++;
@@ -326,7 +358,7 @@ const Eventos: React.FC = () => {
 
                     // Procesar Servidores
                     eventSerInsc.forEach(i => {
-                        const personaPagos = pagosServidores.filter(p => p.inscripcionServidorId === i.id).reduce((sum, p) => sum + p.monto, 0);
+                        const personaPagos = pagosServidores.filter(p => Number(p.inscripcionServidorId) === Number(i.id)).reduce((sum, p) => sum + p.monto, 0);
                         totalCobrado += personaPagos;
                         
                         let miEsperado = costoBase;
@@ -533,12 +565,39 @@ const Eventos: React.FC = () => {
                                             {selectedEvent.tieneCosto && item.debe > 0 && (
                                                 <div className="space-y-2">
                                                     <div className="flex gap-2">
-                                                        <input type="number" placeholder="Monto" value={newPayment[item.inscripcion.id] || ''} onChange={e => setNewPayment({...newPayment, [item.inscripcion.id]: e.target.value})} className="flex-1 bg-surface border border-border p-1.5 text-sm rounded outline-none focus:ring-1 ring-primary" />
-                                                        <input type="date" value={newPaymentDate[item.inscripcion.id] || new Date().toISOString().split('T')[0]} onChange={e => setNewPaymentDate({...newPaymentDate, [item.inscripcion.id]: e.target.value})} className="w-32 bg-surface border border-border p-1.5 text-sm rounded outline-none focus:ring-1 ring-primary" />
+                                                        <input 
+                                                            type="number" 
+                                                            placeholder="Monto" 
+                                                            value={newPayment[item.inscripcion.id] || ''} 
+                                                            onChange={e => setNewPayment({...newPayment, [item.inscripcion.id]: e.target.value})} 
+                                                            disabled={isSavingPayment[item.inscripcion.id]}
+                                                            className="flex-1 bg-surface border border-border p-1.5 text-sm rounded outline-none focus:ring-1 ring-primary disabled:opacity-50" 
+                                                        />
+                                                        <input 
+                                                            type="date" 
+                                                            value={newPaymentDate[item.inscripcion.id] || new Date().toISOString().split('T')[0]} 
+                                                            onChange={e => setNewPaymentDate({...newPaymentDate, [item.inscripcion.id]: e.target.value})} 
+                                                            disabled={isSavingPayment[item.inscripcion.id]}
+                                                            className="w-32 bg-surface border border-border p-1.5 text-sm rounded outline-none focus:ring-1 ring-primary disabled:opacity-50" 
+                                                        />
                                                     </div>
                                                     <div className="flex gap-2">
-                                                        <input type="text" placeholder="Observaciones / Notas" value={newPaymentNote[item.inscripcion.id] || ''} onChange={e => setNewPaymentNote({...newPaymentNote, [item.inscripcion.id]: e.target.value})} className="flex-1 bg-surface border border-border p-1.5 text-xs rounded outline-none focus:ring-1 ring-primary" />
-                                                        <button onClick={() => handleAddPago(item.inscripcion.id)} className="bg-secondary text-white px-4 py-1 rounded text-sm font-bold shadow-md hover:bg-emerald-600 transition-colors">Abonar</button>
+                                                        <input 
+                                                            type="text" 
+                                                            placeholder="Observaciones / Notas" 
+                                                            value={newPaymentNote[item.inscripcion.id] || ''} 
+                                                            onChange={e => setNewPaymentNote({...newPaymentNote, [item.inscripcion.id]: e.target.value})} 
+                                                            disabled={isSavingPayment[item.inscripcion.id]}
+                                                            className="flex-1 bg-surface border border-border p-1.5 text-xs rounded outline-none focus:ring-1 ring-primary disabled:opacity-50" 
+                                                        />
+                                                        <button 
+                                                            onClick={() => handleAddPago(item.inscripcion.id)} 
+                                                            disabled={isSavingPayment[item.inscripcion.id] || !newPayment[item.inscripcion.id]}
+                                                            className={`bg-secondary text-white px-4 py-1 rounded text-sm font-bold shadow-md hover:bg-emerald-600 transition-colors flex items-center gap-2 ${isSavingPayment[item.inscripcion.id] ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                                        >
+                                                            {isSavingPayment[item.inscripcion.id] ? <RefreshIcon className="w-4 h-4 animate-spin" /> : null}
+                                                            Abonar
+                                                        </button>
                                                     </div>
                                                 </div>
                                             )}
@@ -613,12 +672,39 @@ const Eventos: React.FC = () => {
                                             {item.inscripcion.tipoBeca !== 'Total' && item.debe > 0 && (
                                                 <div className="space-y-2 mt-3">
                                                     <div className="flex gap-2">
-                                                        <input type="number" placeholder="Monto" value={newPaymentServidor[item.inscripcion.id] || ''} onChange={e => setNewPaymentServidor({...newPaymentServidor, [item.inscripcion.id]: e.target.value})} className="flex-1 bg-surface border border-border p-1.5 text-sm rounded outline-none focus:ring-1 ring-primary" />
-                                                        <input type="date" value={newPaymentDateServidor[item.inscripcion.id] || new Date().toISOString().split('T')[0]} onChange={e => setNewPaymentDateServidor({...newPaymentDateServidor, [item.inscripcion.id]: e.target.value})} className="w-32 bg-surface border border-border p-1.5 text-sm rounded outline-none focus:ring-1 ring-primary" />
+                                                        <input 
+                                                            type="number" 
+                                                            placeholder="Monto" 
+                                                            value={newPaymentServidor[item.inscripcion.id] || ''} 
+                                                            onChange={e => setNewPaymentServidor({...newPaymentServidor, [item.inscripcion.id]: e.target.value})} 
+                                                            disabled={isSavingPayment[item.inscripcion.id]}
+                                                            className="flex-1 bg-surface border border-border p-1.5 text-sm rounded outline-none focus:ring-1 ring-primary disabled:opacity-50" 
+                                                        />
+                                                        <input 
+                                                            type="date" 
+                                                            value={newPaymentDateServidor[item.inscripcion.id] || new Date().toISOString().split('T')[0]} 
+                                                            onChange={e => setNewPaymentDateServidor({...newPaymentDateServidor, [item.inscripcion.id]: e.target.value})} 
+                                                            disabled={isSavingPayment[item.inscripcion.id]}
+                                                            className="w-32 bg-surface border border-border p-1.5 text-sm rounded outline-none focus:ring-1 ring-primary disabled:opacity-50" 
+                                                        />
                                                     </div>
                                                     <div className="flex gap-2">
-                                                        <input type="text" placeholder="Observaciones / Notas" value={newPaymentNoteServidor[item.inscripcion.id] || ''} onChange={e => setNewPaymentNoteServidor({...newPaymentNoteServidor, [item.inscripcion.id]: e.target.value})} className="flex-1 bg-surface border border-border p-1.5 text-xs rounded outline-none focus:ring-1 ring-primary" />
-                                                        <button onClick={() => handleAddPagoServidor(item.inscripcion.id)} className="bg-secondary text-white px-4 py-1 rounded text-sm font-bold shadow-md hover:bg-emerald-600 transition-colors">Abonar</button>
+                                                        <input 
+                                                            type="text" 
+                                                            placeholder="Observaciones / Notas" 
+                                                            value={newPaymentNoteServidor[item.inscripcion.id] || ''} 
+                                                            onChange={e => setNewPaymentNoteServidor({...newPaymentNoteServidor, [item.inscripcion.id]: e.target.value})} 
+                                                            disabled={isSavingPayment[item.inscripcion.id]}
+                                                            className="flex-1 bg-surface border border-border p-1.5 text-xs rounded outline-none focus:ring-1 ring-primary disabled:opacity-50" 
+                                                        />
+                                                        <button 
+                                                            onClick={() => handleAddPagoServidor(item.inscripcion.id)} 
+                                                            disabled={isSavingPayment[item.inscripcion.id] || !newPaymentServidor[item.inscripcion.id]}
+                                                            className={`bg-secondary text-white px-4 py-1 rounded text-sm font-bold shadow-md hover:bg-emerald-600 transition-colors flex items-center gap-2 ${isSavingPayment[item.inscripcion.id] ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                                        >
+                                                            {isSavingPayment[item.inscripcion.id] ? <RefreshIcon className="w-4 h-4 animate-spin" /> : null}
+                                                            Abonar
+                                                        </button>
                                                     </div>
                                                 </div>
                                             )}
@@ -674,15 +760,27 @@ const Eventos: React.FC = () => {
                         </div>
                     </div>
 
-                    <div className="flex items-center gap-2 p-2 bg-orange-500/5 border border-orange-500/20 rounded-lg">
-                        <input 
-                            type="checkbox" 
-                            id="chk-local-new"
-                            checked={precioEspecialToInscribe} 
-                            onChange={e => setPrecioEspecialToInscribe(e.target.checked)}
-                            className="h-5 w-5 text-primary rounded border-border focus:ring-primary bg-background"
-                        />
-                        <label htmlFor="chk-local-new" className="text-sm font-bold text-orange-400 cursor-pointer">Aplicar Precio Acuerdo Local</label>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 p-2 bg-background/20 rounded-lg border border-border/40">
+                        <div className="flex items-center gap-2 p-2 bg-orange-500/5 border border-orange-500/10 rounded-lg">
+                            <input 
+                                type="checkbox" 
+                                id="chk-local-new"
+                                checked={precioEspecialToInscribe} 
+                                onChange={e => setPrecioEspecialToInscribe(e.target.checked)}
+                                className="h-5 w-5 text-primary rounded border-border focus:ring-primary bg-background"
+                            />
+                            <label htmlFor="chk-local-new" className="text-sm font-bold text-orange-400 cursor-pointer">Precio Acuerdo Local</label>
+                        </div>
+                        <div className="flex items-center gap-2 p-2 bg-blue-500/5 border border-blue-500/10 rounded-lg">
+                            <input 
+                                type="checkbox" 
+                                id="chk-church-new"
+                                checked={iglesiaPagaSaldoToInscribe} 
+                                onChange={e => setIglesiaPagaSaldoToInscribe(e.target.checked)}
+                                className="h-5 w-5 text-primary rounded border-border focus:ring-primary bg-background"
+                            />
+                            <label htmlFor="chk-church-new" className="text-sm font-bold text-blue-400 cursor-pointer">Iglesia paga saldo</label>
+                        </div>
                     </div>
 
                     {(becaServidorToInscribe === 'Parcial' || precioEspecialToInscribe) && (
@@ -708,20 +806,38 @@ const Eventos: React.FC = () => {
                             <p className="text-xs font-bold text-primary uppercase">Servidor:</p>
                             <p className="text-xl font-bold">{servidores.find(s => s.id === editingInscripcion.servidorId)?.nombre} {servidores.find(s => s.id === editingInscripcion.servidorId)?.apellido}</p>
                         </div>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                            <div>
-                                <label className="block text-sm font-medium text-text-secondary">Tipo de Beca</label>
-                                <select value={editingInscripcion.tipoBeca} onChange={e => setEditingInscripcion({...editingInscripcion, tipoBeca: e.target.value as TipoBeca})} className="mt-1 block w-full px-3 py-2 bg-background border border-border rounded-md shadow-sm focus:ring-primary text-text-primary text-sm">
-                                    <option value="Ninguna">Ninguna</option>
-                                    <option value="Parcial">Beca Parcial</option>
-                                    <option value="Total">Beca Total (100%)</option>
-                                </select>
+                        <div>
+                            <label className="block text-sm font-medium text-text-secondary">Tipo de Beca</label>
+                            <select value={editingInscripcion.tipoBeca} onChange={e => setEditingInscripcion({...editingInscripcion, tipoBeca: e.target.value as TipoBeca})} className="mt-1 block w-full px-3 py-2 bg-background border border-border rounded-md shadow-sm focus:ring-primary text-text-primary text-sm">
+                                <option value="Ninguna">Ninguna</option>
+                                <option value="Parcial">Beca Parcial</option>
+                                <option value="Total">Beca Total (100%)</option>
+                            </select>
+                        </div>
+                        
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            <div className="flex items-center gap-2 p-2 bg-orange-500/5 border border-orange-500/10 rounded-lg">
+                                <input 
+                                    type="checkbox" 
+                                    id="chk-local-edit"
+                                    checked={editingInscripcion.precioEspecialLocal} 
+                                    onChange={e => setEditingInscripcion({...editingInscripcion, precioEspecialLocal: e.target.checked})} 
+                                    className="h-5 w-5 text-primary rounded border-border focus:ring-primary bg-background" 
+                                />
+                                <label htmlFor="chk-local-edit" className="text-sm font-bold text-orange-400 cursor-pointer">Precio Acuerdo Local</label>
                             </div>
-                            <div className="flex items-center gap-2 mt-6">
-                                <input type="checkbox" checked={editingInscripcion.precioEspecialLocal} onChange={e => setEditingInscripcion({...editingInscripcion, precioEspecialLocal: e.target.checked})} className="h-5 w-5 text-primary rounded border-border focus:ring-primary bg-background" />
-                                <label className="text-sm font-bold text-orange-400">Precio Acuerdo Local</label>
+                            <div className="flex items-center gap-2 p-2 bg-blue-500/5 border border-blue-500/10 rounded-lg">
+                                <input 
+                                    type="checkbox" 
+                                    id="chk-church-edit"
+                                    checked={editingInscripcion.iglesiaPagaSaldo} 
+                                    onChange={e => setEditingInscripcion({...editingInscripcion, iglesiaPagaSaldo: e.target.checked})} 
+                                    className="h-5 w-5 text-primary rounded border-border focus:ring-primary bg-background" 
+                                />
+                                <label htmlFor="chk-church-edit" className="text-sm font-bold text-blue-400 cursor-pointer">Iglesia paga saldo</label>
                             </div>
                         </div>
+
                         {(editingInscripcion.tipoBeca === 'Parcial' || editingInscripcion.precioEspecialLocal) && (
                             <InputField label="Monto Acordado (Su compromiso)" type="number" value={editingInscripcion.montoAcordado || 0} onChange={e => setEditingInscripcion({...editingInscripcion, montoAcordado: Number(e.target.value)})} />
                         )}
