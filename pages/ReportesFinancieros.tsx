@@ -307,6 +307,14 @@ const ReportesFinancieros: React.FC = () => {
         const now = new Date();
         const printDate = `${now.toLocaleDateString('es-PY')} ${now.toLocaleTimeString('es-PY')}`;
 
+        const filterLabels: Record<BalanceFilterStatus, string> = {
+            all: 'Todos',
+            pending: 'Solo con Saldo Pendiente',
+            paid: 'Totalmente Pagados',
+            scholarship: 'Solo Becados (Staff)',
+            local: 'Solo con Acuerdo Local'
+        };
+
         const marginX = 14;
         let currentY = 15;
 
@@ -332,6 +340,11 @@ const ReportesFinancieros: React.FC = () => {
         const fechaFinStr = event?.fechaFin ? ` - ${formatDate(event.fechaFin)}` : '';
         doc.text(`Fecha: ${formatDate(event?.fechaInicio || '')}${fechaFinStr}`, marginX, currentY);
         
+        currentY += 6;
+        doc.setFont('helvetica', 'bold');
+        doc.text(`Filtro aplicado: ${filterLabels[activeStatusFilter]}`, marginX, currentY);
+        doc.setFont('helvetica', 'normal');
+
         currentY += 6;
         if (event?.tieneCosto) {
             doc.text(`Costo por Persona: ${formatCurrency(event.costoPersona || 0)}`, marginX, currentY);
