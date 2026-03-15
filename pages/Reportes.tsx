@@ -114,7 +114,9 @@ const Reportes: React.FC = () => {
             ? [['Adolescente', 'Cédula', 'Tutores (Nombre y Teléfono)']]
             : activeReport === 'tutores'
             ? [['Nombre', 'Cédula', 'Teléfono', 'Parentesco', 'Barrio', 'Ciudad']]
-            : (activeReport === 'activos' || activeReport === 'asistenciaReunion')
+            : activeReport === 'activos'
+            ? [['Nombre', 'Fecha Nacimiento', 'Reg. Salud', 'Edad', 'Barrio', 'Teléfono']]
+            : activeReport === 'asistenciaReunion'
             ? [['Nombre', 'Reg. Salud', 'Edad', 'Barrio', 'Teléfono']]
             : [['Nombre', 'Cédula CI', 'Reg. Salud', 'Edad', 'Barrio', 'Teléfono']];
 
@@ -131,7 +133,9 @@ const Reportes: React.FC = () => {
             const row = [`${a.nombre} ${a.apellido}`];
             if (activeReport === 'cumpleanos') {
                 row.push(getBirthdayThisYear(a.fechaNacimiento));
-            } else if (activeReport !== 'activos' && activeReport !== 'asistenciaReunion') {
+            } else if (activeReport === 'activos') {
+                row.push(formatDate(a.fechaNacimiento));
+            } else if (activeReport !== 'asistenciaReunion') {
                 row.push(a.cedula);
             }
             row.push(
@@ -229,8 +233,11 @@ const Reportes: React.FC = () => {
                                 ) : (
                                     <>
                                         <th className="p-4">Nombre Completo</th>
-                                        {activeReport !== 'activos' && activeReport !== 'asistenciaReunion' && (
-                                            <th className="p-4">{activeReport === 'cumpleanos' ? 'Fecha Cumpleaños' : 'Cédula CI'}</th>
+                                        {activeReport !== 'asistenciaReunion' && (
+                                            <th className="p-4">
+                                                {activeReport === 'cumpleanos' ? 'Fecha Cumpleaños' : 
+                                                 activeReport === 'activos' ? 'Fecha Nacimiento' : 'Cédula CI'}
+                                            </th>
                                         )}
                                         <th className="p-4">Reg. Salud</th>
                                         <th className="p-4">Edad</th>
@@ -278,9 +285,10 @@ const Reportes: React.FC = () => {
                                 return (
                                 <tr key={a.id} className="hover:bg-background/40 transition-colors group">
                                     <td className="p-4 font-bold text-text-primary group-hover:text-primary">{a.nombre} {a.apellido}</td>
-                                    {activeReport !== 'activos' && activeReport !== 'asistenciaReunion' && (
+                                    {activeReport !== 'asistenciaReunion' && (
                                         <td className="p-4 text-text-secondary font-mono font-bold">
-                                            {activeReport === 'cumpleanos' ? getBirthdayThisYear(a.fechaNacimiento) : a.cedula}
+                                            {activeReport === 'cumpleanos' ? getBirthdayThisYear(a.fechaNacimiento) : 
+                                             activeReport === 'activos' ? formatDate(a.fechaNacimiento) : a.cedula}
                                         </td>
                                     )}
                                     <td className="p-4 text-text-secondary text-xs">{a.registro || '-'}</td>
