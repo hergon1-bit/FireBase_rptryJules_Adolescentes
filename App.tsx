@@ -86,11 +86,7 @@ const AppContent: React.FC = () => {
 };
 
 const App: React.FC = () => (
-  <AuthProvider>
-    <DataProvider>
-      <AppContent />
-    </DataProvider>
-  </AuthProvider>
+  <AppContent />
 );
 
 export default App;

@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../services/api';
@@ -10,6 +11,7 @@ const LoginPage: React.FC = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [isConnectionError, setIsConnectionError] = useState(false);
   
   // Recovery state
   const [isRecovering, setIsRecovering] = useState(false);
@@ -21,42 +23,46 @@ const LoginPage: React.FC = () => {
   const [statusText, setStatusText] = useState('Iniciando sistema...');
   const [adminName, setAdminName] = useState('');
 
-  useEffect(() => {
-    let mounted = true;
+  const checkUsers = async () => {
+    setIsConnectionError(false);
+    setStatusText('Iniciando sistema...');
     
-    const checkUsers = async () => {
-        // Ciclo de mensajes para informar al usuario durante el Cold Start
-        const statusInterval = setInterval(() => {
-            if (!mounted) return;
-            setStatusText(prev => {
-                if (prev === 'Iniciando sistema...') return 'Despertando base de datos...';
-                if (prev === 'Despertando base de datos...') return 'Sincronizando esquemas...';
-                if (prev === 'Sincronizando esquemas...') return 'Estableciendo conexión segura...';
-                return 'Iniciando sistema...';
-            });
-        }, 8000);
+    // Ciclo de mensajes informativo
+    const statusInterval = setInterval(() => {
+        setStatusText(prev => {
+            if (prev === 'Iniciando sistema...') return 'Despertando base de datos...';
+            if (prev === 'Despertando base de datos...') return 'Sincronizando esquemas...';
+            if (prev === 'Sincronizando esquemas...') return 'Estableciendo conexión segura...';
+            return 'Iniciando sistema...';
+        });
+    }, 8000);
 
-        try {
-            const count = await api.countUsuarios();
-            if (mounted) {
-                clearInterval(statusInterval);
-                if (count === -1) {
-                    // Fallback para permitir login si el conteo falla pero hay red
-                    setIsFirstRun(false);
-                } else {
-                    setIsFirstRun(count === 0);
-                }
-            }
-        } catch (e) {
-            if (mounted) {
-                clearInterval(statusInterval);
-                setIsFirstRun(false); 
-            }
+    try {
+        const count = await api.countUsuarios();
+        
+        clearInterval(statusInterval);
+        if (count === -1) {
+            setIsFirstRun(false);
+        } else {
+            setIsFirstRun(count === 0);
         }
-    };
+    } catch (e: any) {
+        clearInterval(statusInterval);
+        const errStr = String(e.message || e);
+        console.error("Error en checkUsers:", errStr);
+        
+        // En lugar de bloquear toda la pantalla, asumimos que NO es la primera ejecución
+        // y permitimos al usuario intentar iniciar sesión.
+        setIsFirstRun(false);
+        
+        if (errStr.includes('fetch') || errStr.includes('No se pudo conectar') || errStr.includes('Timeout') || errStr.includes('tardando demasiado') || errStr.includes('aborted')) {
+            setError("Advertencia: La conexión inicial tardó demasiado. Puedes intentar iniciar sesión, pero si falla, verifica tu conexión o el estado de Supabase.");
+        }
+    }
+  };
+
+  useEffect(() => {
     checkUsers();
-    
-    return () => { mounted = false; };
   }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -67,7 +73,12 @@ const LoginPage: React.FC = () => {
     try {
       await login(email, password);
     } catch (err: any) {
-      setError(err instanceof Error ? err.message : String(err));
+      const errStr = String(err.message || err);
+      if (errStr.includes('fetch')) {
+          setError("Error de conexión. Asegúrese de que el servidor esté activo.");
+      } else {
+          setError(errStr);
+      }
     } finally {
       setIsLoading(false);
     }
@@ -116,6 +127,35 @@ const LoginPage: React.FC = () => {
       setRecoveryMessage('');
       setRecoveryEmail('');
   };
+
+  if (isConnectionError) {
+    return (
+        <div className="min-h-screen flex flex-col items-center justify-center bg-background px-6 text-center">
+            <div className="bg-red-500/20 p-6 rounded-full mb-6 border border-red-500/50">
+                <RefreshIcon className="w-12 h-12 text-red-500" />
+            </div>
+            <h2 className="text-2xl font-bold text-red-400 mb-4">Fallo de Conexión Detectado</h2>
+            <div className="max-w-md bg-surface p-6 rounded-lg border border-border shadow-2xl mb-8">
+                <p className="text-text-secondary text-sm leading-relaxed mb-4">
+                    La aplicación no puede comunicarse con la base de datos de Supabase.
+                </p>
+                <div className="text-xs bg-black/40 p-4 rounded text-left font-mono text-red-300 border border-red-900/50 mb-4">
+                    {error}
+                </div>
+                <p className="text-xs text-text-secondary italic">
+                    Acción sugerida: Entre a <a href="https://supabase.com/dashboard" target="_blank" className="text-primary hover:underline font-bold">Supabase Dashboard</a> y restaure su proyecto.
+                </p>
+            </div>
+            <button 
+                onClick={checkUsers}
+                className="flex items-center gap-2 bg-primary hover:bg-indigo-600 text-white px-8 py-3 rounded-lg font-bold transition-all shadow-lg"
+            >
+                <RefreshIcon className="w-5 h-5" />
+                Reintentar Conexión
+            </button>
+        </div>
+    );
+  }
 
   if (isFirstRun === null) {
       return (

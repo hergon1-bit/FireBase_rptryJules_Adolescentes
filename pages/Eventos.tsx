@@ -25,9 +25,9 @@ const CheckboxField: React.FC<React.InputHTMLAttributes<HTMLInputElement> & { la
 
 const Eventos: React.FC = () => {
     const { 
-        eventos, adolescentes, inscripciones, pagos, servidores, inscripcionesServidores, pagosServidores,
+        eventos, adolescentes, tutores, inscripciones, pagos, servidores, inscripcionesServidores, pagosServidores,
         addEvento, updateEvento, deleteEvento,
-        addInscripcion, deleteInscripcion, addPago, deletePago,
+        addInscripcion, updateInscripcion, deleteInscripcion, addPago, deletePago,
         addInscripcionServidor, updateInscripcionServidor, deleteInscripcionServidor, addPagoServidor, deletePagoServidor
     } = useData();
     const { hasPermission } = useAuth();
@@ -84,7 +84,7 @@ const Eventos: React.FC = () => {
 
     const initialEventFormState: Omit<Evento, 'id'> = {
         tema: '', lugar: '', fechaInicio: '', horaInicio: '', fechaFin: '', horaFin: '',
-        tieneCosto: false, costoTotal: 0, costoPersona: 0,
+        tieneCosto: false, costoTotal: 0, costoPersona: 0, esParaPadres: false
     };
 
     const { values, handleInputChange, setValues, resetForm } = useForm(initialEventFormState);
@@ -113,7 +113,8 @@ const Eventos: React.FC = () => {
             horaFin: event.horaFin || '',
             tieneCosto: event.tieneCosto,
             costoTotal: event.costoTotal || 0,
-            costoPersona: event.costoPersona || 0
+            costoPersona: event.costoPersona || 0,
+            esParaPadres: event.esParaPadres || false
         });
         setIsEventModalOpen(true);
     };
@@ -154,11 +155,14 @@ const Eventos: React.FC = () => {
         const eventInscripciones = inscripciones.filter(i => i.eventoId === selectedEvent.id);
         
         const adolescentesInscritos = eventInscripciones.map(inscripcion => {
-            const ado = adolescentes.find(a => a.id === inscripcion.adolescenteId);
+            const persona = selectedEvent.esParaPadres 
+                ? tutores.find(t => t.id === inscripcion.tutorId)
+                : adolescentes.find(a => a.id === inscripcion.adolescenteId);
+                
             const pagosRealizados = pagos.filter(p => Number(p.inscripcionId) === Number(inscripcion.id)).sort((a,b) => new Date(a.fecha).getTime() - new Date(b.fecha).getTime());
             const totalPagado = pagosRealizados.reduce((sum, p) => sum + p.monto, 0);
             return {
-                adolescente: ado,
+                persona: persona,
                 inscripcion: inscripcion,
                 totalPagado,
                 pagos: pagosRealizados,
@@ -166,12 +170,15 @@ const Eventos: React.FC = () => {
             };
         })
         .filter(item => {
-            const matchesSearch = item.adolescente && `${item.adolescente.nombre} ${item.adolescente.apellido}`.toLowerCase().includes(searchInscribedChico.toLowerCase());
+            const matchesSearch = item.persona && `${item.persona.nombre} ${item.persona.apellido}`.toLowerCase().includes(searchInscribedChico.toLowerCase());
             const matchesDeuda = !showOnlyDeudores || item.debe > 0;
             const matchesPagado = !showOnlyPagadosFull || item.debe <= 0;
             return matchesSearch && matchesDeuda && matchesPagado;
         })
-        .sort((a, b) => `${a.adolescente!.nombre} ${a.adolescente!.apellido}`.localeCompare(`${b.adolescente!.nombre} ${b.adolescente!.apellido}`));
+        .sort((a, b) => {
+            if (!a.persona || !b.persona) return 0;
+            return `${a.persona.nombre} ${a.persona.apellido}`.localeCompare(`${b.persona.nombre} ${b.persona.apellido}`);
+        });
 
         const inscritosServidores = inscripcionesServidores.filter(i => i.eventoId === selectedEvent.id).map(insc => {
             const s = servidores.find(ser => ser.id === insc.servidorId);
@@ -207,10 +214,12 @@ const Eventos: React.FC = () => {
         return {
             inscritos: adolescentesInscritos,
             inscritosServidores,
-            noInscritos: adolescentes.filter(a => a.estado === 'Activo' && !eventInscripciones.some(i => i.adolescenteId === a.id)).sort((a,b) => a.nombre.localeCompare(b.nombre)),
+            noInscritos: selectedEvent.esParaPadres 
+                ? tutores.filter(t => !eventInscripciones.some(i => i.tutorId === t.id)).sort((a,b) => a.nombre.localeCompare(b.nombre))
+                : adolescentes.filter(a => a.estado === 'Activo' && !eventInscripciones.some(i => i.adolescenteId === a.id)).sort((a,b) => a.nombre.localeCompare(b.nombre)),
             noInscritosServidores: servidores.filter(s => !inscripcionesServidores.some(i => i.eventoId === selectedEvent.id && i.servidorId === s.id)).sort((a,b) => a.nombre.localeCompare(b.nombre)),
         };
-    }, [selectedEvent, adolescentes, inscripciones, pagos, servidores, inscripcionesServidores, pagosServidores, searchInscribedChico, showOnlyDeudores, showOnlyPagadosFull, searchInscribedServidor, showOnlyBecados, showOnlyPrecioLocal]);
+    }, [selectedEvent, adolescentes, tutores, inscripciones, pagos, servidores, inscripcionesServidores, pagosServidores, searchInscribedChico, showOnlyDeudores, showOnlyPagadosFull, searchInscribedServidor, showOnlyBecados, showOnlyPrecioLocal]);
 
     const handleAddPago = async (inscripcionId: number) => {
         // Limpiamos el valor de posibles puntos de miles que el usuario pueda escribir (Gs. 270.000 -> 270000)
@@ -383,12 +392,18 @@ const Eventos: React.FC = () => {
 
                     const saldoPendiente = totalEsperadoReal - totalCobrado;
                     const cantTotal = eventAdoInsc.length + eventSerInsc.length;
+                    const cantAsistentes = eventAdoInsc.filter(i => i.asistio).length;
 
                     return (
-                        <div key={evento.id} className="bg-surface p-5 rounded-lg shadow-lg flex flex-col justify-between cursor-pointer hover:ring-2 ring-primary transition-all relative group" onClick={() => setSelectedEvent(evento)}>
+                        <div key={evento.id} className={`bg-surface p-5 rounded-lg shadow-lg flex flex-col justify-between cursor-pointer hover:ring-2 ring-primary transition-all relative group ${evento.finalizado ? 'opacity-80' : ''}`} onClick={() => setSelectedEvent(evento)}>
                             <div>
                                 <div className="flex justify-between items-start mb-3">
-                                    <h2 className="text-xl font-bold text-text-primary pr-12 line-clamp-1">{evento.tema}</h2>
+                                    <div className="flex flex-col">
+                                        <h2 className="text-xl font-bold text-text-primary pr-12 line-clamp-1">{evento.tema}</h2>
+                                        {evento.finalizado && (
+                                            <span className="bg-red-500/20 text-red-500 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-widest w-max mt-1 border border-red-500/50">Finalizado</span>
+                                        )}
+                                    </div>
                                     <div className="absolute top-4 right-4 flex space-x-1">
                                         <button onClick={(e) => openModalForEdit(e, evento)} className="bg-gray-700 text-white p-2 rounded-md hover:bg-gray-600 transition shadow" title="Editar Evento"><PencilIcon className="w-4 h-4" /></button>
                                         <button onClick={(e) => handleDeleteClick(e, evento)} className="bg-red-600/80 text-white p-2 rounded-md hover:bg-red-600 transition shadow" title="Borrar Evento"><TrashIcon className="w-4 h-4" /></button>
@@ -399,7 +414,7 @@ const Eventos: React.FC = () => {
                                     <p className="text-sm text-text-secondary">{formatDate(evento.fechaInicio)} {evento.horaInicio ? ` - ${evento.horaInicio}` : ''}</p>
                                 </div>
                                 
-                                {evento.tieneCosto && (
+                                {evento.tieneCosto ? (
                                     <div className="space-y-4">
                                         <div className="grid grid-cols-2 gap-3 bg-background/40 p-3 rounded-lg border border-border/50">
                                             <div className="flex flex-col">
@@ -420,10 +435,14 @@ const Eventos: React.FC = () => {
                                             </div>
                                         </div>
 
-                                        <div className="grid grid-cols-3 gap-2">
+                                        <div className="grid grid-cols-4 gap-2">
                                             <div className="bg-background/20 rounded p-2 text-center border border-border/30">
                                                 <p className="text-[8px] uppercase text-text-secondary font-bold">Inscriptos</p>
                                                 <p className="text-sm font-black">{cantTotal}</p>
+                                            </div>
+                                            <div className="bg-background/20 rounded p-2 text-center border border-border/30">
+                                                <p className="text-[8px] uppercase text-green-400/70 font-bold">Asistentes</p>
+                                                <p className="text-sm font-black text-green-400">{cantAsistentes}</p>
                                             </div>
                                             <div className="bg-background/20 rounded p-2 text-center border border-border/30">
                                                 <p className="text-[8px] uppercase text-green-400/70 font-bold">Pagados</p>
@@ -433,7 +452,7 @@ const Eventos: React.FC = () => {
                                                 <p className="text-[8px] uppercase text-red-400/70 font-bold">Con Saldo</p>
                                                 <p className="text-sm font-black text-red-400">{cantConSaldo}</p>
                                             </div>
-                                            <div className="bg-indigo-500/5 rounded p-2 text-center border border-indigo-500/20">
+                                            <div className="bg-indigo-500/5 rounded p-2 text-center border border-indigo-500/20 col-span-2">
                                                 <p className="text-[8px] uppercase text-indigo-300 font-bold">Becados</p>
                                                 <p className="text-xs font-black text-indigo-400">{cantBecados}</p>
                                             </div>
@@ -443,13 +462,31 @@ const Eventos: React.FC = () => {
                                             </div>
                                         </div>
                                     </div>
+                                ) : (
+                                    <div className="grid grid-cols-2 gap-2 mt-4">
+                                        <div className="bg-background/20 rounded p-3 text-center border border-border/30">
+                                            <p className="text-[10px] uppercase text-text-secondary font-bold mb-1">Inscriptos</p>
+                                            <p className="text-2xl font-black text-primary">{cantTotal}</p>
+                                        </div>
+                                        <div className="bg-background/20 rounded p-3 text-center border border-border/30">
+                                            <p className="text-[10px] uppercase text-green-400/70 font-bold mb-1">Asistentes</p>
+                                            <p className="text-2xl font-black text-green-400">{cantAsistentes}</p>
+                                        </div>
+                                    </div>
                                 )}
                             </div>
                             <div className="mt-4 pt-3 border-t border-border flex justify-between items-center text-[10px]">
                                 <span className="text-text-secondary uppercase italic">Click para gestionar inscriptos</span>
-                                <span className={`font-black uppercase px-2 py-0.5 rounded ${evento.tieneCosto ? 'bg-indigo-500/20 text-indigo-400 border border-indigo-500/30' : 'bg-green-500/20 text-green-400 border border-green-500/30'}`}>
-                                    {evento.tieneCosto ? 'Evento con Costo' : 'Gratuito'}
-                                </span>
+                                <div className="flex gap-1">
+                                    {evento.esParaPadres && (
+                                        <span className="font-black uppercase px-2 py-0.5 rounded bg-purple-500/20 text-purple-400 border border-purple-500/30">
+                                            Para Padres
+                                        </span>
+                                    )}
+                                    <span className={`font-black uppercase px-2 py-0.5 rounded ${evento.tieneCosto ? 'bg-indigo-500/20 text-indigo-400 border border-indigo-500/30' : 'bg-green-500/20 text-green-400 border border-green-500/30'}`}>
+                                        {evento.tieneCosto ? 'Evento con Costo' : 'Gratuito'}
+                                    </span>
+                                </div>
                             </div>
                         </div>
                     );
@@ -466,6 +503,7 @@ const Eventos: React.FC = () => {
                         <InputField label="Fecha Fin" name="fechaFin" type="date" value={values.fechaFin} onChange={handleInputChange} />
                         <InputField label="Hora Fin" name="horaFin" type="time" value={values.horaFin} onChange={handleInputChange} />
                     </div>
+                    <CheckboxField label="Este evento es para Padres/Tutores" name="esParaPadres" checked={values.esParaPadres} onChange={handleInputChange} />
                     <CheckboxField label="Este evento tiene costo de inscripción" name="tieneCosto" checked={values.tieneCosto} onChange={handleInputChange} />
                     {values.tieneCosto && (
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -495,7 +533,7 @@ const Eventos: React.FC = () => {
                 <Modal isOpen={!!selectedEvent} onClose={() => setSelectedEvent(null)} title={`Gestionar: ${selectedEvent.tema}`} size="3xl">
                     <div className="space-y-6">
                         <div className="flex border-b border-border">
-                            <button onClick={() => setActiveTabModal('chicos')} className={`px-4 py-2 font-bold transition ${activeTabModal === 'chicos' ? 'border-b-2 border-primary text-primary' : 'text-text-secondary'}`}>Chicos ({eventDetails.inscritos.length})</button>
+                            <button onClick={() => setActiveTabModal('chicos')} className={`px-4 py-2 font-bold transition ${activeTabModal === 'chicos' ? 'border-b-2 border-primary text-primary' : 'text-text-secondary'}`}>{selectedEvent.esParaPadres ? 'Tutores' : 'Chicos'} ({eventDetails.inscritos.length})</button>
                             <button onClick={() => setActiveTabModal('servidores')} className={`px-4 py-2 font-bold transition ${activeTabModal === 'servidores' ? 'border-b-2 border-primary text-primary' : 'text-text-secondary'}`}>Servidores Apoyo ({eventDetails.inscritosServidores.length})</button>
                         </div>
 
@@ -506,7 +544,20 @@ const Eventos: React.FC = () => {
                                         <input type="text" placeholder="🔍 Buscar por nombre..." value={searchInscribedChico} onChange={(e) => setSearchInscribedChico(e.target.value)} className="w-full bg-background border border-border p-2 pl-10 rounded-md text-sm outline-none focus:ring-1 ring-primary" />
                                         <UsersIcon className="w-4 h-4 absolute left-3 top-3 text-text-secondary" />
                                     </div>
-                                    <div className="flex gap-2">
+                                    <div className="flex flex-wrap gap-2 items-center">
+                                        {selectedEvent.esParaPadres && (
+                                            <button 
+                                                onClick={async () => {
+                                                    const promises = eventDetails.inscritos
+                                                        .filter(i => !i.inscripcion.asistio)
+                                                        .map(i => updateInscripcion({ ...i.inscripcion, asistio: true }));
+                                                    await Promise.all(promises);
+                                                }}
+                                                className="bg-green-500/20 text-green-400 hover:bg-green-500/30 px-3 py-2 rounded-md border border-green-500/50 text-xs font-bold transition-colors"
+                                            >
+                                                Marcar todos Asistió
+                                            </button>
+                                        )}
                                         <label className="flex items-center gap-2 text-xs font-bold text-text-secondary cursor-pointer bg-background/40 px-3 py-2 rounded-md border border-border/50 hover:bg-background/60">
                                             <input type="checkbox" checked={showOnlyDeudores} onChange={(e) => { setShowOnlyDeudores(e.target.checked); if(e.target.checked) setShowOnlyPagadosFull(false); }} className="h-4 w-4 text-primary rounded border-border" />
                                             <span>Solo con Deuda</span>
@@ -519,10 +570,19 @@ const Eventos: React.FC = () => {
                                 </div>
                                 <div className="flex flex-col sm:flex-row gap-2 p-3 bg-background/30 rounded-lg">
                                     <select value={adolescenteToInscribe} onChange={e => setAdolescenteToInscribe(e.target.value)} className="flex-1 bg-surface border border-border rounded-md p-2 text-sm">
-                                        <option value="">-- Inscribir Nuevo Adolescente --</option>
+                                        <option value="">-- Inscribir Nuevo {selectedEvent.esParaPadres ? 'Tutor' : 'Adolescente'} --</option>
                                         {eventDetails.noInscritos.map(ado => <option key={ado.id} value={ado.id}>{ado.nombre} {ado.apellido}</option>)}
                                     </select>
-                                    <button onClick={() => { if (selectedEvent && adolescenteToInscribe) addInscripcion(selectedEvent.id, Number(adolescenteToInscribe)); setAdolescenteToInscribe(''); }} disabled={!adolescenteToInscribe} className="bg-primary text-white px-4 py-2 rounded-lg font-bold disabled:opacity-50 whitespace-nowrap">Inscribir</button>
+                                    <button onClick={() => { 
+                                        if (selectedEvent && adolescenteToInscribe) {
+                                            if (selectedEvent.esParaPadres) {
+                                                addInscripcion(selectedEvent.id, undefined, Number(adolescenteToInscribe));
+                                            } else {
+                                                addInscripcion(selectedEvent.id, Number(adolescenteToInscribe), undefined);
+                                            }
+                                        }
+                                        setAdolescenteToInscribe(''); 
+                                    }} disabled={!adolescenteToInscribe} className="bg-primary text-white px-4 py-2 rounded-lg font-bold disabled:opacity-50 whitespace-nowrap">Inscribir</button>
                                 </div>
                                 <div className="max-h-[400px] overflow-y-auto space-y-3 pr-2 custom-scrollbar">
                                     {eventDetails.inscritos.map(item => (
@@ -530,7 +590,7 @@ const Eventos: React.FC = () => {
                                             <div className="flex justify-between items-start mb-3">
                                                 <div>
                                                     <div className="flex items-center gap-2">
-                                                        <p className="font-bold text-lg">{item.adolescente!.nombre} {item.adolescente!.apellido}</p>
+                                                        <p className="font-bold text-lg">{item.persona?.nombre} {item.persona?.apellido}</p>
                                                         <button 
                                                             onClick={() => { setInscripcionToDelete(item.inscripcion); setIsDeleteInscripcionConfirmOpen(true); }}
                                                             className="text-red-500 hover:text-red-400 p-1"
@@ -539,13 +599,34 @@ const Eventos: React.FC = () => {
                                                             <TrashIcon className="w-3.5 h-3.5" />
                                                         </button>
                                                     </div>
-                                                    <p className="text-xs text-text-secondary">Pagado: {formatCurrency(item.totalPagado)} | Deuda: <span className={item.debe > 0 ? 'text-red-400 font-bold' : 'text-green-400'}>{formatCurrency(item.debe)}</span></p>
+                                                    {selectedEvent.tieneCosto && (
+                                                        <p className="text-xs text-text-secondary">Pagado: {formatCurrency(item.totalPagado)} | Deuda: <span className={item.debe > 0 ? 'text-red-400 font-bold' : 'text-green-400'}>{formatCurrency(item.debe)}</span></p>
+                                                    )}
                                                 </div>
-                                                <button onClick={() => toggleHistory('ado', item.inscripcion.id)} className={`text-[10px] uppercase font-black transition-colors ${expandedHistory[`ado-${item.inscripcion.id}`] ? 'text-text-primary' : 'text-primary hover:underline'}`}>
-                                                    {expandedHistory[`ado-${item.inscripcion.id}`] ? 'Cerrar Historial' : 'Ver Historial'}
-                                                </button>
+                                                <div className="flex flex-col items-end gap-2">
+                                                    {selectedEvent.tieneCosto && (
+                                                        <button onClick={() => toggleHistory('ado', item.inscripcion.id)} className={`text-[10px] uppercase font-black transition-colors ${expandedHistory[`ado-${item.inscripcion.id}`] ? 'text-text-primary' : 'text-primary hover:underline'}`}>
+                                                            {expandedHistory[`ado-${item.inscripcion.id}`] ? 'Cerrar Historial' : 'Ver Historial'}
+                                                        </button>
+                                                    )}
+                                                    {selectedEvent.esParaPadres && (
+                                                        <label className="flex items-center gap-2 cursor-pointer bg-background/50 px-3 py-1.5 rounded-md border border-border/50 hover:bg-background/80 transition-colors">
+                                                            <input 
+                                                                type="checkbox" 
+                                                                checked={item.inscripcion.asistio || false} 
+                                                                onChange={(e) => {
+                                                                    updateInscripcion({ ...item.inscripcion, asistio: e.target.checked });
+                                                                }}
+                                                                className="h-4 w-4 text-green-500 rounded border-border focus:ring-green-500 bg-background"
+                                                            />
+                                                            <span className={`text-xs font-bold uppercase ${item.inscripcion.asistio ? 'text-green-400' : 'text-text-secondary'}`}>
+                                                                {item.inscripcion.asistio ? 'Asistió' : 'No Asistió'}
+                                                            </span>
+                                                        </label>
+                                                    )}
+                                                </div>
                                             </div>
-                                            {expandedHistory[`ado-${item.inscripcion.id}`] && (
+                                            {expandedHistory[`ado-${item.inscripcion.id}`] && selectedEvent.tieneCosto && (
                                                 <div className="mb-4 bg-background/50 rounded-lg border border-border/50 overflow-hidden animate-fade-in">
                                                     <table className="min-w-full text-[11px]">
                                                         <tbody className="divide-y divide-border/20">
@@ -713,7 +794,26 @@ const Eventos: React.FC = () => {
                                 </div>
                             </div>
                         )}
-                        <div className="flex justify-end pt-4 border-t border-border"><button onClick={() => setSelectedEvent(null)} className="bg-gray-600 text-white px-6 py-2 rounded-lg hover:bg-gray-700 font-bold">Cerrar Gestión</button></div>
+                        <div className="flex justify-between items-center pt-4 border-t border-border">
+                            <div>
+                                {selectedEvent.finalizado ? (
+                                    <button 
+                                        onClick={() => updateEvento({ ...selectedEvent, finalizado: false }).then(() => setSelectedEvent({ ...selectedEvent, finalizado: false }))} 
+                                        className="bg-yellow-500/20 text-yellow-500 px-4 py-2 rounded-lg hover:bg-yellow-500/30 font-bold border border-yellow-500/50 transition-colors"
+                                    >
+                                        Reabrir Evento
+                                    </button>
+                                ) : (
+                                    <button 
+                                        onClick={() => updateEvento({ ...selectedEvent, finalizado: true }).then(() => setSelectedEvent({ ...selectedEvent, finalizado: true }))} 
+                                        className="bg-red-500/20 text-red-500 px-4 py-2 rounded-lg hover:bg-red-500/30 font-bold border border-red-500/50 transition-colors"
+                                    >
+                                        Finalizar Evento
+                                    </button>
+                                )}
+                            </div>
+                            <button onClick={() => setSelectedEvent(null)} className="bg-gray-600 text-white px-6 py-2 rounded-lg hover:bg-gray-700 font-bold">Cerrar Gestión</button>
+                        </div>
                     </div>
                 </Modal>
             )}

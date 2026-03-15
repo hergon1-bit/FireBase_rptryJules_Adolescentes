@@ -8,25 +8,17 @@ import {
   Servidor, InscripcionServidor, PagoServidor
 } from '../types';
 
-const API_TIMEOUT = 45000;
-
-const withTimeout = <T>(promise: Promise<T>, ms = API_TIMEOUT): Promise<T> => {
-  return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error("La base de datos está tardando demasiado. Es posible que esté iniciando su servidor gratuito.")), ms);
-    promise
-      .then(res => { clearTimeout(timer); resolve(res); })
-      .catch(err => { clearTimeout(timer); reject(err); });
-  });
-};
+const API_TIMEOUT = 60000;
 
 const withRetry = async <T>(fn: () => Promise<T>, retries = 3, delay = 2000): Promise<T> => {
   try {
-    return await withTimeout(fn());
+    return await fn();
   } catch (error: any) {
+    const errorStr = String(error.message || error);
     const isRetryable = 
-        error.message?.includes('fetch') || 
-        error.message?.includes('NetworkError') || 
-        error.message?.includes('Timeout') ||
+        errorStr.includes('fetch') || 
+        errorStr.includes('NetworkError') || 
+        errorStr.includes('Timeout') ||
         error.status === 504 || 
         error.status === 502 ||
         error.status === 503 ||
@@ -37,6 +29,7 @@ const withRetry = async <T>(fn: () => Promise<T>, retries = 3, delay = 2000): Pr
       await new Promise(resolve => setTimeout(resolve, delay));
       return withRetry(fn, retries - 1, delay * 1.5);
     }
+    
     throw error;
   }
 };
@@ -127,12 +120,37 @@ export const api = {
 
   countUsuarios: async (): Promise<number> => {
     try {
-      const { count, error } = await withRetry(async () => 
-        supabase.from('usuarios').select('*', { count: 'exact', head: true })
+      console.log("Intentando contar usuarios en Supabase...");
+      
+      const withTimeout = <T,>(promise: Promise<T>, ms: number, fallback: T): Promise<T> => {
+        let id: NodeJS.Timeout;
+        const timeoutPromise = new Promise<T>((resolve) => {
+          id = setTimeout(() => {
+            console.warn(`Timeout de ${ms}ms alcanzado en countUsuarios.`);
+            resolve(fallback);
+          }, ms);
+        });
+        return Promise.race([promise, timeoutPromise]).finally(() => clearTimeout(id));
+      };
+
+      const result = await withTimeout(
+        withRetry(async () => supabase.from('usuarios').select('*', { count: 'exact', head: true })),
+        15000,
+        { count: -1, error: new Error('Timeout counting users') }
       ) as any;
-      if (error) return -1;
+
+      const { count, error } = result;
+
+      if (error) {
+        console.error("Error devuelto por Supabase en countUsuarios:", error);
+        throw error;
+      }
+      console.log("Conteo de usuarios exitoso:", count);
       return count ?? 0;
-    } catch (e) { return -1; }
+    } catch (e) { 
+        console.error("Error crítico contando usuarios:", e);
+        throw e; 
+    }
   },
 
   ensureDefaultRoles: async (): Promise<void> => {
@@ -225,6 +243,7 @@ export const api = {
             rol: i.rol, 
             tipo_beca: i.tipoBeca || 'Ninguna',
             monto_acordado: i.montoAcordado || 0,
+            // Fix: accessing property via camelCase from TS object i
             iglesia_paga_saldo: i.iglesiaPagaSaldo || false,
             precio_especial_local: i.precioEspecialLocal,
             notas: i.notas 
@@ -250,6 +269,7 @@ export const api = {
             rol: i.rol, 
             tipo_beca: i.tipoBeca,
             monto_acordado: i.montoAcordado,
+            // Fix: using correct camelCase property names from InscripcionServidor object i
             iglesia_paga_saldo: i.iglesiaPagaSaldo,
             precio_especial_local: i.precioEspecialLocal,
             notas: i.notas 
@@ -331,8 +351,10 @@ export const api = {
             fechaFin: e.fecha_fin, 
             horaFin: e.hora_fin, 
             tieneCosto: e.tiene_costo, 
-            costo_total: e.costo_total, 
-            costoPersona: e.costo_persona 
+            costoTotal: e.costo_total, 
+            costoPersona: e.costo_persona,
+            esParaPadres: e.es_para_padres,
+            finalizado: e.finalizado
         }));
     } catch (error) { return []; }
   },
@@ -365,12 +387,15 @@ export const api = {
   getInscripciones: async (): Promise<InscripcionEvento[]> => {
     try {
         const data = await fetchAllRows('inscripciones_eventos', '*');
+        console.log("Raw inscripciones_eventos:", data.slice(0, 2));
         return (data || []).map((i: any) => ({ 
             id: i.id, 
             eventoId: i.evento_id, 
             adolescenteId: i.adolescente_id, 
+            tutorId: i.tutor_id,
             fechaInscripcion: i.fecha_inscripcion, 
-            notas: i.notas 
+            notas: i.notas,
+            asistio: i.asistio
         }));
     } catch (e) { return []; }
   },
@@ -391,7 +416,8 @@ export const api = {
   getParticipantes: async (): Promise<ParticipanteEvento[]> => {
     const { data, error } = await supabase.from('participantes_eventos').select('*').range(0, MAX_ROWS);
     if (error) return [];
-    return (data || []).map((p: any) => ({ eventoId: p.evento_id, adolescenteId: p.adolescente_id }));
+    console.log("Raw participantes_eventos:", data.slice(0, 2));
+    return (data || []).map((p: any) => ({ eventoId: p.evento_id, adolescenteId: p.adolescente_id, tutorId: p.tutor_id }));
   },
 
   getUsuarios: async (): Promise<Usuario[]> => {
@@ -471,6 +497,7 @@ export const api = {
   updateAdolescente: async (adolescente: Adolescente): Promise<Adolescente> => {
     return withRetry(async () => {
         const { id, ...updateData } = adolescente;
+        // Fix: Changed updateData.fecha_nacimiento to updateData.fechaNacimiento
         const dbPayload = { nombre: updateData.nombre, apellido: updateData.apellido, cedula: updateData.cedula, registro: updateData.registro, fecha_nacimiento: updateData.fechaNacimiento, barrio: updateData.barrio, ciudad: updateData.ciudad, telefono: updateData.telefono, sexo: updateData.sexo, estado: updateData.estado };
         const { error } = await supabase.from('adolescentes').update(dbPayload).eq('id', id);
         if (error) throw new Error(error.message);
@@ -482,7 +509,7 @@ export const api = {
 
   createAdolescentesBulk: async (adolescentes: Omit<Adolescente, 'id'>[]): Promise<void> => {
     return withRetry(async () => {
-        // Fix: Use a.fechaNacimiento instead of a.fecha_nacimiento (camelCase vs snake_case mismatch)
+        // Fix: Changed a.fecha_nacimiento to a.fechaNacimiento
         await supabase.from('adolescentes').insert(adolescentes.map(a => ({ nombre: a.nombre, apellido: a.apellido, cedula: a.cedula, registro: a.registro, fecha_nacimiento: a.fechaNacimiento, barrio: a.barrio, ciudad: a.ciudad, telefono: a.telefono, sexo: a.sexo, estado: a.estado })));
     });
   },
@@ -498,7 +525,7 @@ export const api = {
   updateEncargado: async (encargado: Encargado): Promise<Encargado> => {
     return withRetry(async () => {
         const { id, ...updateData } = encargado;
-        // Fix: Use updateData.fechaNacimiento instead of updateData.fecha_nacimiento
+        // Fix: Changed updateData.fecha_nacimiento to updateData.fechaNacimiento
         const { error } = await supabase.from('encargados').update({ nombre: updateData.nombre, apellido: updateData.apellido, cedula: updateData.cedula, fecha_nacimiento: updateData.fechaNacimiento || null, barrio: updateData.barrio, ciudad: updateData.ciudad, telefono: updateData.telefono, email: updateData.email || null }).eq('id', id);
         if (error) throw new Error(error.message);
         return encargado;
@@ -509,7 +536,7 @@ export const api = {
 
   createEncargadosBulk: async (encargados: Omit<Encargado, 'id'>[]): Promise<void> => {
     return withRetry(async () => {
-        // Fix: Use e.fechaNacimiento instead of e.fecha_nacimiento
+        // Fix: Changed e.fecha_nacimiento to e.fechaNacimiento
         await supabase.from('encargados').insert(encargados.map(e => ({ nombre: e.nombre, apellido: e.apellido, cedula: e.cedula, fecha_nacimiento: e.fechaNacimiento || null, barrio: e.barrio, ciudad: e.ciudad, telefono: e.telefono, email: e.email || null })));
     });
   },
@@ -636,7 +663,7 @@ export const api = {
 
   createEvento: async (evento: Omit<Evento, 'id'>): Promise<Evento> => {
     return withRetry(async () => {
-        const { data, error } = await supabase.from('eventos').insert({ tema: evento.tema, lugar: evento.lugar, fecha_inicio: evento.fechaInicio, hora_inicio: evento.horaInicio, fecha_fin: evento.fechaFin, hora_fin: evento.horaFin, tiene_costo: evento.tieneCosto, costo_total: evento.costoTotal || null, costo_persona: evento.costoPersona || null }).select().single();
+        const { data, error } = await supabase.from('eventos').insert({ tema: evento.tema, lugar: evento.lugar, fecha_inicio: evento.fechaInicio, hora_inicio: evento.horaInicio, fecha_fin: evento.fechaFin, hora_fin: evento.horaFin, tiene_costo: evento.tieneCosto, costo_total: evento.costoTotal || null, costo_persona: evento.costoPersona || null, es_para_padres: evento.esParaPadres || false, finalizado: evento.finalizado || false }).select().single();
         const result = handleSupabaseData(data, error, 'createEvento') as any; 
         return { ...evento, id: result.id };
     });
@@ -645,7 +672,7 @@ export const api = {
   updateEvento: async (evento: Evento): Promise<Evento> => {
     return withRetry(async () => {
         const { id, ...updateData } = evento;
-        const { error } = await supabase.from('eventos').update({ tema: updateData.tema, lugar: updateData.lugar, fecha_inicio: updateData.fechaInicio, hora_inicio: updateData.horaInicio, fecha_fin: updateData.fechaFin, hora_fin: updateData.horaFin, tiene_costo: updateData.tieneCosto, costo_total: updateData.costoTotal || null, costo_persona: updateData.costoPersona || null }).eq('id', id);
+        const { error } = await supabase.from('eventos').update({ tema: updateData.tema, lugar: updateData.lugar, fecha_inicio: updateData.fechaInicio, hora_inicio: updateData.horaInicio, fecha_fin: updateData.fechaFin, hora_fin: updateData.horaFin, tiene_costo: updateData.tieneCosto, costo_total: updateData.costoTotal || null, costo_persona: updateData.costoPersona || null, es_para_padres: updateData.esParaPadres || false, finalizado: updateData.finalizado || false }).eq('id', id);
         if (error) throw new Error(error.message);
         return evento;
     });
@@ -678,7 +705,8 @@ export const api = {
     return withRetry(async () => {
         const { data, error } = await supabase.from('inscripciones_eventos').insert({ 
             evento_id: i.eventoId, 
-            adolescente_id: i.adolescenteId, 
+            adolescente_id: i.adolescenteId || null, 
+            tutor_id: i.tutorId || null,
             fecha_inscripcion: i.fechaInscripcion, 
             notas: i.notas 
         }).select().single();
@@ -687,6 +715,7 @@ export const api = {
             id: result.id,
             eventoId: result.evento_id,
             adolescenteId: result.adolescente_id,
+            tutorId: result.tutor_id,
             fechaInscripcion: result.fecha_inscripcion,
             notas: result.notas
         };
@@ -697,9 +726,11 @@ export const api = {
     return withRetry(async () => {
         const { error } = await supabase.from('inscripciones_eventos').update({ 
             evento_id: i.eventoId, 
-            adolescente_id: i.adolescenteId, 
+            adolescente_id: i.adolescenteId || null, 
+            tutor_id: i.tutorId || null,
             fecha_inscripcion: i.fechaInscripcion, 
-            notas: i.notas 
+            notas: i.notas,
+            asistio: i.asistio
         }).eq('id', i.id);
         if (error) throw new Error(error.message);
         return i;

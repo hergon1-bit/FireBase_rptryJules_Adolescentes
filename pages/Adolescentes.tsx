@@ -10,7 +10,7 @@ import { useForm } from '../hooks/useForm';
 import { DownloadCloudIcon, RefreshIcon } from '../components/ui/Icons';
 
 const Adolescentes: React.FC = () => {
-    const { adolescentes, addAdolescente, updateAdolescente, deleteAdolescente } = useData();
+    const { adolescentes, tutores, tutoresAdolescentes, addAdolescente, updateAdolescente, deleteAdolescente } = useData();
     const { hasPermission } = useAuth();
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
@@ -237,12 +237,17 @@ const Adolescentes: React.FC = () => {
                                 <th scope="col" className="px-6 py-4 text-left text-xs font-bold text-text-secondary uppercase tracking-widest">Nombre Completo</th>
                                 <th scope="col" className="px-6 py-4 text-left text-xs font-bold text-text-secondary uppercase tracking-widest">Cédula / Reg.</th>
                                 <th scope="col" className="px-6 py-4 text-left text-xs font-bold text-text-secondary uppercase tracking-widest">Edad</th>
+                                <th scope="col" className="px-6 py-4 text-left text-xs font-bold text-text-secondary uppercase tracking-widest">Tutores</th>
                                 <th scope="col" className="px-6 py-4 text-left text-xs font-bold text-text-secondary uppercase tracking-widest">Estado</th>
                                 <th scope="col" className="px-6 py-4 text-right text-xs font-bold text-text-secondary uppercase tracking-widest">Acciones</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-border">
-                            {filteredAdolescentes.map((ado) => (
+                            {filteredAdolescentes.map((ado) => {
+                                const adoTutoresIds = tutoresAdolescentes.filter(ta => ta.adolescenteId === ado.id).map(ta => ta.tutorId);
+                                const adoTutores = tutores.filter(t => adoTutoresIds.includes(t.id));
+
+                                return (
                                 <tr key={ado.id} className="hover:bg-primary/5 transition-colors">
                                     <td className="px-6 py-4 whitespace-nowrap">
                                         <div className="text-sm font-bold text-text-primary">{ado.nombre} {ado.apellido}</div>
@@ -253,6 +258,20 @@ const Adolescentes: React.FC = () => {
                                         <div className="text-[10px] text-primary font-bold">REG: {ado.registro || '-'}</div>
                                     </td>
                                     <td className="px-6 py-4 whitespace-nowrap text-sm text-text-secondary font-bold">{calcularEdad(ado.fechaNacimiento)} años</td>
+                                    <td className="px-6 py-4">
+                                        {adoTutores.length > 0 ? (
+                                            <div className="flex flex-col gap-1">
+                                                {adoTutores.map(t => (
+                                                    <div key={t.id} className="text-xs">
+                                                        <span className="font-bold text-text-primary">{t.nombre} {t.apellido}</span>
+                                                        {t.telefono && <span className="text-text-secondary ml-1">({t.telefono})</span>}
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        ) : (
+                                            <span className="text-xs text-text-secondary italic">Sin tutores</span>
+                                        )}
+                                    </td>
                                     <td className="px-6 py-4 whitespace-nowrap">
                                         <span className={`px-2 py-0.5 inline-flex text-[10px] leading-5 font-bold rounded-md uppercase tracking-wider ${
                                             ado.estado === 'Activo' ? 'bg-green-500/20 text-green-400 border border-green-500/30' :
@@ -267,7 +286,7 @@ const Adolescentes: React.FC = () => {
                                         {hasPermission('adolescentes', 'delete') && <button onClick={() => handleDeleteClick(ado)} className="text-red-500 hover:text-red-400 font-bold">Eliminar</button>}
                                     </td>
                                 </tr>
-                            ))}
+                            )})}
                         </tbody>
                     </table>
                 </div>

@@ -151,14 +151,18 @@ export interface Evento {
   tieneCosto: boolean;
   costoTotal?: number;
   costoPersona?: number;
+  esParaPadres?: boolean;
+  finalizado?: boolean;
 }
 
 export interface InscripcionEvento {
   id: number;
   eventoId: number;
-  adolescenteId: number;
+  adolescenteId?: number;
+  tutorId?: number;
   fechaInscripcion: string;
   notas?: string;
+  asistio?: boolean;
 }
 
 export interface PagoEvento {

@@ -1,6 +1,7 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import { useData } from '../contexts/DataContext';
+import { Adolescente } from '../types';
 import { formatDate, formatCurrency } from '../utils/helpers';
 import { RefreshIcon, CalculatorIcon, PrinterIcon, DownloadCloudIcon, UsersIcon, CheckCircleIcon, ClipboardListIcon, ShieldIcon, HeartHandshakeIcon } from '../components/ui/Icons';
 import jsPDF from 'jspdf';
@@ -28,7 +29,7 @@ interface GroupedHistoryEntry {
 
 const ReportesFinancieros: React.FC = () => {
     const { 
-        adolescentes, eventos, inscripciones, pagos, servidores, 
+        adolescentes, tutores, eventos, inscripciones, pagos, servidores, 
         inscripcionesServidores, pagosServidores, fetchData 
     } = useData();
     const [activeReport, setActiveReport] = useState<FinReportType>('balance');
@@ -61,13 +62,15 @@ const ReportesFinancieros: React.FC = () => {
         const costoPersonaDefault = event?.costoPersona || 0;
 
         const dataChicos = inscripciones.filter(i => i.eventoId === selectedEventoId).map(i => {
-            const ado = adolescentes.find(a => a.id === i.adolescenteId);
+            const persona = event?.esParaPadres 
+                ? tutores.find(t => t.id === i.tutorId)
+                : adolescentes.find(a => a.id === i.adolescenteId);
             const pagosAdo = pagos.filter(p => p.inscripcionId === i.id);
             const totalPagado = pagosAdo.reduce((sum, p) => sum + p.monto, 0);
             return {
-                tipo: 'CHICO',
-                nombre: ado ? `${ado.nombre} ${ado.apellido}` : 'Desconocido',
-                registro: ado?.registro || 'N/A',
+                tipo: event?.esParaPadres ? 'TUTOR' : 'CHICO',
+                nombre: persona ? `${persona.nombre} ${persona.apellido}` : 'Desconocido',
+                registro: event?.esParaPadres ? 'N/A' : (persona as Adolescente)?.registro || 'N/A',
                 rol: 'Participante',
                 pagado: totalPagado,
                 saldo: Math.max(0, costoPersonaDefault - totalPagado),
@@ -133,18 +136,21 @@ const ReportesFinancieros: React.FC = () => {
 
         const groups = new Map<string, GroupedHistoryEntry>();
 
-        // Procesar pagos de Chicos
+        // Procesar pagos de Chicos / Tutores
         pagos.filter(p => eventAdoInsc.some(i => i.id === p.inscripcionId)).forEach(p => {
             const insc = eventAdoInsc.find(i => i.id === p.inscripcionId)!;
-            const ado = adolescentes.find(a => a.id === insc.adolescenteId);
-            const key = `CHICO-${insc.adolescenteId}`;
+            const event = eventos.find(e => e.id === selectedEventoId);
+            const persona = event?.esParaPadres 
+                ? tutores.find(t => t.id === insc.tutorId)
+                : adolescentes.find(a => a.id === insc.adolescenteId);
+            const key = event?.esParaPadres ? `TUTOR-${insc.tutorId}` : `CHICO-${insc.adolescenteId}`;
             
             if (!groups.has(key)) {
                 groups.set(key, {
                     key,
-                    nombre: ado ? `${ado.nombre} ${ado.apellido}` : 'Desconocido',
-                    registro: ado?.registro || 'N/A',
-                    tipo: 'CHICO',
+                    nombre: persona ? `${persona.nombre} ${persona.apellido}` : 'Desconocido',
+                    registro: event?.esParaPadres ? 'N/A' : (persona as Adolescente)?.registro || 'N/A',
+                    tipo: event?.esParaPadres ? 'TUTOR' : 'CHICO',
                     rol: 'Participante',
                     montoTotal: 0,
                     ultimaFecha: p.fecha,
@@ -407,7 +413,7 @@ const ReportesFinancieros: React.FC = () => {
             body: totalsData,
             theme: 'plain',
             styles: { cellPadding: 2, fontSize: 10 },
-            columnStyles: { 0: { fontStyle: 'bold', width: 60 } },
+            columnStyles: { 0: { fontStyle: 'bold', cellWidth: 60 } },
             margin: { left: marginX }
         });
 
@@ -429,11 +435,11 @@ const ReportesFinancieros: React.FC = () => {
             body: countsData,
             theme: 'plain',
             styles: { cellPadding: 2, fontSize: 10 },
-            columnStyles: { 0: { fontStyle: 'bold', width: 60 } },
+            columnStyles: { 0: { fontStyle: 'bold', cellWidth: 60 } },
             margin: { left: marginX }
         });
 
-        const totalPages = doc.internal.getNumberOfPages();
+        const totalPages = doc.getNumberOfPages();
         for (let i = 1; i <= totalPages; i++) {
             doc.setPage(i);
             doc.setFontSize(8);

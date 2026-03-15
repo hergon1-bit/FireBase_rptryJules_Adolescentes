@@ -47,18 +47,48 @@ export const AuthProvider: React.FC<{children: React.ReactNode}> = ({ children }
   useEffect(() => {
     let isMounted = true;
 
-    const initAuth = async () => {
-      try {
-        // 1. Verificar si ya hay una sesión guardada en localStorage
-        const { data: { session }, error } = await supabase.auth.getSession();
-        
-        if (error) throw error;
+    const withTimeout = <T,>(promise: Promise<T>, ms: number, fallback: T): Promise<T> => {
+      let id: NodeJS.Timeout;
+      const timeoutPromise = new Promise<T>((resolve) => {
+        id = setTimeout(() => {
+          console.warn(`Timeout de ${ms}ms alcanzado.`);
+          resolve(fallback);
+        }, ms);
+      });
+      return Promise.race([promise, timeoutPromise]).finally(() => clearTimeout(id));
+    };
 
-        if (session?.user && isMounted) {
-          await loadUserProfile(session.user.id);
+    const initAuth = async () => {
+      console.log("Iniciando Auth...");
+      try {
+        console.log("Obteniendo sesión de Supabase...");
+        
+        const result = await withTimeout(supabase.auth.getSession(), 15000, { data: { session: null }, error: new Error('Timeout getting session') });
+        const { data: { session }, error } = result;
+        
+        if (error) {
+          console.error("Error de Supabase Auth:", error);
+          if (error.message?.includes('Refresh Token Not Found') || error.message?.includes('Invalid Refresh Token') || error.message?.includes('Timeout')) {
+             console.log("Token inválido o timeout, limpiando sesión...");
+             await withTimeout(supabase.auth.signOut(), 5000, undefined);
+          } else {
+             throw error;
+          }
         }
-      } catch (err) {
-        console.error("Error inicializando sesión:", err);
+
+        if (session?.user) {
+          console.log("Sesión encontrada para el usuario:", session.user.id);
+          await withTimeout(loadUserProfile(session.user.id), 15000, false);
+        } else {
+          console.log("No hay sesión activa.");
+        }
+      } catch (err: any) {
+        console.error("Error inicializando sesión (posible bloqueo de red):", err);
+        const errMsg = String(err.message || err);
+        if (errMsg.includes('Refresh Token Not Found') || errMsg.includes('Invalid Refresh Token') || errMsg.includes('Timeout')) {
+           console.log("Token inválido capturado en catch, limpiando sesión...");
+           await withTimeout(supabase.auth.signOut(), 5000, undefined);
+        }
       } finally {
         if (isMounted) setLoading(false);
       }
@@ -74,7 +104,7 @@ export const AuthProvider: React.FC<{children: React.ReactNode}> = ({ children }
         // Solo cargar si el usuario cambió o no tenemos perfil
         if (processingId.current !== session.user.id) {
           setLoading(true);
-          await loadUserProfile(session.user.id);
+          await withTimeout(loadUserProfile(session.user.id), 15000, false);
           setLoading(false);
         }
       } else {

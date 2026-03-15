@@ -34,7 +34,8 @@ interface DataContextType {
   addAdolescente: (a: Omit<Adolescente, 'id'>) => Promise<void>;
   updateAdolescente: (a: Adolescente) => Promise<void>;
   deleteAdolescente: (id: number) => Promise<void>;
-  addAdolescentesBulk: (a: Omit<Adolescente, 'id'>) => Promise<void>;
+  // Fix: changed parameter type to array to match implementation and usage
+  addAdolescentesBulk: (a: Omit<Adolescente, 'id'>[]) => Promise<void>;
   
   addServidor: (s: Omit<Servidor, 'id'>) => Promise<void>;
   updateServidor: (s: Servidor) => Promise<void>;
@@ -68,7 +69,7 @@ interface DataContextType {
   updateEvento: (e: Evento) => Promise<void>;
   deleteEvento: (id: number) => Promise<void>;
   
-  addInscripcion: (eId: number, aId: number) => Promise<void>;
+  addInscripcion: (eId: number, aId?: number, tId?: number) => Promise<void>;
   updateInscripcion: (i: InscripcionEvento) => Promise<void>;
   deleteInscripcion: (id: number) => Promise<void>;
   
@@ -129,34 +130,33 @@ export const DataProvider: React.FC<{children: React.ReactNode}> = ({ children }
         setAdolescentes(ados);
     } catch (e) { console.error("Error loading adolescents", e); }
 
-    const loaders = [
-        { fn: api.getEncargados, set: setEncargados },
-        { fn: api.getReuniones, set: setReuniones },
-        { fn: api.getDevocionales, set: setDevocionales },
-        { fn: api.getEntregasDevocionales, set: setEntregasDevocionales },
-        { fn: api.getAsistencias, set: setAsistencias },
-        { fn: api.getTutores, set: setTutores },
-        { fn: api.getEventos, set: setEventos },
-        { fn: api.getUsuarios, set: setUsuarios },
-        { fn: api.getRoles, set: setRoles },
-        { fn: api.getTutorAdolescente, set: setTutoresAdolescentes },
-        { fn: api.getInscripciones, set: setInscripciones },
-        { fn: api.getPagos, set: setPagos },
-        { fn: api.getParticipantes, set: setParticipantes },
-        { fn: api.getCumpleanosCelebrados, set: setCelebraciones },
-        { fn: api.getServidores, set: setServidores },
-        { fn: api.getInscripcionesServidores, set: setInscripcionesServidores },
-        { fn: api.getPagosServidores, set: setPagosServidores }
-    ];
-
-    loaders.forEach(async ({ fn, set }) => {
+    // Load tables in background
+    const loadTable = async (fn: () => Promise<any>, set: (data: any) => void) => {
         try {
             const data = await fn();
-            set(data as any);
+            set(data);
         } catch (e) {
             console.warn(`Error loading table in background:`, e);
         }
-    });
+    };
+
+    loadTable(api.getEncargados, setEncargados);
+    loadTable(api.getReuniones, setReuniones);
+    loadTable(api.getDevocionales, setDevocionales);
+    loadTable(api.getEntregasDevocionales, setEntregasDevocionales);
+    loadTable(api.getAsistencias, setAsistencias);
+    loadTable(api.getTutores, setTutores);
+    loadTable(api.getEventos, setEventos);
+    loadTable(api.getUsuarios, setUsuarios);
+    loadTable(api.getRoles, setRoles);
+    loadTable(api.getTutorAdolescente, setTutoresAdolescentes);
+    loadTable(api.getInscripciones, setInscripciones);
+    loadTable(api.getPagos, setPagos);
+    loadTable(api.getParticipantes, setParticipantes);
+    loadTable(api.getCumpleanosCelebrados, setCelebraciones);
+    loadTable(api.getServidores, setServidores);
+    loadTable(api.getInscripcionesServidores, setInscripcionesServidores);
+    loadTable(api.getPagosServidores, setPagosServidores);
   }, []);
 
   useEffect(() => {
@@ -282,8 +282,8 @@ export const DataProvider: React.FC<{children: React.ReactNode}> = ({ children }
       setEventos(prev => prev.filter(e => e.id !== id));
   };
 
-  const addInscripcion = async (eId: number, aId: number) => { 
-    await api.createInscripcion({ eventoId: eId, adolescenteId: aId, fechaInscripcion: new Date().toISOString().split('T')[0] }); 
+  const addInscripcion = async (eId: number, aId?: number, tId?: number) => { 
+    await api.createInscripcion({ eventoId: eId, adolescenteId: aId, tutorId: tId, fechaInscripcion: new Date().toISOString().split('T')[0] }); 
     const freshIns = await api.getInscripciones();
     setInscripciones(freshIns);
   };
