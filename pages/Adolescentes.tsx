@@ -238,6 +238,7 @@ const Adolescentes: React.FC = () => {
                                 <th scope="col" className="px-6 py-4 text-left text-xs font-bold text-text-secondary uppercase tracking-widest">Cédula / Reg.</th>
                                 <th scope="col" className="px-6 py-4 text-left text-xs font-bold text-text-secondary uppercase tracking-widest">Edad</th>
                                 <th scope="col" className="px-6 py-4 text-left text-xs font-bold text-text-secondary uppercase tracking-widest">Tutores</th>
+                                <th scope="col" className="px-6 py-4 text-left text-xs font-bold text-text-secondary uppercase tracking-widest">Documentos</th>
                                 <th scope="col" className="px-6 py-4 text-left text-xs font-bold text-text-secondary uppercase tracking-widest">Estado</th>
                                 <th scope="col" className="px-6 py-4 text-right text-xs font-bold text-text-secondary uppercase tracking-widest">Acciones</th>
                             </tr>
@@ -271,6 +272,16 @@ const Adolescentes: React.FC = () => {
                                         ) : (
                                             <span className="text-xs text-text-secondary italic">Sin tutores</span>
                                         )}
+                                    </td>
+                                    <td className="px-6 py-4 whitespace-nowrap">
+                                        <div className="flex flex-col gap-1">
+                                            <span className={`text-[10px] font-bold uppercase ${ado.fichaInscripcion ? 'text-green-500' : 'text-red-500'}`}>
+                                                Ficha: {ado.fichaInscripcion ? 'Sí' : 'No'}
+                                            </span>
+                                            <span className={`text-[10px] font-bold uppercase ${ado.autorizacion ? 'text-green-500' : 'text-red-500'}`}>
+                                                Autorización: {ado.autorizacion ? 'Sí' : 'No'}
+                                            </span>
+                                        </div>
                                     </td>
                                     <td className="px-6 py-4 whitespace-nowrap">
                                         <span className={`px-2 py-0.5 inline-flex text-[10px] leading-5 font-bold rounded-md uppercase tracking-wider ${
@@ -342,6 +353,30 @@ const Adolescentes: React.FC = () => {
                             <option value="Inactivo">Inactivo</option>
                             <option value="Anulado">Anulado</option>
                         </SelectField>
+                        <div className="flex flex-col justify-center space-y-2 mt-4 md:mt-0">
+                            <label className="flex items-center space-x-2 cursor-pointer">
+                                <input 
+                                    type="checkbox" 
+                                    name="fichaInscripcion" 
+                                    checked={values.fichaInscripcion || false} 
+                                    onChange={(e) => setValues({...values, fichaInscripcion: e.target.checked})} 
+                                    disabled={isSaving}
+                                    className="rounded border-border text-primary focus:ring-primary bg-background w-4 h-4"
+                                />
+                                <span className="text-sm font-medium text-text-primary">Entregó Ficha de Inscripción</span>
+                            </label>
+                            <label className="flex items-center space-x-2 cursor-pointer">
+                                <input 
+                                    type="checkbox" 
+                                    name="autorizacion" 
+                                    checked={values.autorizacion || false} 
+                                    onChange={(e) => setValues({...values, autorizacion: e.target.checked})} 
+                                    disabled={isSaving}
+                                    className="rounded border-border text-primary focus:ring-primary bg-background w-4 h-4"
+                                />
+                                <span className="text-sm font-medium text-text-primary">Entregó Autorización</span>
+                            </label>
+                        </div>
                     </div>
                     <div className="flex justify-end space-x-3 pt-6 border-t border-border mt-4">
                         <button type="button" onClick={closeModal} disabled={isSaving} className="bg-gray-600 text-white px-5 py-2 rounded-lg hover:bg-gray-700 disabled:opacity-50 font-medium transition-colors">Cancelar</button>

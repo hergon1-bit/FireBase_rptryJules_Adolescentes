@@ -48,6 +48,8 @@ export interface Adolescente {
   telefono: string;
   sexo: Sexo;
   estado: EstadoAdolescente;
+  fichaInscripcion?: boolean;
+  autorizacion?: boolean;
 }
 
 // --- SERVIDORES (APOYO) ---

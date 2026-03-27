@@ -183,9 +183,9 @@ export const api = {
 
   getAdolescentes: async (): Promise<Adolescente[]> => {
     try {
-        const columns = 'id, nombre, apellido, cedula, registro, fecha_nacimiento, barrio, ciudad, telefono, sexo, estado';
+        const columns = 'id, nombre, apellido, cedula, registro, fecha_nacimiento, barrio, ciudad, telefono, sexo, estado, ficha_inscripcion, autorizacion';
         const data = await fetchAllRows('adolescentes', columns, { column: 'nombre', ascending: true });
-        return data.map((a: any) => ({ id: a.id, nombre: a.nombre, apellido: a.apellido, cedula: a.cedula, registro: a.registro || '', fechaNacimiento: a.fecha_nacimiento, barrio: a.barrio || '', ciudad: a.ciudad || '', telefono: a.telefono || '', sexo: a.sexo, estado: a.estado }));
+        return data.map((a: any) => ({ id: a.id, nombre: a.nombre, apellido: a.apellido, cedula: a.cedula, registro: a.registro || '', fechaNacimiento: a.fecha_nacimiento, barrio: a.barrio || '', ciudad: a.ciudad || '', telefono: a.telefono || '', sexo: a.sexo, estado: a.estado, fichaInscripcion: a.ficha_inscripcion, autorizacion: a.autorizacion }));
     } catch (error: any) { return []; }
   },
 
@@ -487,7 +487,7 @@ export const api = {
 
   createAdolescente: async (adolescente: Omit<Adolescente, 'id'>): Promise<Adolescente> => {
     return withRetry(async () => {
-        const dbPayload = { nombre: adolescente.nombre, apellido: adolescente.apellido, cedula: adolescente.cedula, registro: adolescente.registro, fecha_nacimiento: adolescente.fechaNacimiento, barrio: adolescente.barrio, ciudad: adolescente.ciudad, telefono: adolescente.telefono, sexo: adolescente.sexo, estado: adolescente.estado };
+        const dbPayload = { nombre: adolescente.nombre, apellido: adolescente.apellido, cedula: adolescente.cedula, registro: adolescente.registro, fecha_nacimiento: adolescente.fechaNacimiento, barrio: adolescente.barrio, ciudad: adolescente.ciudad, telefono: adolescente.telefono, sexo: adolescente.sexo, estado: adolescente.estado, ficha_inscripcion: adolescente.fichaInscripcion || false, autorizacion: adolescente.autorizacion || false };
         const { data, error } = await supabase.from('adolescentes').insert(dbPayload).select().single();
         const result = handleSupabaseData(data, error, 'createAdolescente');
         return { ...adolescente, id: result.id };
@@ -498,7 +498,7 @@ export const api = {
     return withRetry(async () => {
         const { id, ...updateData } = adolescente;
         // Fix: Changed updateData.fecha_nacimiento to updateData.fechaNacimiento
-        const dbPayload = { nombre: updateData.nombre, apellido: updateData.apellido, cedula: updateData.cedula, registro: updateData.registro, fecha_nacimiento: updateData.fechaNacimiento, barrio: updateData.barrio, ciudad: updateData.ciudad, telefono: updateData.telefono, sexo: updateData.sexo, estado: updateData.estado };
+        const dbPayload = { nombre: updateData.nombre, apellido: updateData.apellido, cedula: updateData.cedula, registro: updateData.registro, fecha_nacimiento: updateData.fechaNacimiento, barrio: updateData.barrio, ciudad: updateData.ciudad, telefono: updateData.telefono, sexo: updateData.sexo, estado: updateData.estado, ficha_inscripcion: updateData.fichaInscripcion || false, autorizacion: updateData.autorizacion || false };
         const { error } = await supabase.from('adolescentes').update(dbPayload).eq('id', id);
         if (error) throw new Error(error.message);
         return adolescente;
@@ -510,7 +510,7 @@ export const api = {
   createAdolescentesBulk: async (adolescentes: Omit<Adolescente, 'id'>[]): Promise<void> => {
     return withRetry(async () => {
         // Fix: Changed a.fecha_nacimiento to a.fechaNacimiento
-        await supabase.from('adolescentes').insert(adolescentes.map(a => ({ nombre: a.nombre, apellido: a.apellido, cedula: a.cedula, registro: a.registro, fecha_nacimiento: a.fechaNacimiento, barrio: a.barrio, ciudad: a.ciudad, telefono: a.telefono, sexo: a.sexo, estado: a.estado })));
+        await supabase.from('adolescentes').insert(adolescentes.map(a => ({ nombre: a.nombre, apellido: a.apellido, cedula: a.cedula, registro: a.registro, fecha_nacimiento: a.fechaNacimiento, barrio: a.barrio, ciudad: a.ciudad, telefono: a.telefono, sexo: a.sexo, estado: a.estado, ficha_inscripcion: a.fichaInscripcion || false, autorizacion: a.autorizacion || false })));
     });
   },
 

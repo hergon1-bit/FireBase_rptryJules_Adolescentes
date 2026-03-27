@@ -7,7 +7,7 @@ import { RefreshIcon, PrinterIcon, UsersIcon, CalendarDaysIcon, ClipboardListIco
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
-type ReportType = 'cumpleanos' | 'asistenciaReunion' | 'ausencias' | 'activos' | 'adolescentesTutores' | 'tutores';
+type ReportType = 'cumpleanos' | 'asistenciaReunion' | 'ausencias' | 'activos' | 'adolescentesTutores' | 'tutores' | 'documentos';
 
 const Reportes: React.FC = () => {
     const { 
@@ -80,6 +80,15 @@ const Reportes: React.FC = () => {
             case 'tutores':
                 return tutores.sort((a, b) => a.nombre.localeCompare(b.nombre));
 
+            case 'documentos':
+                return adolescentes.filter(a => a.estado === 'Activo').sort((a, b) => {
+                    // Sort by missing documents first, then by name
+                    const aMissing = (!a.fichaInscripcion || !a.autorizacion) ? 1 : 0;
+                    const bMissing = (!b.fichaInscripcion || !b.autorizacion) ? 1 : 0;
+                    if (aMissing !== bMissing) return bMissing - aMissing;
+                    return a.nombre.localeCompare(b.nombre);
+                });
+
             default: return [];
         }
     }, [activeReport, adolescentes, reuniones, asistencias, selectedReunionId, tutores, tutoresAdolescentes]);
@@ -90,7 +99,8 @@ const Reportes: React.FC = () => {
                       activeReport === 'asistenciaReunion' ? 'ASISTENCIA POR REUNIÓN' :
                       activeReport === 'ausencias' ? 'ALERTA DE AUSENCIAS' : 
                       activeReport === 'adolescentesTutores' ? 'ADOLESCENTES Y SUS TUTORES' :
-                      activeReport === 'tutores' ? 'LISTADO DE TUTORES' : 'LISTA DE ACTIVOS';
+                      activeReport === 'tutores' ? 'LISTADO DE TUTORES' : 
+                      activeReport === 'documentos' ? 'ESTADO DE DOCUMENTACIÓN' : 'LISTA DE ACTIVOS';
         
         doc.setFontSize(16);
         doc.text(`Reporte de Seguimiento: ${title}`, 14, 15);
@@ -114,6 +124,8 @@ const Reportes: React.FC = () => {
             ? [['Adolescente', 'Cédula', 'Tutores (Nombre y Teléfono)']]
             : activeReport === 'tutores'
             ? [['Nombre', 'Cédula', 'Teléfono', 'Parentesco', 'Barrio', 'Ciudad']]
+            : activeReport === 'documentos'
+            ? [['Nombre', 'Cédula', 'Ficha Inscripción', 'Autorización', 'Estado Documentación']]
             : activeReport === 'activos'
             ? [['Nombre', 'Fecha Nacimiento', 'Reg. Salud', 'Edad', 'Barrio', 'Teléfono']]
             : activeReport === 'asistenciaReunion'
@@ -127,6 +139,21 @@ const Reportes: React.FC = () => {
             }
             if (activeReport === 'tutores') {
                 return [`${item.nombre} ${item.apellido}`, item.cedula, item.telefono || '-', item.parentesco || '-', item.barrio || '-', item.ciudad || '-'];
+            }
+            if (activeReport === 'documentos') {
+                const a = item as Adolescente;
+                let estadoDoc = 'Al día';
+                if (!a.fichaInscripcion && !a.autorizacion) estadoDoc = 'Faltan ambos';
+                else if (!a.fichaInscripcion) estadoDoc = 'Falta Ficha';
+                else if (!a.autorizacion) estadoDoc = 'Falta Autorización';
+                
+                return [
+                    `${a.nombre} ${a.apellido}`, 
+                    a.cedula, 
+                    a.fichaInscripcion ? 'Sí' : 'No', 
+                    a.autorizacion ? 'Sí' : 'No',
+                    estadoDoc
+                ];
             }
 
             const a = item as Adolescente;
@@ -194,6 +221,9 @@ const Reportes: React.FC = () => {
                 <button onClick={() => setActiveReport('tutores')} className={`px-4 py-2 rounded-md text-sm font-medium flex items-center gap-2 transition ${activeReport === 'tutores' ? 'bg-primary text-white shadow-md' : 'bg-surface border border-border text-text-secondary hover:bg-background'}`}>
                     <UsersIcon className="w-4 h-4" /> Listado de Tutores
                 </button>
+                <button onClick={() => setActiveReport('documentos')} className={`px-4 py-2 rounded-md text-sm font-medium flex items-center gap-2 transition ${activeReport === 'documentos' ? 'bg-primary text-white shadow-md' : 'bg-surface border border-border text-text-secondary hover:bg-background'}`}>
+                    <ClipboardListIcon className="w-4 h-4" /> Estado de Documentos
+                </button>
             </div>
 
             <div className="bg-surface p-6 rounded-lg shadow-lg border border-border">
@@ -229,6 +259,14 @@ const Reportes: React.FC = () => {
                                         <th className="p-4">Parentesco</th>
                                         <th className="p-4">Barrio</th>
                                         <th className="p-4">Ciudad</th>
+                                    </>
+                                ) : activeReport === 'documentos' ? (
+                                    <>
+                                        <th className="p-4">Nombre Completo</th>
+                                        <th className="p-4">Cédula</th>
+                                        <th className="p-4">Ficha Inscripción</th>
+                                        <th className="p-4">Autorización</th>
+                                        <th className="p-4">Estado Documentación</th>
                                     </>
                                 ) : (
                                     <>
@@ -277,6 +315,41 @@ const Reportes: React.FC = () => {
                                             <td className="p-4 text-text-secondary text-xs">{item.parentesco || '-'}</td>
                                             <td className="p-4 text-text-secondary text-xs">{item.barrio || '-'}</td>
                                             <td className="p-4 text-text-secondary text-xs">{item.ciudad || '-'}</td>
+                                        </tr>
+                                    );
+                                }
+                                if (activeReport === 'documentos') {
+                                    const a = item as Adolescente;
+                                    let estadoDoc = 'Al día';
+                                    let estadoColor = 'text-green-500';
+                                    if (!a.fichaInscripcion && !a.autorizacion) {
+                                        estadoDoc = 'Faltan ambos';
+                                        estadoColor = 'text-red-500';
+                                    } else if (!a.fichaInscripcion) {
+                                        estadoDoc = 'Falta Ficha';
+                                        estadoColor = 'text-orange-500';
+                                    } else if (!a.autorizacion) {
+                                        estadoDoc = 'Falta Autorización';
+                                        estadoColor = 'text-orange-500';
+                                    }
+                                    
+                                    return (
+                                        <tr key={a.id} className="hover:bg-background/40 transition-colors group">
+                                            <td className="p-4 font-bold text-text-primary group-hover:text-primary">{a.nombre} {a.apellido}</td>
+                                            <td className="p-4 text-text-secondary font-mono font-bold">{a.cedula}</td>
+                                            <td className="p-4">
+                                                <span className={`text-xs font-bold uppercase ${a.fichaInscripcion ? 'text-green-500' : 'text-red-500'}`}>
+                                                    {a.fichaInscripcion ? 'Sí' : 'No'}
+                                                </span>
+                                            </td>
+                                            <td className="p-4">
+                                                <span className={`text-xs font-bold uppercase ${a.autorizacion ? 'text-green-500' : 'text-red-500'}`}>
+                                                    {a.autorizacion ? 'Sí' : 'No'}
+                                                </span>
+                                            </td>
+                                            <td className={`p-4 text-xs font-bold uppercase ${estadoColor}`}>
+                                                {estadoDoc}
+                                            </td>
                                         </tr>
                                     );
                                 }
