@@ -40,10 +40,12 @@ const normalizeRol = (rol: any): Rol => {
       return {
           id: 0, nombre: 'Invitado',
           permisos: {
-            adolescentes: { ...defaultPerms }, encargados: { ...defaultPerms }, reuniones: { ...defaultPerms },
-            tutores: { ...defaultPerms }, eventos: { ...defaultPerms }, usuarios: { ...defaultPerms },
-            devocionales: { ...defaultPerms }, entregas: { ...defaultPerms }, inscripciones: { ...defaultPerms },
-            pagos: { ...defaultPerms }, participantes: { ...defaultPerms },
+            adolescentes: { ...defaultPerms }, asistencias: { ...defaultPerms }, celebraciones_cumpleanos: { ...defaultPerms },
+            devocionales: { ...defaultPerms }, encargados: { ...defaultPerms }, entregas_devocionales: { ...defaultPerms },
+            eventos: { ...defaultPerms }, inscripciones_eventos: { ...defaultPerms }, inscripciones_servidores: { ...defaultPerms },
+            pagos_eventos: { ...defaultPerms }, pagos_servidores: { ...defaultPerms }, participantes_eventos: { ...defaultPerms },
+            reuniones: { ...defaultPerms }, roles: { ...defaultPerms }, servidores: { ...defaultPerms },
+            tutor_adolescente: { ...defaultPerms }, tutores: { ...defaultPerms }, usuarios: { ...defaultPerms },
           }
       };
   }
@@ -51,23 +53,36 @@ const normalizeRol = (rol: any): Rol => {
     ...rol,
     permisos: {
       adolescentes: rol.permisos?.adolescentes || { ...defaultPerms },
-      encargados: rol.permisos?.encargados || { ...defaultPerms },
-      reuniones: rol.permisos?.reuniones || { ...defaultPerms },
-      tutores: rol.permisos?.tutores || { ...defaultPerms },
-      eventos: rol.permisos?.eventos || { ...defaultPerms },
-      usuarios: rol.permisos?.usuarios || { ...defaultPerms },
+      asistencias: rol.permisos?.asistencias || rol.permisos?.reuniones || { ...defaultPerms },
+      celebraciones_cumpleanos: rol.permisos?.celebraciones_cumpleanos || { ...defaultPerms },
       devocionales: rol.permisos?.devocionales || rol.permisos?.tareas || { ...defaultPerms },
-      entregas: rol.permisos?.entregas || rol.permisos?.tareas || { ...defaultPerms },
-      inscripciones: rol.permisos?.inscripciones || { ...defaultPerms },
-      pagos: rol.permisos?.pagos || { ...defaultPerms },
-      participantes: rol.permisos?.participantes || { ...defaultPerms },
+      encargados: rol.permisos?.encargados || { ...defaultPerms },
+      entregas_devocionales: rol.permisos?.entregas_devocionales || rol.permisos?.entregas || rol.permisos?.tareas || { ...defaultPerms },
+      eventos: rol.permisos?.eventos || { ...defaultPerms },
+      inscripciones_eventos: rol.permisos?.inscripciones_eventos || rol.permisos?.inscripciones || { ...defaultPerms },
+      inscripciones_servidores: rol.permisos?.inscripciones_servidores || rol.permisos?.inscripciones || { ...defaultPerms },
+      pagos_eventos: rol.permisos?.pagos_eventos || rol.permisos?.pagos || { ...defaultPerms },
+      pagos_servidores: rol.permisos?.pagos_servidores || rol.permisos?.pagos || { ...defaultPerms },
+      participantes_eventos: rol.permisos?.participantes_eventos || rol.permisos?.participantes || { ...defaultPerms },
+      reuniones: rol.permisos?.reuniones || { ...defaultPerms },
+      roles: rol.permisos?.roles || rol.permisos?.usuarios || { ...defaultPerms },
+      servidores: rol.permisos?.servidores || rol.permisos?.participantes || { ...defaultPerms },
+      tutor_adolescente: rol.permisos?.tutor_adolescente || rol.permisos?.tutores || { ...defaultPerms },
+      tutores: rol.permisos?.tutores || { ...defaultPerms },
+      usuarios: rol.permisos?.usuarios || { ...defaultPerms },
     }
   };
 };
 
 const handleSupabaseData = <T>(data: T | null, error: any, context: string): T => {
     if (error) {
-        const errorMsg = error.message || (typeof error === 'string' ? error : JSON.stringify(error));
+        let errorMsg = error.message || (typeof error === 'string' ? error : JSON.stringify(error));
+        
+        // Traducir error de RLS de Supabase
+        if (errorMsg.includes('violates row-level security policy') || errorMsg.includes('new row violates row-level security policy')) {
+            errorMsg = 'No tienes permisos suficientes para realizar esta acción en la base de datos.';
+        }
+        
         console.error(`Error crítico en API (${context}):`, error);
         throw new Error(errorMsg);
     }
@@ -118,15 +133,15 @@ export const api = {
     }
   },
 
-  countUsuarios: async (): Promise<number> => {
+  isFirstRun: async (): Promise<boolean> => {
     try {
-      console.log("Intentando contar usuarios en Supabase...");
+      console.log("Verificando si es la primera ejecución...");
       
       const withTimeout = <T,>(promise: Promise<T>, ms: number, fallback: T): Promise<T> => {
         let id: NodeJS.Timeout;
         const timeoutPromise = new Promise<T>((resolve) => {
           id = setTimeout(() => {
-            console.warn(`Timeout de ${ms}ms alcanzado en countUsuarios.`);
+            console.warn(`Timeout de ${ms}ms alcanzado en isFirstRun.`);
             resolve(fallback);
           }, ms);
         });
@@ -134,21 +149,21 @@ export const api = {
       };
 
       const result = await withTimeout(
-        withRetry(async () => supabase.from('usuarios').select('*', { count: 'exact', head: true })),
+        withRetry(async () => supabase.rpc('is_first_run')),
         15000,
-        { count: -1, error: new Error('Timeout counting users') }
+        { data: null, error: new Error('Timeout checking first run') }
       ) as any;
 
-      const { count, error } = result;
+      const { data, error } = result;
 
       if (error) {
-        console.error("Error devuelto por Supabase en countUsuarios:", error);
+        console.error("Error devuelto por Supabase en isFirstRun:", error);
         throw error;
       }
-      console.log("Conteo de usuarios exitoso:", count);
-      return count ?? 0;
+      console.log("Verificación de primera ejecución exitosa:", data);
+      return data === true;
     } catch (e) { 
-        console.error("Error crítico contando usuarios:", e);
+        console.error("Error crítico verificando primera ejecución:", e);
         throw e; 
     }
   },
@@ -160,8 +175,8 @@ export const api = {
       const defaultPerms = { read: true, create: true, update: true, delete: true };
       const guestPerms = { read: true, create: false, update: false, delete: false };
       const roles = [
-        { id: 1, nombre: 'Administrador', permisos: { adolescentes: defaultPerms, encargados: defaultPerms, reuniones: defaultPerms, tutores: defaultPerms, eventos: defaultPerms, usuarios: defaultPerms, devocionales: defaultPerms, entregas: defaultPerms, inscripciones: defaultPerms, pagos: defaultPerms, participantes: defaultPerms } },
-        { id: 2, nombre: 'Encargado', permisos: { adolescentes: defaultPerms, encargados: guestPerms, reuniones: defaultPerms, tutores: defaultPerms, eventos: guestPerms, usuarios: guestPerms, devocionales: guestPerms, entregas: defaultPerms, inscripciones: defaultPerms, pagos: defaultPerms, participantes: defaultPerms } }
+        { id: 1, nombre: 'Administrador', permisos: { adolescentes: defaultPerms, asistencias: defaultPerms, celebraciones_cumpleanos: defaultPerms, devocionales: defaultPerms, encargados: defaultPerms, entregas_devocionales: defaultPerms, eventos: defaultPerms, inscripciones_eventos: defaultPerms, inscripciones_servidores: defaultPerms, pagos_eventos: defaultPerms, pagos_servidores: defaultPerms, participantes_eventos: defaultPerms, reuniones: defaultPerms, roles: defaultPerms, servidores: defaultPerms, tutor_adolescente: defaultPerms, tutores: defaultPerms, usuarios: defaultPerms } },
+        { id: 2, nombre: 'Encargado', permisos: { adolescentes: defaultPerms, asistencias: defaultPerms, celebraciones_cumpleanos: guestPerms, devocionales: guestPerms, encargados: guestPerms, entregas_devocionales: defaultPerms, eventos: guestPerms, inscripciones_eventos: defaultPerms, inscripciones_servidores: defaultPerms, pagos_eventos: defaultPerms, pagos_servidores: defaultPerms, participantes_eventos: defaultPerms, reuniones: defaultPerms, roles: guestPerms, servidores: defaultPerms, tutor_adolescente: defaultPerms, tutores: defaultPerms, usuarios: guestPerms } }
       ];
       await supabase.from('roles').insert(roles);
     } catch (e) {}
@@ -623,6 +638,20 @@ export const api = {
     });
   },
   
+  setupFirstAdmin: async (usuario: any): Promise<void> => {
+    const tempSupabase = createClient(supabaseUrl, supabaseKey, { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false } });
+    const { data: authData, error: authError } = await tempSupabase.auth.signUp({ email: usuario.email, password: usuario.password!, options: { data: { nombre: usuario.nombre, rol_id: usuario.rolId } } });
+    if (authError) throw new Error(authError.message);
+    
+    const { error } = await supabase.rpc('setup_first_admin', {
+        admin_id: authData.user?.id,
+        admin_name: usuario.nombre,
+        admin_email: usuario.email,
+        admin_rol_id: usuario.rolId
+    });
+    if (error) throw new Error(error.message);
+  },
+
   createUsuario: async (usuario: any): Promise<Usuario> => {
     const tempSupabase = createClient(supabaseUrl, supabaseKey, { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false } });
     const { data: authData, error: authError } = await tempSupabase.auth.signUp({ email: usuario.email, password: usuario.password!, options: { data: { nombre: usuario.nombre, rol_id: usuario.rolId } } });

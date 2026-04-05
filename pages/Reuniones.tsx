@@ -298,12 +298,12 @@ const Reuniones: React.FC<ReunionesProps> = ({ navigateTo }) => {
                                 </div>
                             </div>
                             <div className="mt-4 flex space-x-2">
-                                {reunion.estado === 'En Proceso' && hasPermission('reuniones', 'update') &&
+                                {reunion.estado === 'En Proceso' && hasPermission('reuniones', 'update') && hasPermission('asistencias', 'create') &&
                                     <button onClick={() => navigateTo('asistencia', { reunionId: reunion.id })} className="flex-1 bg-secondary text-white px-3 py-1.5 rounded-md text-sm hover:bg-emerald-500 transition">
                                         Tomar Asistencia
                                     </button>
                                 }
-                                {reunion.estado === 'Finalizado' && hasPermission('reuniones', 'read') &&
+                                {reunion.estado === 'Finalizado' && hasPermission('reuniones', 'read') && hasPermission('asistencias', 'read') &&
                                     <button onClick={() => setViewingAttendanceReunion(reunion)} className="flex-1 bg-blue-600 text-white px-3 py-1.5 rounded-md text-sm hover:bg-blue-700 transition">
                                         Ver Asistencia
                                     </button>

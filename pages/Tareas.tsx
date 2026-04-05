@@ -293,7 +293,7 @@ const Tareas: React.FC = () => {
                 >
                     Dashboard Anual
                 </button>
-                {(hasPermission('entregas', 'create') || hasPermission('entregas', 'read')) && (
+                {(hasPermission('entregas_devocionales', 'create') || hasPermission('entregas_devocionales', 'read')) && (
                     <button 
                         onClick={() => setActiveTab('registro')} 
                         className={`px-4 py-2 font-medium transition-colors whitespace-nowrap ${activeTab === 'registro' ? 'border-b-2 border-primary text-primary' : 'text-text-secondary hover:text-text-primary'}`}
@@ -309,7 +309,7 @@ const Tareas: React.FC = () => {
                         Definir Temas
                     </button>
                 )}
-                {hasPermission('entregas', 'read') && (
+                {hasPermission('entregas_devocionales', 'read') && (
                     <button 
                         onClick={() => setActiveTab('historial')} 
                         className={`px-4 py-2 font-medium transition-colors whitespace-nowrap ${activeTab === 'historial' ? 'border-b-2 border-primary text-primary' : 'text-text-secondary hover:text-text-primary'}`}
@@ -502,7 +502,7 @@ const Tareas: React.FC = () => {
                                         placeholder="Ej: Entregó fuera de fecha..."
                                     />
                                 </div>
-                                {hasPermission('entregas', 'create') ? (
+                                {hasPermission('entregas_devocionales', 'create') ? (
                                     <button 
                                         onClick={handleRegistrarEntrega}
                                         className="w-full bg-primary text-white py-3 rounded-lg hover:bg-indigo-700 transition font-bold shadow-lg"
@@ -529,13 +529,13 @@ const Tareas: React.FC = () => {
                                             return (
                                                 <div 
                                                     key={dev.id} 
-                                                    onClick={() => !alreadySubmitted && hasPermission('entregas', 'create') && handleToggleDevocional(dev.id)}
+                                                    onClick={() => !alreadySubmitted && hasPermission('entregas_devocionales', 'create') && handleToggleDevocional(dev.id)}
                                                     className={`p-3 flex items-start gap-3 cursor-pointer hover:bg-surface transition ${isSelected ? 'bg-primary/10' : ''} ${alreadySubmitted ? 'opacity-50 cursor-not-allowed bg-green-500/5' : ''}`}
                                                 >
                                                     <input 
                                                         type="checkbox" 
                                                         checked={isSelected} 
-                                                        disabled={alreadySubmitted || !hasPermission('entregas', 'create')}
+                                                        disabled={alreadySubmitted || !hasPermission('entregas_devocionales', 'create')}
                                                         onChange={() => {}} 
                                                         className="mt-1 h-5 w-5 text-primary rounded border-border focus:ring-primary bg-background"
                                                     />
@@ -680,12 +680,12 @@ const Tareas: React.FC = () => {
                                                 <td className="px-6 py-4 whitespace-nowrap text-sm">{dev ? `Sem ${dev.numeroSemana}: ${dev.tema}` : 'Borrado'}</td>
                                                 <td className="px-6 py-4 text-sm text-text-secondary italic">{ent.observaciones || '-'}</td>
                                                 <td className="px-6 py-4 text-right space-x-2 whitespace-nowrap">
-                                                    {hasPermission('entregas', 'update') && (
+                                                    {hasPermission('entregas_devocionales', 'update') && (
                                                         <button onClick={() => handleEditEntrega(ent)} className="text-primary hover:text-indigo-400 p-1" title="Editar registro">
                                                             <PencilIcon className="w-5 h-5 inline" />
                                                         </button>
                                                     )}
-                                                    {hasPermission('entregas', 'delete') && (
+                                                    {hasPermission('entregas_devocionales', 'delete') && (
                                                         <button onClick={() => handleDeleteEntrega(ent)} className="text-red-500 hover:text-red-400 p-1" title="Eliminar registro">
                                                             <TrashIcon className="w-5 h-5 inline" />
                                                         </button>

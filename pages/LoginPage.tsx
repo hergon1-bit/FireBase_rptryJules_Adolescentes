@@ -38,18 +38,20 @@ const LoginPage: React.FC = () => {
     }, 8000);
 
     try {
-        const count = await api.countUsuarios();
+        const isFirst = await api.isFirstRun();
         
         clearInterval(statusInterval);
-        if (count === -1) {
-            setIsFirstRun(false);
-        } else {
-            setIsFirstRun(count === 0);
-        }
+        setIsFirstRun(isFirst);
     } catch (e: any) {
         clearInterval(statusInterval);
         const errStr = String(e.message || e);
         console.error("Error en checkUsers:", errStr);
+        
+        if (errStr.includes('Could not find the function public.is_first_run')) {
+            setError("Falta configuración en la base de datos. Por favor, ejecuta el script SQL proporcionado en el panel de Supabase (SQL Editor) para crear las funciones necesarias.");
+            setIsFirstRun(false); // Evitar que se quede cargando
+            return;
+        }
         
         // En lugar de bloquear toda la pantalla, asumimos que NO es la primera ejecución
         // y permitimos al usuario intentar iniciar sesión.
@@ -90,8 +92,7 @@ const LoginPage: React.FC = () => {
       setIsLoading(true);
 
       try {
-          await api.ensureDefaultRoles();
-          await api.createUsuario({
+          await api.setupFirstAdmin({
               nombre: adminName,
               email: email,
               password: password,

@@ -6,9 +6,11 @@ import Modal from '../components/ui/Modal';
 import ConfirmationModal from '../components/ui/ConfirmationModal';
 import { useForm } from '../hooks/useForm';
 import { RefreshIcon } from '../components/ui/Icons';
+import { useAuth } from '../contexts/AuthContext';
 
 const Servidores: React.FC = () => {
     const { servidores, addServidor, updateServidor, deleteServidor } = useData();
+    const { hasPermission } = useAuth();
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingServidor, setEditingServidor] = useState<Servidor | null>(null);
     const [searchTerm, setSearchTerm] = useState('');
@@ -68,9 +70,11 @@ const Servidores: React.FC = () => {
         <div className="space-y-6">
             <div className="flex justify-between items-center">
                 <h1 className="text-3xl font-bold">Personal de Apoyo (Servidores)</h1>
-                <button onClick={openModalForCreate} className="bg-primary text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition shadow-md font-bold">
-                    + Nuevo Servidor
-                </button>
+                {hasPermission('servidores', 'create') && (
+                    <button onClick={openModalForCreate} className="bg-primary text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition shadow-md font-bold">
+                        + Nuevo Servidor
+                    </button>
+                )}
             </div>
             
             <input
@@ -103,8 +107,8 @@ const Servidores: React.FC = () => {
                                 <td className="px-6 py-4 whitespace-nowrap text-sm text-text-secondary">{s.ciudad}</td>
                                 <td className="px-6 py-4 whitespace-nowrap text-sm text-text-secondary">{s.telefono}</td>
                                 <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium space-x-3">
-                                    <button onClick={() => openModalForEdit(s)} className="text-primary hover:text-indigo-400 font-bold">Editar</button>
-                                    <button onClick={() => handleDeleteClick(s)} className="text-red-500 hover:text-red-400 font-bold">Eliminar</button>
+                                    {hasPermission('servidores', 'update') && <button onClick={() => openModalForEdit(s)} className="text-primary hover:text-indigo-400 font-bold">Editar</button>}
+                                    {hasPermission('servidores', 'delete') && <button onClick={() => handleDeleteClick(s)} className="text-red-500 hover:text-red-400 font-bold">Eliminar</button>}
                                 </td>
                             </tr>
                         ))}

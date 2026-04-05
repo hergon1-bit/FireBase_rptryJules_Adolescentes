@@ -207,7 +207,9 @@ const Dashboard: React.FC<DashboardProps> = ({ navigateTo }) => {
                                         <p className="font-bold text-primary">{reunion.tema}</p>
                                         <p className="text-sm text-text-secondary">{formatDate(reunion.fecha)}</p>
                                     </div>
-                                    <button onClick={() => navigateTo('asistencia', { reunionId: reunion.id })} className="bg-primary text-white px-3 py-1 rounded-md text-sm hover:bg-indigo-700 transition">Asistencia</button>
+                                    {hasPermission('asistencias', 'create') && (
+                                        <button onClick={() => navigateTo('asistencia', { reunionId: reunion.id })} className="bg-primary text-white px-3 py-1 rounded-md text-sm hover:bg-indigo-700 transition">Asistencia</button>
+                                    )}
                                 </div>
                             ))}
                         </div>
@@ -253,7 +255,9 @@ const Dashboard: React.FC<DashboardProps> = ({ navigateTo }) => {
                                             <p className="text-sm text-text-secondary">{formatDate(persona.fechaNacimiento)}</p>
                                         </div>
                                     </div>
-                                    <button onClick={() => addCelebracionCumpleanos(persona.id, new Date().getFullYear())} className="p-1.5 rounded-full text-gray-400 hover:text-green-400 transition-all"><CheckCircleIcon className="w-6 h-6" /></button>
+                                    {hasPermission('celebraciones_cumpleanos', 'create') && (
+                                        <button onClick={() => addCelebracionCumpleanos(persona.id, new Date().getFullYear())} className="p-1.5 rounded-full text-gray-400 hover:text-green-400 transition-all"><CheckCircleIcon className="w-6 h-6" /></button>
+                                    )}
                                 </div>
                             ))}
                         </div>

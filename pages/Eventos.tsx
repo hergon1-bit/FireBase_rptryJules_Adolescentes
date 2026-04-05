@@ -405,8 +405,8 @@ const Eventos: React.FC = () => {
                                         )}
                                     </div>
                                     <div className="absolute top-4 right-4 flex space-x-1">
-                                        <button onClick={(e) => openModalForEdit(e, evento)} className="bg-gray-700 text-white p-2 rounded-md hover:bg-gray-600 transition shadow" title="Editar Evento"><PencilIcon className="w-4 h-4" /></button>
-                                        <button onClick={(e) => handleDeleteClick(e, evento)} className="bg-red-600/80 text-white p-2 rounded-md hover:bg-red-600 transition shadow" title="Borrar Evento"><TrashIcon className="w-4 h-4" /></button>
+                                        {hasPermission('eventos', 'update') && <button onClick={(e) => openModalForEdit(e, evento)} className="bg-gray-700 text-white p-2 rounded-md hover:bg-gray-600 transition shadow" title="Editar Evento"><PencilIcon className="w-4 h-4" /></button>}
+                                        {hasPermission('eventos', 'delete') && <button onClick={(e) => handleDeleteClick(e, evento)} className="bg-red-600/80 text-white p-2 rounded-md hover:bg-red-600 transition shadow" title="Borrar Evento"><TrashIcon className="w-4 h-4" /></button>}
                                     </div>
                                 </div>
                                 <div className="space-y-1 mb-4">
@@ -568,22 +568,24 @@ const Eventos: React.FC = () => {
                                         </label>
                                     </div>
                                 </div>
-                                <div className="flex flex-col sm:flex-row gap-2 p-3 bg-background/30 rounded-lg">
-                                    <select value={adolescenteToInscribe} onChange={e => setAdolescenteToInscribe(e.target.value)} className="flex-1 bg-surface border border-border rounded-md p-2 text-sm">
-                                        <option value="">-- Inscribir Nuevo {selectedEvent.esParaPadres ? 'Tutor' : 'Adolescente'} --</option>
-                                        {eventDetails.noInscritos.map(ado => <option key={ado.id} value={ado.id}>{ado.nombre} {ado.apellido}</option>)}
-                                    </select>
-                                    <button onClick={() => { 
-                                        if (selectedEvent && adolescenteToInscribe) {
-                                            if (selectedEvent.esParaPadres) {
-                                                addInscripcion(selectedEvent.id, undefined, Number(adolescenteToInscribe));
-                                            } else {
-                                                addInscripcion(selectedEvent.id, Number(adolescenteToInscribe), undefined);
+                                {hasPermission('inscripciones_eventos', 'create') && (
+                                    <div className="flex flex-col sm:flex-row gap-2 p-3 bg-background/30 rounded-lg">
+                                        <select value={adolescenteToInscribe} onChange={e => setAdolescenteToInscribe(e.target.value)} className="flex-1 bg-surface border border-border rounded-md p-2 text-sm">
+                                            <option value="">-- Inscribir Nuevo {selectedEvent.esParaPadres ? 'Tutor' : 'Adolescente'} --</option>
+                                            {eventDetails.noInscritos.map(ado => <option key={ado.id} value={ado.id}>{ado.nombre} {ado.apellido}</option>)}
+                                        </select>
+                                        <button onClick={() => { 
+                                            if (selectedEvent && adolescenteToInscribe) {
+                                                if (selectedEvent.esParaPadres) {
+                                                    addInscripcion(selectedEvent.id, undefined, Number(adolescenteToInscribe));
+                                                } else {
+                                                    addInscripcion(selectedEvent.id, Number(adolescenteToInscribe), undefined);
+                                                }
                                             }
-                                        }
-                                        setAdolescenteToInscribe(''); 
-                                    }} disabled={!adolescenteToInscribe} className="bg-primary text-white px-4 py-2 rounded-lg font-bold disabled:opacity-50 whitespace-nowrap">Inscribir</button>
-                                </div>
+                                            setAdolescenteToInscribe(''); 
+                                        }} disabled={!adolescenteToInscribe} className="bg-primary text-white px-4 py-2 rounded-lg font-bold disabled:opacity-50 whitespace-nowrap">Inscribir</button>
+                                    </div>
+                                )}
                                 <div className="max-h-[400px] overflow-y-auto space-y-3 pr-2 custom-scrollbar">
                                     {eventDetails.inscritos.map(item => (
                                         <div key={item.inscripcion.id} className="bg-background/20 p-4 rounded-lg border border-border">
@@ -591,13 +593,15 @@ const Eventos: React.FC = () => {
                                                 <div>
                                                     <div className="flex items-center gap-2">
                                                         <p className="font-bold text-lg">{item.persona?.nombre} {item.persona?.apellido}</p>
-                                                        <button 
-                                                            onClick={() => { setInscripcionToDelete(item.inscripcion); setIsDeleteInscripcionConfirmOpen(true); }}
-                                                            className="text-red-500 hover:text-red-400 p-1"
-                                                            title="Eliminar Inscripción"
-                                                        >
-                                                            <TrashIcon className="w-3.5 h-3.5" />
-                                                        </button>
+                                                        {hasPermission('inscripciones_eventos', 'delete') && (
+                                                            <button 
+                                                                onClick={() => { setInscripcionToDelete(item.inscripcion); setIsDeleteInscripcionConfirmOpen(true); }}
+                                                                className="text-red-500 hover:text-red-400 p-1"
+                                                                title="Eliminar Inscripción"
+                                                            >
+                                                                <TrashIcon className="w-3.5 h-3.5" />
+                                                            </button>
+                                                        )}
                                                     </div>
                                                     {selectedEvent.tieneCosto && (
                                                         <p className="text-xs text-text-secondary">Pagado: {formatCurrency(item.totalPagado)} | Deuda: <span className={item.debe > 0 ? 'text-red-400 font-bold' : 'text-green-400'}>{formatCurrency(item.debe)}</span></p>
@@ -635,7 +639,11 @@ const Eventos: React.FC = () => {
                                                                     <td className="p-2 font-mono text-text-secondary">{formatDate(p.fecha)}</td>
                                                                     <td className="p-2 font-bold text-green-400">{formatCurrency(p.monto)}</td>
                                                                     <td className="p-2 italic text-text-secondary">{p.notas || '-'}</td>
-                                                                    <td className="p-2 text-right"><button onClick={() => deletePago(p.id)} className="text-red-500 hover:bg-red-500/10 p-1 rounded transition-colors"><TrashIcon className="w-3.5 h-3.5" /></button></td>
+                                                                    <td className="p-2 text-right">
+                                                                        {hasPermission('pagos_eventos', 'delete') && (
+                                                                            <button onClick={() => deletePago(p.id)} className="text-red-500 hover:bg-red-500/10 p-1 rounded transition-colors"><TrashIcon className="w-3.5 h-3.5" /></button>
+                                                                        )}
+                                                                    </td>
                                                                 </tr>
                                                             ))}
                                                             {item.pagos.length === 0 && <tr><td colSpan={4} className="p-4 text-center italic text-text-secondary">No hay pagos registrados.</td></tr>}
@@ -643,7 +651,7 @@ const Eventos: React.FC = () => {
                                                     </table>
                                                 </div>
                                             )}
-                                            {selectedEvent.tieneCosto && item.debe > 0 && (
+                                            {selectedEvent.tieneCosto && item.debe > 0 && hasPermission('pagos_eventos', 'create') && (
                                                 <div className="space-y-2">
                                                     <div className="flex gap-2">
                                                         <input 
@@ -704,13 +712,15 @@ const Eventos: React.FC = () => {
                                         </label>
                                     </div>
                                 </div>
-                                <div className="flex flex-col sm:flex-row gap-2 p-3 bg-background/30 rounded-lg">
-                                    <select value={servidorToInscribe} onChange={e => setServidorToInscribe(e.target.value)} className="flex-1 bg-surface border border-border rounded-md p-2 text-sm">
-                                        <option value="">-- Seleccionar Servidor --</option>
-                                        {eventDetails.noInscritosServidores.map(s => <option key={s.id} value={s.id}>{s.nombre} {s.apellido}</option>)}
-                                    </select>
-                                    <button onClick={handleTriggerInscripcionServidor} disabled={!servidorToInscribe} className="bg-primary text-white px-4 py-2 rounded-lg font-bold disabled:opacity-50 whitespace-nowrap">Inscribir</button>
-                                </div>
+                                {hasPermission('inscripciones_servidores', 'create') && (
+                                    <div className="flex flex-col sm:flex-row gap-2 p-3 bg-background/30 rounded-lg">
+                                        <select value={servidorToInscribe} onChange={e => setServidorToInscribe(e.target.value)} className="flex-1 bg-surface border border-border rounded-md p-2 text-sm">
+                                            <option value="">-- Seleccionar Servidor --</option>
+                                            {eventDetails.noInscritosServidores.map(s => <option key={s.id} value={s.id}>{s.nombre} {s.apellido}</option>)}
+                                        </select>
+                                        <button onClick={handleTriggerInscripcionServidor} disabled={!servidorToInscribe} className="bg-primary text-white px-4 py-2 rounded-lg font-bold disabled:opacity-50 whitespace-nowrap">Inscribir</button>
+                                    </div>
+                                )}
                                 <div className="max-h-[400px] overflow-y-auto space-y-3 pr-2 custom-scrollbar">
                                     {eventDetails.inscritosServidores.map(item => (
                                         <div key={item.inscripcion.id} className="bg-background/20 p-4 rounded-lg border border-border">
@@ -719,13 +729,15 @@ const Eventos: React.FC = () => {
                                                     <div className="flex items-center gap-2">
                                                         <p className="font-bold text-lg">{item.servidor!.nombre} {item.servidor!.apellido}</p>
                                                         <span className="text-[10px] bg-purple-500/30 text-purple-300 px-2 py-0.5 rounded uppercase font-bold">{item.inscripcion.rol}</span>
-                                                        <button 
-                                                            onClick={() => { setInscripcionServidorToDelete(item.inscripcion); setIsDeleteInscripcionServidorConfirmOpen(true); }}
-                                                            className="text-red-500 hover:text-red-400 p-1"
-                                                            title="Eliminar Inscripción Servidor"
-                                                        >
-                                                            <TrashIcon className="w-3.5 h-3.5" />
-                                                        </button>
+                                                        {hasPermission('inscripciones_servidores', 'delete') && (
+                                                            <button 
+                                                                onClick={() => { setInscripcionServidorToDelete(item.inscripcion); setIsDeleteInscripcionServidorConfirmOpen(true); }}
+                                                                className="text-red-500 hover:text-red-400 p-1"
+                                                                title="Eliminar Inscripción Servidor"
+                                                            >
+                                                                <TrashIcon className="w-3.5 h-3.5" />
+                                                            </button>
+                                                        )}
                                                     </div>
                                                     <p className="text-xs text-text-secondary mt-1">Pagado: {formatCurrency(item.totalPagado)} / Compromiso: {formatCurrency(item.costoEsperado)}{item.debe > 0 && <span className="ml-2 text-red-400 font-bold">Adeuda: {formatCurrency(item.debe)}</span>}</p>
                                                 </div>
@@ -743,14 +755,18 @@ const Eventos: React.FC = () => {
                                                                     <td className="p-2 font-mono text-text-secondary">{formatDate(p.fecha)}</td>
                                                                     <td className="p-2 font-bold text-green-400">{formatCurrency(p.monto)}</td>
                                                                     <td className="p-2 italic text-text-secondary">{p.notas || '-'}</td>
-                                                                    <td className="p-2 text-right"><button onClick={() => deletePagoServidor(p.id)} className="text-red-500 hover:bg-red-500/10 p-1 rounded"><TrashIcon className="w-3.5 h-3.5" /></button></td>
+                                                                    <td className="p-2 text-right">
+                                                                        {hasPermission('pagos_servidores', 'delete') && (
+                                                                            <button onClick={() => deletePagoServidor(p.id)} className="text-red-500 hover:bg-red-500/10 p-1 rounded"><TrashIcon className="w-3.5 h-3.5" /></button>
+                                                                        )}
+                                                                    </td>
                                                                 </tr>
                                                             ))}
                                                         </tbody>
                                                     </table>
                                                 </div>
                                             )}
-                                            {item.inscripcion.tipoBeca !== 'Total' && item.debe > 0 && (
+                                            {item.inscripcion.tipoBeca !== 'Total' && item.debe > 0 && hasPermission('pagos_servidores', 'create') && (
                                                 <div className="space-y-2 mt-3">
                                                     <div className="flex gap-2">
                                                         <input 

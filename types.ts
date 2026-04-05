@@ -11,16 +11,23 @@ export interface Rol {
   nombre: string;
   permisos: {
     adolescentes: Permisos;
-    encargados: Permisos;
-    reuniones: Permisos;
-    tutores: Permisos;
-    eventos: Permisos;
-    usuarios: Permisos;
+    asistencias: Permisos;
+    celebraciones_cumpleanos: Permisos;
     devocionales: Permisos;
-    entregas: Permisos;
-    inscripciones: Permisos;
-    pagos: Permisos;
-    participantes: Permisos;
+    encargados: Permisos;
+    entregas_devocionales: Permisos;
+    eventos: Permisos;
+    inscripciones_eventos: Permisos;
+    inscripciones_servidores: Permisos;
+    pagos_eventos: Permisos;
+    pagos_servidores: Permisos;
+    participantes_eventos: Permisos;
+    reuniones: Permisos;
+    roles: Permisos;
+    servidores: Permisos;
+    tutor_adolescente: Permisos;
+    tutores: Permisos;
+    usuarios: Permisos;
   };
 }
 

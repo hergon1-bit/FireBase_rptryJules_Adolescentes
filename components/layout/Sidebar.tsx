@@ -44,10 +44,10 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, navigateTo, isOpen, setO
   const menuItems = [
     { page: 'dashboard', label: 'Dashboard', icon: <HomeIcon />, requiredPermission: true },
     { page: 'adolescentes', label: 'Adolescentes', icon: <UsersIcon />, requiredPermission: hasPermission('adolescentes', 'read') },
-    { page: 'servidores', label: 'Servidores de Apoyo', icon: <UserCheckIcon />, requiredPermission: true },
+    { page: 'servidores', label: 'Servidores de Apoyo', icon: <UserCheckIcon />, requiredPermission: hasPermission('servidores', 'read') },
     { page: 'encargados', label: 'Encargados', icon: <UserCheckIcon />, requiredPermission: hasPermission('encargados', 'read') },
     { page: 'reuniones', label: 'Reuniones', icon: <ClipboardListIcon />, requiredPermission: hasPermission('reuniones', 'read') },
-    { page: 'tareas', label: 'Tareas / Devocional', icon: <BookOpenIcon />, requiredPermission: hasPermission('devocionales', 'read') || hasPermission('entregas', 'read') },
+    { page: 'tareas', label: 'Tareas / Devocional', icon: <BookOpenIcon />, requiredPermission: hasPermission('devocionales', 'read') || hasPermission('entregas_devocionales', 'read') },
     { page: 'tutores', label: 'Tutores', icon: <HeartHandshakeIcon />, requiredPermission: hasPermission('tutores', 'read') },
     { page: 'eventos', label: 'Eventos', icon: <CalendarDaysIcon />, requiredPermission: hasPermission('eventos', 'read') },
     { page: 'reportes-financieros', label: 'Balance de Eventos', icon: <CalculatorIcon />, requiredPermission: hasPermission('eventos', 'read') },

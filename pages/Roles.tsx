@@ -115,16 +115,23 @@ const Roles: React.FC = () => {
     const handleCreateRole = () => {
         const defaultPermissions: Rol['permisos'] = {
             adolescentes: { read: false, create: false, update: false, delete: false },
-            encargados: { read: false, create: false, update: false, delete: false },
-            reuniones: { read: false, create: false, update: false, delete: false },
-            tutores: { read: false, create: false, update: false, delete: false },
-            eventos: { read: false, create: false, update: false, delete: false },
-            usuarios: { read: false, create: false, update: false, delete: false },
+            asistencias: { read: false, create: false, update: false, delete: false },
+            celebraciones_cumpleanos: { read: false, create: false, update: false, delete: false },
             devocionales: { read: false, create: false, update: false, delete: false },
-            entregas: { read: false, create: false, update: false, delete: false },
-            inscripciones: { read: false, create: false, update: false, delete: false },
-            pagos: { read: false, create: false, update: false, delete: false },
-            participantes: { read: false, create: false, update: false, delete: false },
+            encargados: { read: false, create: false, update: false, delete: false },
+            entregas_devocionales: { read: false, create: false, update: false, delete: false },
+            eventos: { read: false, create: false, update: false, delete: false },
+            inscripciones_eventos: { read: false, create: false, update: false, delete: false },
+            inscripciones_servidores: { read: false, create: false, update: false, delete: false },
+            pagos_eventos: { read: false, create: false, update: false, delete: false },
+            pagos_servidores: { read: false, create: false, update: false, delete: false },
+            participantes_eventos: { read: false, create: false, update: false, delete: false },
+            reuniones: { read: false, create: false, update: false, delete: false },
+            roles: { read: false, create: false, update: false, delete: false },
+            servidores: { read: false, create: false, update: false, delete: false },
+            tutor_adolescente: { read: false, create: false, update: false, delete: false },
+            tutores: { read: false, create: false, update: false, delete: false },
+            usuarios: { read: false, create: false, update: false, delete: false },
         };
         setEditingRole({ id: 0, nombre: '', permisos: defaultPermissions });
         setIsRoleModalOpen(true);
@@ -171,13 +178,11 @@ const Roles: React.FC = () => {
         <div className="space-y-6">
             <div className="flex justify-between items-center">
                 <h1 className="text-3xl font-bold">Gestión de Roles y Permisos</h1>
-                 {hasPermission('usuarios', 'create') && (
                     <div className="flex gap-2">
-                        <button onClick={handleCreateRole} className="bg-secondary text-white px-4 py-2 rounded-lg text-sm">Crear Rol</button>
-                        <button onClick={handleEditRole} disabled={!selectedRole} className="bg-gray-600 text-white px-4 py-2 rounded-lg text-sm disabled:opacity-50">Editar Rol</button>
-                        <button onClick={handleDeleteRoleClick} disabled={!selectedRole} className="bg-red-600 text-white px-4 py-2 rounded-lg text-sm disabled:opacity-50">Eliminar Rol</button>
+                        {hasPermission('roles', 'create') && <button onClick={handleCreateRole} className="bg-secondary text-white px-4 py-2 rounded-lg text-sm">Crear Rol</button>}
+                        {hasPermission('roles', 'update') && <button onClick={handleEditRole} disabled={!selectedRole} className="bg-gray-600 text-white px-4 py-2 rounded-lg text-sm disabled:opacity-50">Editar Rol</button>}
+                        {hasPermission('roles', 'delete') && <button onClick={handleDeleteRoleClick} disabled={!selectedRole} className="bg-red-600 text-white px-4 py-2 rounded-lg text-sm disabled:opacity-50">Eliminar Rol</button>}
                     </div>
-                 )}
             </div>
 
             <div className="bg-surface p-6 rounded-lg shadow-lg">

@@ -4,6 +4,7 @@ import { type Asistencia, AsistenciaDetalle, TipoAsistencia, Page } from '../typ
 import { formatDate } from '../utils/helpers';
 import { RefreshIcon, CheckCircleIcon } from '../components/ui/Icons';
 import { api } from '../services/api';
+import { useAuth } from '../contexts/AuthContext';
 
 interface AsistenciaProps {
   reunionId: number;
@@ -12,6 +13,7 @@ interface AsistenciaProps {
 
 const Asistencia: React.FC<AsistenciaProps> = ({ reunionId, navigateTo }) => {
     const { reuniones, adolescentes, asistencias: initialAsistencias, updateReunion, fetchData } = useData();
+    const { hasPermission } = useAuth();
     const [asistenciaLocal, setAsistenciaLocal] = useState<Map<number, Asistencia>>(new Map());
     const [isLoading, setIsLoading] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
@@ -135,6 +137,10 @@ const Asistencia: React.FC<AsistenciaProps> = ({ reunionId, navigateTo }) => {
             setIsLoading(false);
         }
     };
+
+    if (!hasPermission('asistencias', 'create') && !hasPermission('asistencias', 'update')) {
+        return <div className="p-8 text-center text-red-500 font-bold">No tienes permisos para tomar asistencia.</div>;
+    }
 
     if (!reunion) {
         return <div className="text-center text-text-secondary">Reunión no encontrada.</div>;
