@@ -58,14 +58,14 @@ const ReportesFinancieros: React.FC = () => {
     // Datos base para el Balance
     const summaryData = useMemo(() => {
         if (!selectedEventoId) return [];
-        const event = eventos.find(e => e.id === selectedEventoId);
+        const event = eventos.find(e => String(e.id) === String(selectedEventoId));
         const costoPersonaDefault = event?.costoPersona || 0;
 
-        const dataChicos = inscripciones.filter(i => i.eventoId === selectedEventoId).map(i => {
+        const dataChicos = inscripciones.filter(i => String(i.eventoId) === String(selectedEventoId)).map(i => {
             const persona = event?.esParaPadres 
-                ? tutores.find(t => t.id === i.tutorId)
-                : adolescentes.find(a => a.id === i.adolescenteId);
-            const pagosAdo = pagos.filter(p => p.inscripcionId === i.id);
+                ? tutores.find(t => String(t.id) === String(i.tutorId))
+                : adolescentes.find(a => String(a.id) === String(i.adolescenteId));
+            const pagosAdo = pagos.filter(p => String(p.inscripcionId) === String(i.id));
             const totalPagado = pagosAdo.reduce((sum, p) => sum + p.monto, 0);
             return {
                 tipo: event?.esParaPadres ? 'TUTOR' : 'CHICO',
@@ -79,9 +79,9 @@ const ReportesFinancieros: React.FC = () => {
             };
         });
 
-        const dataServidores = inscripcionesServidores.filter(i => i.eventoId === selectedEventoId).map(i => {
-            const s = servidores.find(ser => ser.id === i.servidorId);
-            const pagosS = pagosServidores.filter(p => p.inscripcionServidorId === i.id);
+        const dataServidores = inscripcionesServidores.filter(i => String(i.eventoId) === String(selectedEventoId)).map(i => {
+            const s = servidores.find(ser => String(ser.id) === String(i.servidorId));
+            const pagosS = pagosServidores.filter(p => String(p.inscripcionServidorId) === String(i.id));
             const totalPagado = pagosS.reduce((sum, p) => sum + p.monto, 0);
             
             let saldoCalculado = 0;
@@ -131,18 +131,18 @@ const ReportesFinancieros: React.FC = () => {
     const historyData = useMemo(() => {
         if (!selectedEventoId) return [];
         
-        const eventAdoInsc = inscripciones.filter(i => i.eventoId === selectedEventoId);
-        const eventSerInsc = inscripcionesServidores.filter(i => i.eventoId === selectedEventoId);
+        const eventAdoInsc = inscripciones.filter(i => String(i.eventoId) === String(selectedEventoId));
+        const eventSerInsc = inscripcionesServidores.filter(i => String(i.eventoId) === String(selectedEventoId));
 
         const groups = new Map<string, GroupedHistoryEntry>();
 
         // Procesar pagos de Chicos / Tutores
-        pagos.filter(p => eventAdoInsc.some(i => i.id === p.inscripcionId)).forEach(p => {
-            const insc = eventAdoInsc.find(i => i.id === p.inscripcionId)!;
-            const event = eventos.find(e => e.id === selectedEventoId);
+        pagos.filter(p => eventAdoInsc.some(i => String(i.id) === String(p.inscripcionId))).forEach(p => {
+            const insc = eventAdoInsc.find(i => String(i.id) === String(p.inscripcionId))!;
+            const event = eventos.find(e => String(e.id) === String(selectedEventoId));
             const persona = event?.esParaPadres 
-                ? tutores.find(t => t.id === insc.tutorId)
-                : adolescentes.find(a => a.id === insc.adolescenteId);
+                ? tutores.find(t => String(t.id) === String(insc.tutorId))
+                : adolescentes.find(a => String(a.id) === String(insc.adolescenteId));
             const key = event?.esParaPadres ? `TUTOR-${insc.tutorId}` : `CHICO-${insc.adolescenteId}`;
             
             if (!groups.has(key)) {
@@ -165,9 +165,9 @@ const ReportesFinancieros: React.FC = () => {
         });
 
         // Procesar pagos de Apoyos
-        pagosServidores.filter(p => eventSerInsc.some(i => i.id === p.inscripcionServidorId)).forEach(p => {
-            const insc = eventSerInsc.find(i => i.id === p.inscripcionServidorId)!;
-            const ser = servidores.find(s => s.id === insc.servidorId);
+        pagosServidores.filter(p => eventSerInsc.some(i => String(i.id) === String(p.inscripcionServidorId))).forEach(p => {
+            const insc = eventSerInsc.find(i => String(i.id) === String(p.inscripcionServidorId))!;
+            const ser = servidores.find(s => String(s.id) === String(insc.servidorId));
             const key = `APOYO-${insc.servidorId}`;
 
             if (!groups.has(key)) {
@@ -200,7 +200,7 @@ const ReportesFinancieros: React.FC = () => {
 
     const balanceTotals = useMemo(() => {
         if (!selectedEventoId) return null;
-        const ev = eventos.find(e => e.id === selectedEventoId);
+        const ev = eventos.find(e => String(e.id) === String(selectedEventoId));
         const costoBase = ev?.costoPersona || 0;
         
         let sumaBecasReal = 0;
@@ -239,7 +239,7 @@ const ReportesFinancieros: React.FC = () => {
     const handleExportExcel = () => {
         if (!selectedEventoId || historyData.length === 0) return;
         
-        const event = eventos.find(e => e.id === selectedEventoId);
+        const event = eventos.find(e => String(e.id) === String(selectedEventoId));
         const now = new Date();
         const reportDate = now.toLocaleDateString('es-PY');
         const reportTime = now.toLocaleTimeString('es-PY', { hour: '2-digit', minute: '2-digit' });
@@ -274,7 +274,7 @@ const ReportesFinancieros: React.FC = () => {
 
     const handleExportBalanceExcel = () => {
         if (!selectedEventoId || !balanceTotals) return;
-        const event = eventos.find(e => e.id === selectedEventoId);
+        const event = eventos.find(e => String(e.id) === String(selectedEventoId));
         const now = new Date();
         const reportDate = now.toLocaleDateString('es-PY');
         const reportTime = now.toLocaleTimeString('es-PY', { hour: '2-digit', minute: '2-digit' });
@@ -308,7 +308,7 @@ const ReportesFinancieros: React.FC = () => {
 
     const handlePrintBalancePDF = () => {
         if (!selectedEventoId || !balanceTotals) return;
-        const event = eventos.find(e => e.id === selectedEventoId);
+        const event = eventos.find(e => String(e.id) === String(selectedEventoId));
         const doc = new jsPDF('landscape'); 
         const now = new Date();
         const printDate = `${now.toLocaleDateString('es-PY')} ${now.toLocaleTimeString('es-PY')}`;
@@ -452,7 +452,7 @@ const ReportesFinancieros: React.FC = () => {
 
     const handlePrintHistoryPDF = () => {
         if (!selectedEventoId || historyData.length === 0) return;
-        const event = eventos.find(e => e.id === selectedEventoId);
+        const event = eventos.find(e => String(e.id) === String(selectedEventoId));
         const doc = new jsPDF();
         
         doc.setFontSize(18);

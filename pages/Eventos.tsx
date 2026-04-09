@@ -152,12 +152,12 @@ const Eventos: React.FC = () => {
     const eventDetails = useMemo(() => {
         if (!selectedEvent) return null;
         
-        const eventInscripciones = inscripciones.filter(i => i.eventoId === selectedEvent.id);
+        const eventInscripciones = inscripciones.filter(i => String(i.eventoId) === String(selectedEvent.id));
         
         const adolescentesInscritos = eventInscripciones.map(inscripcion => {
             const persona = selectedEvent.esParaPadres 
-                ? tutores.find(t => t.id === inscripcion.tutorId)
-                : adolescentes.find(a => a.id === inscripcion.adolescenteId);
+                ? tutores.find(t => String(t.id) === String(inscripcion.tutorId))
+                : adolescentes.find(a => String(a.id) === String(inscripcion.adolescenteId));
                 
             const pagosRealizados = pagos.filter(p => String(p.inscripcionId) === String(inscripcion.id)).sort((a,b) => new Date(a.fecha).getTime() - new Date(b.fecha).getTime());
             const totalPagado = pagosRealizados.reduce((sum, p) => sum + p.monto, 0);
@@ -180,8 +180,8 @@ const Eventos: React.FC = () => {
             return `${a.persona.nombre} ${a.persona.apellido}`.localeCompare(`${b.persona.nombre} ${b.persona.apellido}`);
         });
 
-        const inscritosServidores = inscripcionesServidores.filter(i => i.eventoId === selectedEvent.id).map(insc => {
-            const s = servidores.find(ser => ser.id === insc.servidorId);
+        const inscritosServidores = inscripcionesServidores.filter(i => String(i.eventoId) === String(selectedEvent.id)).map(insc => {
+            const s = servidores.find(ser => String(ser.id) === String(insc.servidorId));
             const pagosS = pagosServidores.filter(p => String(p.inscripcionServidorId) === String(insc.id)).sort((a,b) => new Date(a.fecha).getTime() - new Date(b.fecha).getTime());
             const totalP = pagosS.reduce((acc, curr) => acc + curr.monto, 0);
             
@@ -215,9 +215,9 @@ const Eventos: React.FC = () => {
             inscritos: adolescentesInscritos,
             inscritosServidores,
             noInscritos: selectedEvent.esParaPadres 
-                ? tutores.filter(t => !eventInscripciones.some(i => i.tutorId === t.id)).sort((a,b) => a.nombre.localeCompare(b.nombre))
-                : adolescentes.filter(a => a.estado === 'Activo' && !eventInscripciones.some(i => i.adolescenteId === a.id)).sort((a,b) => a.nombre.localeCompare(b.nombre)),
-            noInscritosServidores: servidores.filter(s => !inscripcionesServidores.some(i => i.eventoId === selectedEvent.id && i.servidorId === s.id)).sort((a,b) => a.nombre.localeCompare(b.nombre)),
+                ? tutores.filter(t => !eventInscripciones.some(i => String(i.tutorId) === String(t.id))).sort((a,b) => a.nombre.localeCompare(b.nombre))
+                : adolescentes.filter(a => a.estado === 'Activo' && !eventInscripciones.some(i => String(i.adolescenteId) === String(a.id))).sort((a,b) => a.nombre.localeCompare(b.nombre)),
+            noInscritosServidores: servidores.filter(s => !inscripcionesServidores.some(i => String(i.eventoId) === String(selectedEvent.id) && String(i.servidorId) === String(s.id))).sort((a,b) => a.nombre.localeCompare(b.nombre)),
         };
     }, [selectedEvent, adolescentes, tutores, inscripciones, pagos, servidores, inscripcionesServidores, pagosServidores, searchInscribedChico, showOnlyDeudores, showOnlyPagadosFull, searchInscribedServidor, showOnlyBecados, showOnlyPrecioLocal]);
 
@@ -343,8 +343,8 @@ const Eventos: React.FC = () => {
             
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {eventos.map(evento => {
-                    const eventAdoInsc = inscripciones.filter(i => i.eventoId === evento.id);
-                    const eventSerInsc = inscripcionesServidores.filter(i => i.eventoId === evento.id);
+                    const eventAdoInsc = inscripciones.filter(i => String(i.eventoId) === String(evento.id));
+                    const eventSerInsc = inscripcionesServidores.filter(i => String(i.eventoId) === String(evento.id));
                     const costoBase = evento.costoPersona || 0;
 
                     let totalCobrado = 0;
