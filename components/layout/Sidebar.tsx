@@ -36,7 +36,7 @@ const NavItem: React.FC<{
 const Sidebar: React.FC<SidebarProps> = ({ currentPage, navigateTo, isOpen, setOpen }) => {
   const { user, hasPermission } = useAuth();
   
-  const adminSubPages: Page[] = ['usuarios', 'roles', 'limpiar-tablas', 'cargar-tablas'];
+  const adminSubPages: Page[] = ['usuarios', 'roles', 'limpiar-tablas', 'cargar-tablas', 'migracion-supabase', 'ver-tablas'];
   const [isAdminOpen, setIsAdminOpen] = useState(adminSubPages.includes(currentPage));
   
   if (!user) return null;
@@ -115,6 +115,18 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, navigateTo, isOpen, setO
                       label="Cargar Tablas"
                       isActive={currentPage === 'cargar-tablas'}
                       onClick={() => navigateTo('cargar-tablas')}
+                    />
+                    <NavItem
+                      icon={<UploadCloudIcon className="w-5 h-5" />}
+                      label="Migración Supabase"
+                      isActive={currentPage === 'migracion-supabase'}
+                      onClick={() => navigateTo('migracion-supabase')}
+                    />
+                    <NavItem
+                      icon={<ClipboardListIcon className="w-5 h-5" />}
+                      label="Ver Tablas"
+                      isActive={currentPage === 'ver-tablas'}
+                      onClick={() => navigateTo('ver-tablas')}
                     />
                   </ul>
                 )}

@@ -1,7 +1,7 @@
-
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { Usuario, Rol, Permisos } from '../types';
-import { supabase } from '../services/supabase';
+import { auth } from '../services/firebase';
+import { signInWithEmailAndPassword, signOut, onAuthStateChanged } from 'firebase/auth';
 import { api } from '../services/api';
 
 interface AuthContextType {
@@ -20,95 +20,90 @@ export const AuthProvider: React.FC<{children: React.ReactNode}> = ({ children }
   const [rol, setRol] = useState<Rol | null>(null);
   const [loading, setLoading] = useState(true);
   
-  // Ref para evitar procesar la misma sesión múltiples veces durante el arranque
   const processingId = useRef<string | null>(null);
+  const loadingPromise = useRef<Promise<boolean> | null>(null);
 
-  const loadUserProfile = async (userId: string) => {
+  const loadUserProfile = async (userId: string, email?: string | null) => {
     if (processingId.current === userId && user) return true;
-    processingId.current = userId;
-
-    try {
-      const profile = await api.getUsuarioById(userId);
-      if (profile) {
-        setUser(profile);
-        const roleData = await api.getRolById(profile.rolId);
-        setRol(roleData);
-        // Actualizamos última conexión de forma asíncrona
-        api.updateLastSignIn(userId).catch(() => {});
-        return true;
-      }
-      return false;
-    } catch (error) {
-      console.error("Error cargando perfil:", error);
-      return false;
+    
+    // Si ya hay una carga en progreso para este usuario, esperamos a que termine
+    if (processingId.current === userId && loadingPromise.current) {
+        console.log(`[Auth] Waiting for existing loadUserProfile promise for ${userId}`);
+        return loadingPromise.current;
     }
+
+    processingId.current = userId;
+    
+    const doLoad = async () => {
+        console.log(`[Auth] loadUserProfile called for userId: ${userId}, email: ${email}`);
+
+        try {
+          let profile = await api.getUsuarioById(userId);
+          console.log(`[Auth] getUsuarioById result:`, profile);
+          
+          // Si no encontramos el perfil por ID, intentamos buscarlo por email (para usuarios migrados)
+          if (!profile && email) {
+              console.log(`[Auth] Profile not found by ID, trying by email...`);
+              const profileByEmail = await api.getUsuarioByEmail(email);
+              console.log(`[Auth] getUsuarioByEmail result:`, profileByEmail);
+              
+              if (profileByEmail) {
+                  console.log(`[Auth] Migrating user ID from ${profileByEmail.id} to ${userId}`);
+                  // Migramos el ID del usuario al nuevo UID de Firebase Auth
+                  const { id, ...userData } = profileByEmail;
+                  await api.migrateUsuarioId(id, userId, userData);
+                  profile = { id: userId, ...userData } as Usuario;
+                  console.log(`[Auth] Migration successful.`);
+              }
+          }
+
+          if (profile) {
+            console.log(`[Auth] Profile loaded successfully. Setting user state.`);
+            setUser(profile);
+            const roleData = await api.getRolById(profile.rolId.toString());
+            console.log(`[Auth] Role loaded:`, roleData);
+            setRol(roleData);
+            api.updateLastSignIn(userId).catch(() => {});
+            return true;
+          }
+          
+          console.log(`[Auth] Profile is still null after all attempts. Returning false.`);
+          return false;
+        } catch (error) {
+          console.error("[Auth] Error cargando perfil:", error);
+          return false;
+        }
+    };
+
+    loadingPromise.current = doLoad();
+    const result = await loadingPromise.current;
+    if (processingId.current === userId) {
+        loadingPromise.current = null;
+    }
+    return result;
   };
 
   useEffect(() => {
     let isMounted = true;
 
-    const withTimeout = <T,>(promise: Promise<T>, ms: number, fallback: T): Promise<T> => {
-      let id: NodeJS.Timeout;
-      const timeoutPromise = new Promise<T>((resolve) => {
-        id = setTimeout(() => {
-          console.warn(`Timeout de ${ms}ms alcanzado.`);
-          resolve(fallback);
-        }, ms);
-      });
-      return Promise.race([promise, timeoutPromise]).finally(() => clearTimeout(id));
-    };
-
-    const initAuth = async () => {
-      console.log("Iniciando Auth...");
-      try {
-        console.log("Obteniendo sesión de Supabase...");
-        
-        const result = await withTimeout(supabase.auth.getSession(), 15000, { data: { session: null }, error: new Error('Timeout getting session') });
-        const { data: { session }, error } = result;
-        
-        if (error) {
-          console.error("Error de Supabase Auth:", error);
-          if (error.message?.includes('Refresh Token Not Found') || error.message?.includes('Invalid Refresh Token') || error.message?.includes('Timeout')) {
-             console.log("Token inválido o timeout, limpiando sesión...");
-             await withTimeout(supabase.auth.signOut(), 5000, undefined);
-          } else {
-             throw error;
-          }
-        }
-
-        if (session?.user) {
-          console.log("Sesión encontrada para el usuario:", session.user.id);
-          await withTimeout(loadUserProfile(session.user.id), 15000, false);
-        } else {
-          console.log("No hay sesión activa.");
-        }
-      } catch (err: any) {
-        console.error("Error inicializando sesión (posible bloqueo de red):", err);
-        const errMsg = String(err.message || err);
-        if (errMsg.includes('Refresh Token Not Found') || errMsg.includes('Invalid Refresh Token') || errMsg.includes('Timeout')) {
-           console.log("Token inválido capturado en catch, limpiando sesión...");
-           await withTimeout(supabase.auth.signOut(), 5000, undefined);
-        }
-      } finally {
-        if (isMounted) setLoading(false);
-      }
-    };
-
-    initAuth();
-
-    // 2. Escuchar cambios globales de Auth (Login, Logout, Token expired)
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (!isMounted) return;
 
-      if (session?.user) {
-        // Solo cargar si el usuario cambió o no tenemos perfil
-        if (processingId.current !== session.user.id) {
+      if (firebaseUser) {
+        // Solo cargar si no estamos ya procesando este usuario
+        if (processingId.current !== firebaseUser.uid) {
           setLoading(true);
-          await withTimeout(loadUserProfile(session.user.id), 15000, false);
+          const success = await loadUserProfile(firebaseUser.uid, firebaseUser.email);
+          // Si falla la carga del perfil, forzamos el cierre de sesión para evitar bucles
+          if (!success) {
+            console.error("No se pudo cargar el perfil, cerrando sesión.");
+            await signOut(auth);
+            setUser(null);
+            setRol(null);
+          }
           setLoading(false);
         }
       } else {
-        // No hay sesión activa
         setUser(null);
         setRol(null);
         processingId.current = null;
@@ -118,35 +113,30 @@ export const AuthProvider: React.FC<{children: React.ReactNode}> = ({ children }
 
     return () => {
       isMounted = false;
-      subscription.unsubscribe();
+      unsubscribe();
     };
-  }, []); // Arreglo vacío: Solo se ejecuta UNA VEZ al abrir la app
+  }, []);
 
   const login = async (email: string, pass: string) => {
     setLoading(true);
     try {
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email,
-        password: pass,
-      });
-
-      if (error) {
-        let msg = error.message;
-        if (msg.includes('Invalid login credentials')) {
-          msg = 'Correo o contraseña incorrectos.';
-        } else if (msg.includes('fetch')) {
-          msg = 'Error de conexión con el servidor.';
-        }
-        throw new Error(msg);
-      }
-
-      if (data.user) {
-        const success = await loadUserProfile(data.user.id);
+      const userCredential = await signInWithEmailAndPassword(auth, email, pass);
+      
+      if (userCredential.user) {
+        const success = await loadUserProfile(userCredential.user.uid, userCredential.user.email);
         if (!success) {
-          await supabase.auth.signOut();
+          await signOut(auth);
           throw new Error('Tu usuario no tiene un perfil configurado en la base de datos.');
         }
       }
+    } catch (error: any) {
+      let msg = error.message;
+      if (msg.includes('auth/invalid-credential') || msg.includes('auth/user-not-found') || msg.includes('auth/wrong-password')) {
+        msg = 'Correo o contraseña incorrectos.';
+      } else if (msg.includes('network')) {
+        msg = 'Error de conexión con el servidor.';
+      }
+      throw new Error(msg);
     } finally {
       setLoading(false);
     }
@@ -155,7 +145,7 @@ export const AuthProvider: React.FC<{children: React.ReactNode}> = ({ children }
   const logout = async () => {
     setLoading(true);
     try {
-      await supabase.auth.signOut();
+      await signOut(auth);
       setUser(null);
       setRol(null);
       processingId.current = null;

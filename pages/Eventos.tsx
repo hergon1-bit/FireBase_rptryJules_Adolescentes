@@ -36,7 +36,7 @@ const Eventos: React.FC = () => {
     const [activeTabModal, setActiveTabModal] = useState<'chicos' | 'servidores'>('chicos');
     
     // States for Loading / Actions
-    const [isSavingPayment, setIsSavingPayment] = useState<{ [key: number]: boolean }>({});
+    const [isSavingPayment, setIsSavingPayment] = useState<{ [key: string]: boolean }>({});
 
     // Server Enrollment State
     const [servidorToInscribe, setServidorToInscribe] = useState<string>('');
@@ -62,13 +62,13 @@ const Eventos: React.FC = () => {
     const [showOnlyBecados, setShowOnlyBecados] = useState(false);
     const [showOnlyPrecioLocal, setShowOnlyPrecioLocal] = useState(false);
 
-    const [newPayment, setNewPayment] = useState<{ [key: number]: string }>({});
-    const [newPaymentDate, setNewPaymentDate] = useState<{ [key: number]: string }>({});
-    const [newPaymentNote, setNewPaymentNote] = useState<{ [key: number]: string }>({});
+    const [newPayment, setNewPayment] = useState<{ [key: string]: string }>({});
+    const [newPaymentDate, setNewPaymentDate] = useState<{ [key: string]: string }>({});
+    const [newPaymentNote, setNewPaymentNote] = useState<{ [key: string]: string }>({});
     
-    const [newPaymentServidor, setNewPaymentServidor] = useState<{ [key: number]: string }>({});
-    const [newPaymentDateServidor, setNewPaymentDateServidor] = useState<{ [key: number]: string }>({});
-    const [newPaymentNoteServidor, setNewPaymentNoteServidor] = useState<{ [key: number]: string }>({});
+    const [newPaymentServidor, setNewPaymentServidor] = useState<{ [key: string]: string }>({});
+    const [newPaymentDateServidor, setNewPaymentDateServidor] = useState<{ [key: string]: string }>({});
+    const [newPaymentNoteServidor, setNewPaymentNoteServidor] = useState<{ [key: string]: string }>({});
 
     const [expandedHistory, setExpandedHistory] = useState<{ [key: string]: boolean }>({});
     const [isEventModalOpen, setIsEventModalOpen] = useState(false);
@@ -89,7 +89,7 @@ const Eventos: React.FC = () => {
 
     const { values, handleInputChange, setValues, resetForm } = useForm(initialEventFormState);
 
-    const toggleHistory = (type: 'ado' | 'ser', id: number) => {
+    const toggleHistory = (type: 'ado' | 'ser', id: string) => {
         const key = `${type}-${id}`;
         setExpandedHistory(prev => ({ ...prev, [key]: !prev[key] }));
     };
@@ -159,7 +159,7 @@ const Eventos: React.FC = () => {
                 ? tutores.find(t => t.id === inscripcion.tutorId)
                 : adolescentes.find(a => a.id === inscripcion.adolescenteId);
                 
-            const pagosRealizados = pagos.filter(p => Number(p.inscripcionId) === Number(inscripcion.id)).sort((a,b) => new Date(a.fecha).getTime() - new Date(b.fecha).getTime());
+            const pagosRealizados = pagos.filter(p => String(p.inscripcionId) === String(inscripcion.id)).sort((a,b) => new Date(a.fecha).getTime() - new Date(b.fecha).getTime());
             const totalPagado = pagosRealizados.reduce((sum, p) => sum + p.monto, 0);
             return {
                 persona: persona,
@@ -182,7 +182,7 @@ const Eventos: React.FC = () => {
 
         const inscritosServidores = inscripcionesServidores.filter(i => i.eventoId === selectedEvent.id).map(insc => {
             const s = servidores.find(ser => ser.id === insc.servidorId);
-            const pagosS = pagosServidores.filter(p => Number(p.inscripcionServidorId) === Number(insc.id)).sort((a,b) => new Date(a.fecha).getTime() - new Date(b.fecha).getTime());
+            const pagosS = pagosServidores.filter(p => String(p.inscripcionServidorId) === String(insc.id)).sort((a,b) => new Date(a.fecha).getTime() - new Date(b.fecha).getTime());
             const totalP = pagosS.reduce((acc, curr) => acc + curr.monto, 0);
             
             let costoEsperado = selectedEvent.costoPersona || 0;
@@ -221,7 +221,7 @@ const Eventos: React.FC = () => {
         };
     }, [selectedEvent, adolescentes, tutores, inscripciones, pagos, servidores, inscripcionesServidores, pagosServidores, searchInscribedChico, showOnlyDeudores, showOnlyPagadosFull, searchInscribedServidor, showOnlyBecados, showOnlyPrecioLocal]);
 
-    const handleAddPago = async (inscripcionId: number) => {
+    const handleAddPago = async (inscripcionId: string) => {
         // Limpiamos el valor de posibles puntos de miles que el usuario pueda escribir (Gs. 270.000 -> 270000)
         const rawMonto = String(newPayment[inscripcionId] || '0').replace(/\./g, '');
         const monto = parseFloat(rawMonto);
@@ -247,7 +247,7 @@ const Eventos: React.FC = () => {
         }
     };
 
-    const handleAddPagoServidor = async (inscId: number) => {
+    const handleAddPagoServidor = async (inscId: string) => {
         const rawMonto = String(newPaymentServidor[inscId] || '0').replace(/\./g, '');
         const monto = parseFloat(rawMonto);
         const fecha = newPaymentDateServidor[inscId] || new Date().toISOString().split('T')[0];
@@ -287,7 +287,7 @@ const Eventos: React.FC = () => {
         if (selectedEvent && servidorToInscribe) {
             await addInscripcionServidor({
                 eventoId: selectedEvent.id,
-                servidorId: Number(servidorToInscribe),
+                servidorId: servidorToInscribe,
                 rol: rolServidorToInscribe,
                 tipoBeca: becaServidorToInscribe,
                 montoAcordado: Number(montoServidorToInscribe),
@@ -358,7 +358,7 @@ const Eventos: React.FC = () => {
 
                     // Procesar Chicos
                     eventAdoInsc.forEach(i => {
-                        const personaPagos = pagos.filter(p => Number(p.inscripcionId) === Number(i.id)).reduce((sum, p) => sum + p.monto, 0);
+                        const personaPagos = pagos.filter(p => String(p.inscripcionId) === String(i.id)).reduce((sum, p) => sum + p.monto, 0);
                         totalCobrado += personaPagos;
                         totalEsperadoReal += costoBase;
                         if (costoBase - personaPagos <= 0) cantPagados++;
@@ -367,7 +367,7 @@ const Eventos: React.FC = () => {
 
                     // Procesar Servidores
                     eventSerInsc.forEach(i => {
-                        const personaPagos = pagosServidores.filter(p => Number(p.inscripcionServidorId) === Number(i.id)).reduce((sum, p) => sum + p.monto, 0);
+                        const personaPagos = pagosServidores.filter(p => String(p.inscripcionServidorId) === String(i.id)).reduce((sum, p) => sum + p.monto, 0);
                         totalCobrado += personaPagos;
                         
                         let miEsperado = costoBase;
@@ -577,9 +577,9 @@ const Eventos: React.FC = () => {
                                         <button onClick={() => { 
                                             if (selectedEvent && adolescenteToInscribe) {
                                                 if (selectedEvent.esParaPadres) {
-                                                    addInscripcion(selectedEvent.id, undefined, Number(adolescenteToInscribe));
+                                                    addInscripcion(selectedEvent.id, undefined, adolescenteToInscribe);
                                                 } else {
-                                                    addInscripcion(selectedEvent.id, Number(adolescenteToInscribe), undefined);
+                                                    addInscripcion(selectedEvent.id, adolescenteToInscribe, undefined);
                                                 }
                                             }
                                             setAdolescenteToInscribe(''); 
@@ -840,7 +840,7 @@ const Eventos: React.FC = () => {
                     <div className="bg-background/50 p-4 rounded-lg mb-4 border border-border/50">
                         <p className="text-xs font-bold text-primary uppercase">Inscribiendo a:</p>
                         <p className="text-xl font-bold">
-                            {servidores.find(s => s.id === Number(servidorToInscribe))?.nombre} {servidores.find(s => s.id === Number(servidorToInscribe))?.apellido}
+                            {servidores.find(s => s.id === servidorToInscribe)?.nombre} {servidores.find(s => s.id === servidorToInscribe)?.apellido}
                         </p>
                     </div>
 

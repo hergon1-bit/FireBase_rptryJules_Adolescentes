@@ -58,7 +58,7 @@ const LoginPage: React.FC = () => {
         setIsFirstRun(false);
         
         if (errStr.includes('fetch') || errStr.includes('No se pudo conectar') || errStr.includes('Timeout') || errStr.includes('tardando demasiado') || errStr.includes('aborted')) {
-            setError("Advertencia: La conexión inicial tardó demasiado. Puedes intentar iniciar sesión, pero si falla, verifica tu conexión o el estado de Supabase.");
+            setError("Advertencia: La conexión inicial tardó demasiado. Puedes intentar iniciar sesión, pero si falla, verifica tu conexión o el estado de Firebase.");
         }
     }
   };
@@ -138,13 +138,13 @@ const LoginPage: React.FC = () => {
             <h2 className="text-2xl font-bold text-red-400 mb-4">Fallo de Conexión Detectado</h2>
             <div className="max-w-md bg-surface p-6 rounded-lg border border-border shadow-2xl mb-8">
                 <p className="text-text-secondary text-sm leading-relaxed mb-4">
-                    La aplicación no puede comunicarse con la base de datos de Supabase.
+                    La aplicación no puede comunicarse con la base de datos de Firebase.
                 </p>
                 <div className="text-xs bg-black/40 p-4 rounded text-left font-mono text-red-300 border border-red-900/50 mb-4">
                     {error}
                 </div>
                 <p className="text-xs text-text-secondary italic">
-                    Acción sugerida: Entre a <a href="https://supabase.com/dashboard" target="_blank" className="text-primary hover:underline font-bold">Supabase Dashboard</a> y restaure su proyecto.
+                    Acción sugerida: Entre a <a href="https://console.firebase.google.com" target="_blank" className="text-primary hover:underline font-bold">Firebase Console</a> y restaure su proyecto.
                 </p>
             </div>
             <button 
@@ -244,6 +244,16 @@ const LoginPage: React.FC = () => {
                 >
                     {isLoading ? <RefreshIcon className="w-5 h-5 animate-spin mr-2" /> : 'Crear Admin e Iniciar'}
                 </button>
+                
+                <div className="text-center mt-4">
+                    <button
+                        type="button"
+                        onClick={() => setIsFirstRun(false)}
+                        className="text-sm text-text-secondary hover:text-primary transition-colors"
+                    >
+                        ¿Ya tienes una cuenta? Inicia sesión aquí
+                    </button>
+                </div>
             </form>
         )}
 

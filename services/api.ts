@@ -1,6 +1,11 @@
-
-import { supabase, supabaseUrl, supabaseKey } from './supabase';
-import { createClient } from '@supabase/supabase-js';
+import { db, auth } from './firebase';
+import { 
+  collection, doc, getDoc, getDocs, setDoc, addDoc, updateDoc, deleteDoc, 
+  query, where, orderBy, limit, writeBatch
+} from 'firebase/firestore';
+import { 
+  createUserWithEmailAndPassword, updatePassword, sendPasswordResetEmail 
+} from 'firebase/auth';
 import { 
   Usuario, Rol, Adolescente, Encargado, Reunion, Tutor, Evento, Asistencia, 
   TutorAdolescente, InscripcionEvento, PagoEvento, ParticipanteEvento, TipoAsistencia, AsistenciaDetalle,
@@ -8,37 +13,11 @@ import {
   Servidor, InscripcionServidor, PagoServidor
 } from '../types';
 
-const API_TIMEOUT = 60000;
-
-const withRetry = async <T>(fn: () => Promise<T>, retries = 3, delay = 2000): Promise<T> => {
-  try {
-    return await fn();
-  } catch (error: any) {
-    const errorStr = String(error.message || error);
-    const isRetryable = 
-        errorStr.includes('fetch') || 
-        errorStr.includes('NetworkError') || 
-        errorStr.includes('Timeout') ||
-        error.status === 504 || 
-        error.status === 502 ||
-        error.status === 503 ||
-        error.status === 408;
-
-    if (retries > 0 && isRetryable) {
-      console.warn(`Reintentando conexión en ${delay}ms... (${retries} intentos restantes).`);
-      await new Promise(resolve => setTimeout(resolve, delay));
-      return withRetry(fn, retries - 1, delay * 1.5);
-    }
-    
-    throw error;
-  }
-};
-
 const normalizeRol = (rol: any): Rol => {
   const defaultPerms = { read: false, create: false, update: false, delete: false };
   if (!rol) {
       return {
-          id: 0, nombre: 'Invitado',
+          id: '0', nombre: 'Invitado',
           permisos: {
             adolescentes: { ...defaultPerms }, asistencias: { ...defaultPerms }, celebraciones_cumpleanos: { ...defaultPerms },
             devocionales: { ...defaultPerms }, encargados: { ...defaultPerms }, entregas_devocionales: { ...defaultPerms },
@@ -74,716 +53,905 @@ const normalizeRol = (rol: any): Rol => {
   };
 };
 
-const handleSupabaseData = <T>(data: T | null, error: any, context: string): T => {
-    if (error) {
-        let errorMsg = error.message || (typeof error === 'string' ? error : JSON.stringify(error));
-        
-        // Traducir error de RLS de Supabase
-        if (errorMsg.includes('violates row-level security policy') || errorMsg.includes('new row violates row-level security policy')) {
-            errorMsg = 'No tienes permisos suficientes para realizar esta acción en la base de datos.';
-        }
-        
-        console.error(`Error crítico en API (${context}):`, error);
-        throw new Error(errorMsg);
-    }
-    return data as T;
-};
+enum OperationType {
+  CREATE = 'create',
+  UPDATE = 'update',
+  DELETE = 'delete',
+  LIST = 'list',
+  GET = 'get',
+  WRITE = 'write',
+}
 
-const fetchAllRows = async (table: string, select: string, orderBy?: { column: string, ascending: boolean }) => {
-    return withRetry(async () => {
-        let allData: any[] = [];
-        let hasMore = true;
-        let page = 0;
-        const pageSize = 1000;
-        while (hasMore) {
-            let query = supabase.from(table).select(select).range(page * pageSize, (page + 1) * pageSize - 1);
-            if (orderBy) query = query.order(orderBy.column, { ascending: orderBy.ascending });
-            const { data, error } = await query;
-            if (error) throw error;
-            if (data && data.length > 0) {
-                allData = allData.concat(data);
-                if (data.length < pageSize) hasMore = false;
-            } else { hasMore = false; }
-            page++;
-        }
-        return allData;
-    });
-};
+interface FirestoreErrorInfo {
+  error: string;
+  operationType: OperationType;
+  path: string | null;
+  authInfo: {
+    userId: string | undefined;
+    email: string | null | undefined;
+  }
+}
 
-const MAX_ROWS = 10000;
+function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
+  const errInfo: FirestoreErrorInfo = {
+    error: error instanceof Error ? error.message : String(error),
+    authInfo: {
+      userId: auth.currentUser?.uid,
+      email: auth.currentUser?.email,
+    },
+    operationType,
+    path
+  }
+  console.error('Firestore Error: ', JSON.stringify(errInfo));
+  throw new Error(JSON.stringify(errInfo));
+}
 
 export const api = {
   getUsuarioById: async (id: string): Promise<Usuario | null> => {
     try {
-      const { data, error } = await supabase.from('usuarios').select('*').eq('id', id).maybeSingle();
-      if (error || !data) return null;
-      return { ...data, rolId: data.rol_id, lastSignInAt: data.last_sign_in_at };
+      const docSnap = await getDoc(doc(db, 'usuarios', String(id)));
+      if (!docSnap.exists()) return null;
+      return { id: docSnap.id, ...docSnap.data() } as Usuario;
     } catch (e) {
+      handleFirestoreError(e, OperationType.GET, 'usuarios');
       return null;
     }
   },
-  
-  getRolById: async (id: number): Promise<Rol | null> => {
+
+  getUsuarioByEmail: async (email: string): Promise<Usuario | null> => {
     try {
-      const { data, error } = await supabase.from('roles').select('*').eq('id', id).maybeSingle();
-      if (error || !data) return null;
-      return normalizeRol(data);
+      const q = query(collection(db, 'usuarios'), where('email', '==', email));
+      const snapshot = await getDocs(q);
+      if (snapshot.empty) return null;
+      const docSnap = snapshot.docs[0];
+      return { id: docSnap.id, ...docSnap.data() } as Usuario;
     } catch (e) {
+      handleFirestoreError(e, OperationType.LIST, 'usuarios');
+      return null;
+    }
+  },
+
+  migrateUsuarioId: async (oldId: string, newId: string, userData: any): Promise<void> => {
+    try {
+      const batch = writeBatch(db);
+      batch.set(doc(db, 'usuarios', newId), userData);
+      batch.delete(doc(db, 'usuarios', oldId));
+      await batch.commit();
+    } catch (e) {
+      handleFirestoreError(e, OperationType.WRITE, 'usuarios');
+    }
+  },
+  
+  getRolById: async (id: string): Promise<Rol | null> => {
+    try {
+      const docSnap = await getDoc(doc(db, 'roles', String(id)));
+      if (!docSnap.exists()) return null;
+      return normalizeRol({ id: docSnap.id, ...docSnap.data() });
+    } catch (e) {
+      handleFirestoreError(e, OperationType.GET, 'roles');
       return null;
     }
   },
 
   isFirstRun: async (): Promise<boolean> => {
     try {
-      console.log("Verificando si es la primera ejecución...");
-      
-      const withTimeout = <T,>(promise: Promise<T>, ms: number, fallback: T): Promise<T> => {
-        let id: NodeJS.Timeout;
-        const timeoutPromise = new Promise<T>((resolve) => {
-          id = setTimeout(() => {
-            console.warn(`Timeout de ${ms}ms alcanzado en isFirstRun.`);
-            resolve(fallback);
-          }, ms);
-        });
-        return Promise.race([promise, timeoutPromise]).finally(() => clearTimeout(id));
-      };
-
-      const result = await withTimeout(
-        withRetry(async () => supabase.rpc('is_first_run')),
-        15000,
-        { data: null, error: new Error('Timeout checking first run') }
-      ) as any;
-
-      const { data, error } = result;
-
-      if (error) {
-        console.error("Error devuelto por Supabase en isFirstRun:", error);
-        throw error;
+      const docSnap = await getDoc(doc(db, 'public', 'config'));
+      if (docSnap.exists() && docSnap.data().isInitialized) {
+        return false;
       }
-      console.log("Verificación de primera ejecución exitosa:", data);
-      return data === true;
+      return true;
     } catch (e) { 
-        console.error("Error crítico verificando primera ejecución:", e);
-        throw e; 
+      console.error("Error verificando primera ejecución:", e);
+      return false; 
     }
   },
 
   ensureDefaultRoles: async (): Promise<void> => {
     try {
-      const { data: existingRoles } = await supabase.from('roles').select('id').limit(1);
-      if (existingRoles && existingRoles.length > 0) return;
+      const rolesRef = collection(db, 'roles');
+      const snapshot = await getDocs(query(rolesRef, limit(1)));
+      if (!snapshot.empty) return;
+      
       const defaultPerms = { read: true, create: true, update: true, delete: true };
       const guestPerms = { read: true, create: false, update: false, delete: false };
-      const roles = [
-        { id: 1, nombre: 'Administrador', permisos: { adolescentes: defaultPerms, asistencias: defaultPerms, celebraciones_cumpleanos: defaultPerms, devocionales: defaultPerms, encargados: defaultPerms, entregas_devocionales: defaultPerms, eventos: defaultPerms, inscripciones_eventos: defaultPerms, inscripciones_servidores: defaultPerms, pagos_eventos: defaultPerms, pagos_servidores: defaultPerms, participantes_eventos: defaultPerms, reuniones: defaultPerms, roles: defaultPerms, servidores: defaultPerms, tutor_adolescente: defaultPerms, tutores: defaultPerms, usuarios: defaultPerms } },
-        { id: 2, nombre: 'Encargado', permisos: { adolescentes: defaultPerms, asistencias: defaultPerms, celebraciones_cumpleanos: guestPerms, devocionales: guestPerms, encargados: guestPerms, entregas_devocionales: defaultPerms, eventos: guestPerms, inscripciones_eventos: defaultPerms, inscripciones_servidores: defaultPerms, pagos_eventos: defaultPerms, pagos_servidores: defaultPerms, participantes_eventos: defaultPerms, reuniones: defaultPerms, roles: guestPerms, servidores: defaultPerms, tutor_adolescente: defaultPerms, tutores: defaultPerms, usuarios: guestPerms } }
-      ];
-      await supabase.from('roles').insert(roles);
-    } catch (e) {}
+      
+      await setDoc(doc(db, 'roles', '1'), { nombre: 'Administrador', permisos: { adolescentes: defaultPerms, asistencias: defaultPerms, celebraciones_cumpleanos: defaultPerms, devocionales: defaultPerms, encargados: defaultPerms, entregas_devocionales: defaultPerms, eventos: defaultPerms, inscripciones_eventos: defaultPerms, inscripciones_servidores: defaultPerms, pagos_eventos: defaultPerms, pagos_servidores: defaultPerms, participantes_eventos: defaultPerms, reuniones: defaultPerms, roles: defaultPerms, servidores: defaultPerms, tutor_adolescente: defaultPerms, tutores: defaultPerms, usuarios: defaultPerms } });
+      await setDoc(doc(db, 'roles', '2'), { nombre: 'Encargado', permisos: { adolescentes: defaultPerms, asistencias: defaultPerms, celebraciones_cumpleanos: guestPerms, devocionales: guestPerms, encargados: guestPerms, entregas_devocionales: defaultPerms, eventos: guestPerms, inscripciones_eventos: defaultPerms, inscripciones_servidores: defaultPerms, pagos_eventos: defaultPerms, pagos_servidores: defaultPerms, participantes_eventos: defaultPerms, reuniones: defaultPerms, roles: guestPerms, servidores: defaultPerms, tutor_adolescente: defaultPerms, tutores: defaultPerms, usuarios: guestPerms } });
+    } catch (e) {
+      handleFirestoreError(e, OperationType.WRITE, 'roles');
+    }
   },
   
   updateLastSignIn: async (id: string): Promise<void> => {
-    try { await supabase.from('usuarios').update({ last_sign_in_at: new Date().toISOString() }).eq('id', id); } catch (e) {}
+    try { 
+      await updateDoc(doc(db, 'usuarios', id), { lastSignInAt: new Date().toISOString() }); 
+    } catch (e) {
+      handleFirestoreError(e, OperationType.UPDATE, 'usuarios');
+    }
   },
 
   resetPasswordForEmail: async (email: string) => {
-    const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: window.location.origin });
-    if (error) throw new Error(error.message);
+    try {
+      await sendPasswordResetEmail(auth, email);
+    } catch (e) {
+      throw e;
+    }
   },
   
   updateCurrentUserPassword: async (password: string) => {
-    const { error } = await supabase.auth.updateUser({ password });
-    if (error) throw new Error(error.message);
+    if (auth.currentUser) {
+      await updatePassword(auth.currentUser, password);
+    }
   },
 
   getAdolescentes: async (): Promise<Adolescente[]> => {
     try {
-        const columns = 'id, nombre, apellido, cedula, registro, fecha_nacimiento, barrio, ciudad, telefono, sexo, estado, ficha_inscripcion, autorizacion';
-        const data = await fetchAllRows('adolescentes', columns, { column: 'nombre', ascending: true });
-        return data.map((a: any) => ({ id: a.id, nombre: a.nombre, apellido: a.apellido, cedula: a.cedula, registro: a.registro || '', fechaNacimiento: a.fecha_nacimiento, barrio: a.barrio || '', ciudad: a.ciudad || '', telefono: a.telefono || '', sexo: a.sexo, estado: a.estado, fichaInscripcion: a.ficha_inscripcion, autorizacion: a.autorizacion }));
-    } catch (error: any) { return []; }
+        const snapshot = await getDocs(collection(db, 'adolescentes'));
+        return snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as Adolescente));
+    } catch (error: any) { 
+        handleFirestoreError(error, OperationType.LIST, 'adolescentes');
+        return []; 
+    }
   },
 
   getServidores: async (): Promise<Servidor[]> => {
     try {
-        const data = await fetchAllRows('servidores', '*', { column: 'nombre', ascending: true });
-        return data as Servidor[];
-    } catch (error) { return []; }
+        const snapshot = await getDocs(collection(db, 'servidores'));
+        return snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as Servidor));
+    } catch (error) { 
+        handleFirestoreError(error, OperationType.LIST, 'servidores');
+        return []; 
+    }
   },
 
   createServidor: async (s: Omit<Servidor, 'id'>): Promise<Servidor> => {
-    return withRetry(async () => {
-        const { data, error } = await supabase.from('servidores').insert(s).select().single();
-        const result = handleSupabaseData(data, error, 'createServidor');
-        return result;
-    });
+    try {
+        const docRef = await addDoc(collection(db, 'servidores'), s);
+        return { id: docRef.id, ...s };
+    } catch (error) {
+        handleFirestoreError(error, OperationType.CREATE, 'servidores');
+        throw error;
+    }
   },
 
   updateServidor: async (s: Servidor): Promise<Servidor> => {
-    return withRetry(async () => {
+    try {
         const { id, ...rest } = s;
-        const { data, error } = await supabase.from('servidores').update(rest).eq('id', id).select().single();
-        const result = handleSupabaseData(data, error, 'updateServidor');
-        return result;
-    });
+        await updateDoc(doc(db, 'servidores', id), rest as any);
+        return s;
+    } catch (error) {
+        handleFirestoreError(error, OperationType.UPDATE, 'servidores');
+        throw error;
+    }
   },
 
-  deleteServidor: async (id: number): Promise<void> => {
-    await supabase.from('servidores').delete().eq('id', id);
+  deleteServidor: async (id: string): Promise<void> => {
+    try {
+      await deleteDoc(doc(db, 'servidores', id));
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, 'servidores');
+    }
   },
 
   getInscripcionesServidores: async (): Promise<InscripcionServidor[]> => {
     try {
-        const { data, error } = await supabase.from('inscripciones_servidores').select('*');
-        if (error) return [];
-        return (data || []).map((i: any) => ({ 
-            id: i.id, 
-            eventoId: i.evento_id, 
-            servidorId: i.servidor_id, 
-            rol: i.rol, 
-            tipoBeca: i.tipo_beca, 
-            montoAcordado: i.monto_acordado, 
-            iglesiaPagaSaldo: i.iglesia_paga_saldo, 
-            precioEspecialLocal: i.precio_especial_local,
-            notas: i.notas 
-        }));
-    } catch (e) { return []; }
+        const snapshot = await getDocs(collection(db, 'inscripciones_servidores'));
+        return snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as InscripcionServidor));
+    } catch (e) { 
+        handleFirestoreError(e, OperationType.LIST, 'inscripciones_servidores');
+        return []; 
+    }
   },
 
   createInscripcionServidor: async (i: Omit<InscripcionServidor, 'id'>): Promise<InscripcionServidor> => {
-    return withRetry(async () => {
-        const { data, error } = await supabase.from('inscripciones_servidores').insert({ 
-            evento_id: i.eventoId, 
-            servidor_id: i.servidorId, 
-            rol: i.rol, 
-            tipo_beca: i.tipoBeca || 'Ninguna',
-            monto_acordado: i.montoAcordado || 0,
-            // Fix: accessing property via camelCase from TS object i
-            iglesia_paga_saldo: i.iglesiaPagaSaldo || false,
-            precio_especial_local: i.precioEspecialLocal,
-            notas: i.notas 
-        }).select().single();
-        const result = handleSupabaseData(data, error, 'createInscripcionServidor');
-        return { 
-            id: result.id, 
-            eventoId: result.evento_id, 
-            servidorId: result.servidor_id, 
-            rol: result.rol, 
-            tipoBeca: result.tipo_beca,
-            montoAcordado: result.monto_acordado,
-            iglesiaPagaSaldo: result.iglesia_paga_saldo,
-            precioEspecialLocal: result.precio_especial_local,
-            notas: result.notas 
-        };
-    });
+    try {
+        const docRef = await addDoc(collection(db, 'inscripciones_servidores'), i);
+        return { id: docRef.id, ...i };
+    } catch (error) {
+        handleFirestoreError(error, OperationType.CREATE, 'inscripciones_servidores');
+        throw error;
+    }
   },
 
   updateInscripcionServidor: async (i: InscripcionServidor): Promise<void> => {
-    return withRetry(async () => {
-        const { error } = await supabase.from('inscripciones_servidores').update({ 
-            rol: i.rol, 
-            tipo_beca: i.tipoBeca,
-            monto_acordado: i.montoAcordado,
-            // Fix: using correct camelCase property names from InscripcionServidor object i
-            iglesia_paga_saldo: i.iglesiaPagaSaldo,
-            precio_especial_local: i.precioEspecialLocal,
-            notas: i.notas 
-        }).eq('id', i.id);
-        if (error) throw new Error(error.message);
-    });
+    try {
+        const { id, ...rest } = i;
+        await updateDoc(doc(db, 'inscripciones_servidores', id), rest as any);
+    } catch (error) {
+        handleFirestoreError(error, OperationType.UPDATE, 'inscripciones_servidores');
+        throw error;
+    }
   },
 
-  deleteInscripcionServidor: async (id: number): Promise<void> => {
-    await supabase.from('inscripciones_servidores').delete().eq('id', id);
+  deleteInscripcionServidor: async (id: string): Promise<void> => {
+    try {
+      await deleteDoc(doc(db, 'inscripciones_servidores', id));
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, 'inscripciones_servidores');
+    }
   },
 
   getPagosServidores: async (): Promise<PagoServidor[]> => {
     try {
-        const data = await fetchAllRows('pagos_servidores', '*');
-        return (data || []).map((p: any) => ({ 
-            id: p.id, 
-            inscripcionServidorId: p.inscripcion_servidor_id, 
-            fecha: p.fecha, 
-            monto: p.monto,
-            notas: p.notas
-        }));
-    } catch (e) { return []; }
+        const snapshot = await getDocs(collection(db, 'pagos_servidores'));
+        return snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as PagoServidor));
+    } catch (e) { 
+        handleFirestoreError(e, OperationType.LIST, 'pagos_servidores');
+        return []; 
+    }
   },
 
   createPagoServidor: async (p: Omit<PagoServidor, 'id'>): Promise<PagoServidor> => {
-    return withRetry(async () => {
-        const { data, error } = await supabase.from('pagos_servidores').insert({ 
-            inscripcion_servidor_id: p.inscripcionServidorId, 
-            monto: p.monto, 
-            fecha: p.fecha,
-            notas: p.notas
-        }).select().single();
-        const result = handleSupabaseData(data, error, 'createPagoServidor');
-        return { 
-            id: result.id, 
-            inscripcionServidorId: result.inscripcion_servidor_id, 
-            fecha: result.fecha, 
-            monto: result.monto,
-            notas: result.notas
-        };
-    });
+    try {
+        const docRef = await addDoc(collection(db, 'pagos_servidores'), p);
+        return { id: docRef.id, ...p };
+    } catch (error) {
+        handleFirestoreError(error, OperationType.CREATE, 'pagos_servidores');
+        throw error;
+    }
   },
 
-  deletePagoServidor: async (id: number): Promise<void> => {
-    await supabase.from('pagos_servidores').delete().eq('id', id);
+  deletePagoServidor: async (id: string): Promise<void> => {
+    try {
+      await deleteDoc(doc(db, 'pagos_servidores', id));
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, 'pagos_servidores');
+    }
   },
 
   getEncargados: async (): Promise<Encargado[]> => {
     try {
-        const data = await fetchAllRows('encargados', 'id, nombre, apellido, cedula, fecha_nacimiento, barrio, ciudad, telefono, email', { column: 'nombre', ascending: true });
-        return data.map((e: any) => ({ id: e.id, nombre: e.nombre, apellido: e.apellido, cedula: e.cedula, fechaNacimiento: e.fecha_nacimiento, barrio: e.barrio, ciudad: e.ciudad, telefono: e.telefono, email: e.email }));
-    } catch (error) { return []; }
+        const snapshot = await getDocs(collection(db, 'encargados'));
+        return snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as Encargado));
+    } catch (error) { 
+        handleFirestoreError(error, OperationType.LIST, 'encargados');
+        return []; 
+    }
   },
 
   getReuniones: async (): Promise<Reunion[]> => {
     try {
-        const data = await fetchAllRows('reuniones', 'id, fecha, tema, encargado_id, estado', { column: 'fecha', ascending: false });
-        return data.map((r: any) => ({ id: r.id, fecha: r.fecha, tema: r.tema, encargadoId: r.encargado_id, estado: r.estado || 'En Proceso' }));
-    } catch (error) { return []; }
+        const snapshot = await getDocs(collection(db, 'reuniones'));
+        return snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as Reunion));
+    } catch (error) { 
+        handleFirestoreError(error, OperationType.LIST, 'reuniones');
+        return []; 
+    }
   },
 
   getTutores: async (): Promise<Tutor[]> => {
     try {
-        const data = await fetchAllRows('tutores', '*', { column: 'nombre', ascending: true });
-        return data as Tutor[];
-    } catch (error) { return []; }
+        const snapshot = await getDocs(collection(db, 'tutores'));
+        return snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as Tutor));
+    } catch (error) { 
+        handleFirestoreError(error, OperationType.LIST, 'tutores');
+        return []; 
+    }
   },
 
   getEventos: async (): Promise<Evento[]> => {
     try {
-        const data = await fetchAllRows('eventos', '*', { column: 'fecha_inicio', ascending: false });
-        return data.map((e: any) => ({ 
-            id: e.id, 
-            tema: e.tema, 
-            lugar: e.lugar, 
-            fechaInicio: e.fecha_inicio, 
-            horaInicio: e.hora_inicio, 
-            fechaFin: e.fecha_fin, 
-            horaFin: e.hora_fin, 
-            tieneCosto: e.tiene_costo, 
-            costoTotal: e.costo_total, 
-            costoPersona: e.costo_persona,
-            esParaPadres: e.es_para_padres,
-            finalizado: e.finalizado
-        }));
-    } catch (error) { return []; }
+        const snapshot = await getDocs(collection(db, 'eventos'));
+        return snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as Evento));
+    } catch (error) { 
+        handleFirestoreError(error, OperationType.LIST, 'eventos');
+        return []; 
+    }
   },
 
   getAsistencias: async (): Promise<Asistencia[]> => {
     try {
-        const data = await fetchAllRows('asistencias', 'reunion_id, adolescente_id, estado, detalle');
-        return data.map((a: any) => ({ reunionId: a.reunion_id, adolescenteId: a.adolescente_id, estado: a.estado, detalle: a.detalle }));
-    } catch (error) { return []; }
+        const snapshot = await getDocs(collection(db, 'asistencias'));
+        return snapshot.docs.map(doc => doc.data() as Asistencia);
+    } catch (error) { 
+        handleFirestoreError(error, OperationType.LIST, 'asistencias');
+        return []; 
+    }
   },
 
-  getAsistenciasByReunion: async (reunionId: number): Promise<Asistencia[]> => {
-    const { data, error } = await supabase.from('asistencias').select('reunion_id, adolescente_id, estado, detalle').eq('reunion_id', reunionId);
-    if (error) return [];
-    return (data || []).map((a: any) => ({ reunionId: a.reunion_id, adolescenteId: a.adolescente_id, estado: a.estado, detalle: a.detalle }));
+  getAsistenciasByReunion: async (reunionId: string): Promise<Asistencia[]> => {
+    try {
+      const searchValues: any[] = [reunionId];
+      if (!isNaN(Number(reunionId))) {
+          searchValues.push(Number(reunionId));
+      }
+      const q = query(collection(db, 'asistencias'), where('reunionId', 'in', searchValues));
+      const snapshot = await getDocs(q);
+      return snapshot.docs.map(doc => doc.data() as Asistencia);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.LIST, 'asistencias');
+      return [];
+    }
   },
 
   getResumenReuniones: async (): Promise<ResumenReunion[]> => {
-    const { data, error } = await supabase.from('view_resumen_asistencia').select('*');
-    if (error) return [];
-    return (data || []).map((r: any) => ({ reunionId: r.reunion_id, presentes: r.presentes || 0, ausentes: r.ausentes || 0 }));
+    // In Firebase we don't have views, we need to calculate this on the fly or keep a counter.
+    // For now, we'll fetch all asistencias and group them.
+    try {
+      const snapshot = await getDocs(collection(db, 'asistencias'));
+      const asistencias = snapshot.docs.map(doc => doc.data() as Asistencia);
+      const resumen: Record<string, ResumenReunion> = {};
+      
+      asistencias.forEach(a => {
+        if (!resumen[a.reunionId]) {
+          resumen[a.reunionId] = { reunionId: a.reunionId, presentes: 0, ausentes: 0 };
+        }
+        if (a.estado === 'Presente') resumen[a.reunionId].presentes++;
+        else if (a.estado === 'Ausente') resumen[a.reunionId].ausentes++;
+      });
+      
+      return Object.values(resumen);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.LIST, 'asistencias');
+      return [];
+    }
   },
 
   getTutorAdolescente: async (): Promise<TutorAdolescente[]> => {
-    const { data, error } = await supabase.from('tutor_adolescente').select('*').range(0, MAX_ROWS);
-    if (error) return [];
-    return (data || []).map((ta: any) => ({ tutorId: ta.tutor_id ?? ta.tutorId, adolescenteId: ta.adolescente_id ?? ta.adolescenteId }));
+    try {
+      const snapshot = await getDocs(collection(db, 'tutor_adolescente'));
+      return snapshot.docs.map(doc => doc.data() as TutorAdolescente);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.LIST, 'tutor_adolescente');
+      return [];
+    }
   },
 
   getInscripciones: async (): Promise<InscripcionEvento[]> => {
     try {
-        const data = await fetchAllRows('inscripciones_eventos', '*');
-        console.log("Raw inscripciones_eventos:", data.slice(0, 2));
-        return (data || []).map((i: any) => ({ 
-            id: i.id, 
-            eventoId: i.evento_id, 
-            adolescenteId: i.adolescente_id, 
-            tutorId: i.tutor_id,
-            fechaInscripcion: i.fecha_inscripcion, 
-            notas: i.notas,
-            asistio: i.asistio
-        }));
-    } catch (e) { return []; }
+        const snapshot = await getDocs(collection(db, 'inscripciones_eventos'));
+        return snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as InscripcionEvento));
+    } catch (e) { 
+        handleFirestoreError(e, OperationType.LIST, 'inscripciones_eventos');
+        return []; 
+    }
   },
 
   getPagos: async (): Promise<PagoEvento[]> => {
     try {
-        const data = await fetchAllRows('pagos_eventos', '*');
-        return (data || []).map((p: any) => ({ 
-            id: p.id, 
-            inscripcionId: p.inscripcion_id, 
-            fecha: p.fecha, 
-            monto: p.monto, 
-            notas: p.notas 
-        }));
-    } catch (e) { return []; }
+        const snapshot = await getDocs(collection(db, 'pagos_eventos'));
+        return snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as PagoEvento));
+    } catch (e) { 
+        handleFirestoreError(e, OperationType.LIST, 'pagos_eventos');
+        return []; 
+    }
   },
 
   getParticipantes: async (): Promise<ParticipanteEvento[]> => {
-    const { data, error } = await supabase.from('participantes_eventos').select('*').range(0, MAX_ROWS);
-    if (error) return [];
-    console.log("Raw participantes_eventos:", data.slice(0, 2));
-    return (data || []).map((p: any) => ({ eventoId: p.evento_id, adolescenteId: p.adolescente_id, tutorId: p.tutor_id }));
+    try {
+      const snapshot = await getDocs(collection(db, 'participantes_eventos'));
+      return snapshot.docs.map(doc => doc.data() as ParticipanteEvento);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.LIST, 'participantes_eventos');
+      return [];
+    }
   },
 
   getUsuarios: async (): Promise<Usuario[]> => {
-    const { data, error } = await supabase.from('usuarios').select('*');
-    if (error) return [];
-    return (data || []).map((u: any) => ({ ...u, rolId: u.rol_id, avatarUrl: u.avatar_url, lastSignInAt: u.last_sign_in_at }));
+    try {
+      const snapshot = await getDocs(collection(db, 'usuarios'));
+      return snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as Usuario));
+    } catch (error) {
+      handleFirestoreError(error, OperationType.LIST, 'usuarios');
+      return [];
+    }
   },
 
   getRoles: async (): Promise<Rol[]> => {
-    const { data, error } = await supabase.from('roles').select('*').order('id', { ascending: true });
-    if (error) return [];
-    return (data || []).map(normalizeRol);
+    try {
+      const snapshot = await getDocs(collection(db, 'roles'));
+      return snapshot.docs.map(doc => normalizeRol({ ...doc.data(), id: doc.id }));
+    } catch (error) {
+      handleFirestoreError(error, OperationType.LIST, 'roles');
+      return [];
+    }
   },
 
   getCumpleanosCelebrados: async (): Promise<CelebracionCumpleanos[]> => {
-    const { data, error } = await supabase.from('celebraciones_cumpleanos').select('adolescente_id, ano').range(0, MAX_ROWS);
-    if (error) return [];
-    return (data || []).map((c: any) => ({ adolescenteId: c.adolescente_id, ano: c.ano }));
+    try {
+      const snapshot = await getDocs(collection(db, 'celebraciones_cumpleanos'));
+      return snapshot.docs.map(doc => doc.data() as CelebracionCumpleanos);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.LIST, 'celebraciones_cumpleanos');
+      return [];
+    }
   },
   
   getDevocionales: async (): Promise<Devocional[]> => {
     try {
-        const { data, error } = await supabase.from('devocionales').select('*').order('numero_semana', { ascending: false });
-        if (error) return [];
-        return (data || []).map((d: any) => ({ id: d.id, numeroSemana: d.numero_semana, tema: d.tema, fechaDistribucion: d.fecha_distribucion, fechaVencimiento: d.fecha_vencimiento }));
-    } catch (e) { return []; }
+        const snapshot = await getDocs(collection(db, 'devocionales'));
+        return snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as Devocional));
+    } catch (e) { 
+        handleFirestoreError(e, OperationType.LIST, 'devocionales');
+        return []; 
+    }
   },
 
   getEntregasDevocionales: async (): Promise<EntregaDevocional[]> => {
     try {
-        const data = await fetchAllRows('entregas_devocionales', '*');
-        return data.map((e: any) => ({ id: e.id, devocionalId: e.devocional_id, adolescenteId: e.adolescente_id, fechaEntrega: e.fecha_entrega, observaciones: e.observaciones }));
-    } catch (e) { return []; }
+        const snapshot = await getDocs(collection(db, 'entregas_devocionales'));
+        return snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as EntregaDevocional));
+    } catch (e) { 
+        handleFirestoreError(e, OperationType.LIST, 'entregas_devocionales');
+        return []; 
+    }
   },
 
   createDevocional: async (d: Omit<Devocional, 'id'>): Promise<Devocional> => {
-    return withRetry(async () => {
-        const { data, error } = await supabase.from('devocionales').insert({ numero_semana: d.numeroSemana, tema: d.tema, fecha_distribucion: d.fechaDistribucion, fecha_vencimiento: d.fechaVencimiento }).select().single();
-        const result = handleSupabaseData(data, error, 'createDevocional');
-        return { id: result.id, numeroSemana: result.numero_semana, tema: result.tema, fechaDistribucion: result.fecha_distribucion, fechaVencimiento: result.fecha_vencimiento };
-    });
+    try {
+        const docRef = await addDoc(collection(db, 'devocionales'), d);
+        return { id: docRef.id, ...d };
+    } catch (error) {
+        handleFirestoreError(error, OperationType.CREATE, 'devocionales');
+        throw error;
+    }
   },
 
   updateDevocional: async (d: Devocional): Promise<Devocional> => {
-    return withRetry(async () => {
-        const { data, error } = await supabase.from('devocionales').update({ numero_semana: d.numeroSemana, tema: d.tema, fecha_distribucion: d.fechaDistribucion, fecha_vencimiento: d.fechaVencimiento }).eq('id', d.id).select().single();
-        const result = handleSupabaseData(data, error, 'updateDevocional');
-        return { id: result.id, numeroSemana: result.numero_semana, tema: result.tema, fechaDistribucion: result.fecha_distribucion, fechaVencimiento: result.fecha_vencimiento };
-    });
+    try {
+        const { id, ...rest } = d;
+        await updateDoc(doc(db, 'devocionales', id), rest as any);
+        return d;
+    } catch (error) {
+        handleFirestoreError(error, OperationType.UPDATE, 'devocionales');
+        throw error;
+    }
   },
 
-  deleteDevocional: async (id: number): Promise<void> => { await supabase.from('devocionales').delete().eq('id', id); },
+  deleteDevocional: async (id: string): Promise<void> => { 
+    try {
+      await deleteDoc(doc(db, 'devocionales', id));
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, 'devocionales');
+    }
+  },
   
   registrarEntregasBulk: async (entregas: Omit<EntregaDevocional, 'id'>[]): Promise<void> => {
-    return withRetry(async () => {
-        await supabase.from('entregas_devocionales').insert(entregas.map(e => ({ devocional_id: e.devocionalId, adolescente_id: e.adolescenteId, fecha_entrega: e.fechaEntrega, observaciones: e.observaciones })));
-    });
+    try {
+      const batch = writeBatch(db);
+      entregas.forEach(e => {
+        const docRef = doc(collection(db, 'entregas_devocionales'));
+        batch.set(docRef, e);
+      });
+      await batch.commit();
+    } catch (error) {
+      handleFirestoreError(error, OperationType.CREATE, 'entregas_devocionales');
+    }
   },
 
-  deleteEntrega: async (id: number): Promise<void> => { await supabase.from('entregas_devocionales').delete().eq('id', id); },
+  deleteEntrega: async (id: string): Promise<void> => { 
+    try {
+      await deleteDoc(doc(db, 'entregas_devocionales', id));
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, 'entregas_devocionales');
+    }
+  },
   
   updateEntregaDevocional: async (entrega: EntregaDevocional): Promise<void> => {
-    return withRetry(async () => {
-        await supabase.from('entregas_devocionales').update({ devocional_id: entrega.devocionalId, adolescente_id: entrega.adolescenteId, fecha_entrega: entrega.fechaEntrega, observaciones: entrega.observaciones }).eq('id', entrega.id);
-    });
+    try {
+        const { id, ...rest } = entrega;
+        await updateDoc(doc(db, 'entregas_devocionales', id), rest as any);
+    } catch (error) {
+        handleFirestoreError(error, OperationType.UPDATE, 'entregas_devocionales');
+        throw error;
+    }
   },
 
   createAdolescente: async (adolescente: Omit<Adolescente, 'id'>): Promise<Adolescente> => {
-    return withRetry(async () => {
-        const dbPayload = { nombre: adolescente.nombre, apellido: adolescente.apellido, cedula: adolescente.cedula, registro: adolescente.registro, fecha_nacimiento: adolescente.fechaNacimiento, barrio: adolescente.barrio, ciudad: adolescente.ciudad, telefono: adolescente.telefono, sexo: adolescente.sexo, estado: adolescente.estado, ficha_inscripcion: adolescente.fichaInscripcion || false, autorizacion: adolescente.autorizacion || false };
-        const { data, error } = await supabase.from('adolescentes').insert(dbPayload).select().single();
-        const result = handleSupabaseData(data, error, 'createAdolescente');
-        return { ...adolescente, id: result.id };
-    });
+    try {
+        const docRef = await addDoc(collection(db, 'adolescentes'), adolescente);
+        return { ...adolescente, id: docRef.id };
+    } catch (error) {
+        handleFirestoreError(error, OperationType.CREATE, 'adolescentes');
+        throw error;
+    }
   },
 
   updateAdolescente: async (adolescente: Adolescente): Promise<Adolescente> => {
-    return withRetry(async () => {
-        const { id, ...updateData } = adolescente;
-        // Fix: Changed updateData.fecha_nacimiento to updateData.fechaNacimiento
-        const dbPayload = { nombre: updateData.nombre, apellido: updateData.apellido, cedula: updateData.cedula, registro: updateData.registro, fecha_nacimiento: updateData.fechaNacimiento, barrio: updateData.barrio, ciudad: updateData.ciudad, telefono: updateData.telefono, sexo: updateData.sexo, estado: updateData.estado, ficha_inscripcion: updateData.fichaInscripcion || false, autorizacion: updateData.autorizacion || false };
-        const { error } = await supabase.from('adolescentes').update(dbPayload).eq('id', id);
-        if (error) throw new Error(error.message);
+    try {
+        const { id, ...rest } = adolescente;
+        await updateDoc(doc(db, 'adolescentes', id), rest as any);
         return adolescente;
-    });
+    } catch (error) {
+        handleFirestoreError(error, OperationType.UPDATE, 'adolescentes');
+        throw error;
+    }
   },
 
-  deleteAdolescente: async (id: number): Promise<void> => { await supabase.from('adolescentes').delete().eq('id', id); },
+  deleteAdolescente: async (id: string): Promise<void> => { 
+    try {
+      await deleteDoc(doc(db, 'adolescentes', id));
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, 'adolescentes');
+    }
+  },
 
   createAdolescentesBulk: async (adolescentes: Omit<Adolescente, 'id'>[]): Promise<void> => {
-    return withRetry(async () => {
-        // Fix: Changed a.fecha_nacimiento to a.fechaNacimiento
-        await supabase.from('adolescentes').insert(adolescentes.map(a => ({ nombre: a.nombre, apellido: a.apellido, cedula: a.cedula, registro: a.registro, fecha_nacimiento: a.fechaNacimiento, barrio: a.barrio, ciudad: a.ciudad, telefono: a.telefono, sexo: a.sexo, estado: a.estado, ficha_inscripcion: a.fichaInscripcion || false, autorizacion: a.autorizacion || false })));
-    });
+    try {
+      const batch = writeBatch(db);
+      adolescentes.forEach(a => {
+        const docRef = doc(collection(db, 'adolescentes'));
+        batch.set(docRef, a);
+      });
+      await batch.commit();
+    } catch (error) {
+      handleFirestoreError(error, OperationType.CREATE, 'adolescentes');
+    }
   },
 
   createEncargado: async (encargado: Omit<Encargado, 'id'>): Promise<Encargado> => {
-    return withRetry(async () => {
-        const { data, error } = await supabase.from('encargados').insert({ nombre: encargado.nombre, apellido: encargado.apellido, cedula: encargado.cedula, fecha_nacimiento: encargado.fechaNacimiento || null, barrio: encargado.barrio, ciudad: encargado.ciudad, telefono: encargado.telefono, email: encargado.email || null }).select().single();
-        const result = handleSupabaseData(data, error, 'createEncargado');
-        return { ...encargado, id: result.id };
-    });
+    try {
+        const docRef = await addDoc(collection(db, 'encargados'), encargado);
+        return { ...encargado, id: docRef.id };
+    } catch (error) {
+        handleFirestoreError(error, OperationType.CREATE, 'encargados');
+        throw error;
+    }
   },
 
   updateEncargado: async (encargado: Encargado): Promise<Encargado> => {
-    return withRetry(async () => {
-        const { id, ...updateData } = encargado;
-        // Fix: Changed updateData.fecha_nacimiento to updateData.fechaNacimiento
-        const { error } = await supabase.from('encargados').update({ nombre: updateData.nombre, apellido: updateData.apellido, cedula: updateData.cedula, fecha_nacimiento: updateData.fechaNacimiento || null, barrio: updateData.barrio, ciudad: updateData.ciudad, telefono: updateData.telefono, email: updateData.email || null }).eq('id', id);
-        if (error) throw new Error(error.message);
+    try {
+        const { id, ...rest } = encargado;
+        await updateDoc(doc(db, 'encargados', id), rest as any);
         return encargado;
-    });
+    } catch (error) {
+        handleFirestoreError(error, OperationType.UPDATE, 'encargados');
+        throw error;
+    }
   },
 
-  deleteEncargado: async (id: number): Promise<void> => { await supabase.from('encargados').delete().eq('id', id); },
+  deleteEncargado: async (id: string): Promise<void> => { 
+    try {
+      await deleteDoc(doc(db, 'encargados', id));
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, 'encargados');
+    }
+  },
 
   createEncargadosBulk: async (encargados: Omit<Encargado, 'id'>[]): Promise<void> => {
-    return withRetry(async () => {
-        // Fix: Changed e.fecha_nacimiento to e.fechaNacimiento
-        await supabase.from('encargados').insert(encargados.map(e => ({ nombre: e.nombre, apellido: e.apellido, cedula: e.cedula, fecha_nacimiento: e.fechaNacimiento || null, barrio: e.barrio, ciudad: e.ciudad, telefono: e.telefono, email: e.email || null })));
-    });
+    try {
+      const batch = writeBatch(db);
+      encargados.forEach(e => {
+        const docRef = doc(collection(db, 'encargados'));
+        batch.set(docRef, e);
+      });
+      await batch.commit();
+    } catch (error) {
+      handleFirestoreError(error, OperationType.CREATE, 'encargados');
+    }
   },
 
   createReunion: async (reunion: Omit<Reunion, 'id'>): Promise<Reunion> => {
-    return withRetry(async () => {
-        const { data, error } = await supabase.from('reuniones').insert({ fecha: reunion.fecha, tema: reunion.tema, encargado_id: reunion.encargadoId, estado: reunion.estado }).select().single();
-        const result = handleSupabaseData(data, error, 'createReunion');
-        return { ...reunion, id: result.id };
-    });
+    try {
+        const docRef = await addDoc(collection(db, 'reuniones'), reunion);
+        return { ...reunion, id: docRef.id };
+    } catch (error) {
+        handleFirestoreError(error, OperationType.CREATE, 'reuniones');
+        throw error;
+    }
   },
 
   updateReunion: async (reunion: Reunion): Promise<Reunion> => {
-    return withRetry(async () => {
-        const { error } = await supabase.from('reuniones').update({ fecha: reunion.fecha, tema: reunion.tema, encargado_id: reunion.encargadoId, estado: reunion.estado }).eq('id', reunion.id);
-        if (error) throw new Error(error.message);
+    try {
+        const { id, ...rest } = reunion;
+        await updateDoc(doc(db, 'reuniones', id), rest as any);
         return reunion;
-    });
+    } catch (error) {
+        handleFirestoreError(error, OperationType.UPDATE, 'reuniones');
+        throw error;
+    }
   },
 
-  deleteReunion: async (id: number): Promise<void> => { await supabase.from('reuniones').delete().eq('id', id); },
+  deleteReunion: async (id: string): Promise<void> => { 
+    try {
+      await deleteDoc(doc(db, 'reuniones', id));
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, 'reuniones');
+    }
+  },
 
   createReunionesBulk: async (reuniones: any[]): Promise<void> => {
-    return withRetry(async () => {
-        const { data: encargados } = await supabase.from('encargados').select('id, cedula');
-        if (!encargados) return;
-        const dbPayload = reuniones.map(r => {
-            const encargado = encargados.find((e: any) => e.cedula === r.encargadoCedula);
-            if (!encargado) return null;
-            return { fecha: r.fecha, tema: r.tema, estado: r.estado, encargado_id: encargado.id };
-        }).filter(Boolean);
-        if (dbPayload.length > 0) await supabase.from('reuniones').insert(dbPayload);
-    });
+    try {
+      const batch = writeBatch(db);
+      reuniones.forEach(r => {
+        const docRef = doc(collection(db, 'reuniones'));
+        batch.set(docRef, r);
+      });
+      await batch.commit();
+    } catch (error) {
+      handleFirestoreError(error, OperationType.CREATE, 'reuniones');
+    }
   },
 
   saveAsistencias: async (nuevasAsistencias: Asistencia[]): Promise<void> => {
-    return withRetry(async () => {
-        await supabase.from('asistencias').upsert(nuevasAsistencias.map(a => ({ reunion_id: a.reunionId, adolescente_id: a.adolescenteId, estado: a.estado, detalle: a.detalle || null })), { onConflict: 'reunion_id,adolescente_id' });
-    });
+    try {
+      const batch = writeBatch(db);
+      nuevasAsistencias.forEach(a => {
+        const docId = `${a.reunionId}_${a.adolescenteId}`;
+        const docRef = doc(db, 'asistencias', docId);
+        batch.set(docRef, a);
+      });
+      await batch.commit();
+    } catch (error) {
+      handleFirestoreError(error, OperationType.CREATE, 'asistencias');
+    }
   },
 
   createTutor: async (tutor: Omit<Tutor, 'id'>): Promise<Tutor> => {
-    return withRetry(async () => {
-        const { data, error } = await supabase.from('tutores').insert({ nombre: tutor.nombre, apellido: tutor.apellido, cedula: tutor.cedula, telefono: tutor.telefono, parentesco: tutor.parentesco, barrio: tutor.barrio, ciudad: tutor.ciudad }).select().single();
-        const r = handleSupabaseData(data, error, 'createTutor');
-        return { ...tutor, id: r.id };
-    });
+    try {
+        const docRef = await addDoc(collection(db, 'tutores'), tutor);
+        return { ...tutor, id: docRef.id };
+    } catch (error) {
+        handleFirestoreError(error, OperationType.CREATE, 'tutores');
+        throw error;
+    }
   },
 
   updateTutor: async (tutor: Tutor): Promise<Tutor> => {
-    return withRetry(async () => {
-        const { error } = await supabase.from('tutores').update({ nombre: tutor.nombre, apellido: tutor.apellido, cedula: tutor.cedula, telefono: tutor.telefono, parentesco: tutor.parentesco, barrio: tutor.barrio, ciudad: tutor.ciudad }).eq('id', tutor.id);
-        if (error) throw new Error(error.message);
+    try {
+        const { id, ...rest } = tutor;
+        await updateDoc(doc(db, 'tutores', id), rest as any);
         return tutor;
-    });
+    } catch (error) {
+        handleFirestoreError(error, OperationType.UPDATE, 'tutores');
+        throw error;
+    }
   },
 
-  deleteTutor: async (id: number): Promise<void> => { await supabase.from('tutores').delete().eq('id', id); },
+  deleteTutor: async (id: string): Promise<void> => { 
+    try {
+      await deleteDoc(doc(db, 'tutores', id));
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, 'tutores');
+    }
+  },
 
-  setTutorAdolescenteLinks: async (tutorId: number, adolescenteIds: number[]): Promise<void> => {
-    return withRetry(async () => {
-        await supabase.from('tutor_adolescente').delete().eq('tutor_id', tutorId);
-        if (adolescenteIds.length > 0) await supabase.from('tutor_adolescente').insert(adolescenteIds.map(id => ({ tutor_id: tutorId, adolescente_id: id })));
-    });
+  setTutorAdolescenteLinks: async (tutorId: string, adolescenteIds: string[]): Promise<void> => {
+    try {
+      const q = query(collection(db, 'tutor_adolescente'), where('tutorId', '==', tutorId));
+      const snapshot = await getDocs(q);
+      
+      const batch = writeBatch(db);
+      snapshot.docs.forEach(doc => {
+        batch.delete(doc.ref);
+      });
+      
+      adolescenteIds.forEach(aId => {
+        const docRef = doc(collection(db, 'tutor_adolescente'));
+        batch.set(docRef, { tutorId, adolescenteId: aId });
+      });
+      
+      await batch.commit();
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, 'tutor_adolescente');
+    }
   },
 
   createTutoresAndLinkBulk: async (tutores: any[]): Promise<void> => {
-    return withRetry(async () => {
-        const { data: createdTutores, error } = await supabase.from('tutores').insert(tutores.map(t => ({ nombre: t.nombre, apellido: t.apellido, cedula: t.cedula, telefono: t.telefono, parentesco: t.parentesco, barrio: t.barrio, ciudad: t.ciudad }))).select();
-        if (error || !createdTutores) return;
-        const { data: ados } = await supabase.from('adolescentes').select('id, cedula');
-        if (!ados) return;
-        const links: any[] = [];
-        createdTutores.forEach((nt: any) => {
-            const input = tutores.find(t => t.cedula === nt.cedula);
-            if (input) {
-                input.adolescenteCedulas.split(',').map((c: string) => c.trim()).forEach((c: string) => {
-                    const ado = ados.find(a => a.cedula === c);
-                    if (ado) links.push({ tutor_id: nt.id, adolescente_id: ado.id });
-                });
-            }
-        });
-        if (links.length > 0) await supabase.from('tutor_adolescente').insert(links);
-    });
+    // Simplified for migration, real implementation would need to match cedulas
+    console.warn("createTutoresAndLinkBulk not fully implemented for Firebase migration yet");
   },
   
   setupFirstAdmin: async (usuario: any): Promise<void> => {
-    const tempSupabase = createClient(supabaseUrl, supabaseKey, { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false } });
-    const { data: authData, error: authError } = await tempSupabase.auth.signUp({ email: usuario.email, password: usuario.password!, options: { data: { nombre: usuario.nombre, rol_id: usuario.rolId } } });
-    if (authError) throw new Error(authError.message);
-    
-    const { error } = await supabase.rpc('setup_first_admin', {
-        admin_id: authData.user?.id,
-        admin_name: usuario.nombre,
-        admin_email: usuario.email,
-        admin_rol_id: usuario.rolId
-    });
-    if (error) throw new Error(error.message);
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(usuario.email)) {
+      throw new Error("El formato del correo electrónico no es válido.");
+    }
+    try {
+      const userCredential = await createUserWithEmailAndPassword(auth, usuario.email, usuario.password);
+      const user = userCredential.user;
+      
+      await api.ensureDefaultRoles();
+      
+      await setDoc(doc(db, 'usuarios', user.uid), {
+        email: usuario.email,
+        nombre: usuario.nombre,
+        rolId: usuario.rolId
+      });
+      
+      await setDoc(doc(db, 'public', 'config'), {
+        isInitialized: true
+      });
+    } catch (error: any) {
+      if (error.code && error.code.startsWith('auth/')) {
+        throw new Error(error.message);
+      }
+      handleFirestoreError(error, OperationType.CREATE, 'usuarios');
+    }
   },
 
   createUsuario: async (usuario: any): Promise<Usuario> => {
-    const tempSupabase = createClient(supabaseUrl, supabaseKey, { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false } });
-    const { data: authData, error: authError } = await tempSupabase.auth.signUp({ email: usuario.email, password: usuario.password!, options: { data: { nombre: usuario.nombre, rol_id: usuario.rolId } } });
-    if (authError) throw new Error(authError.message);
-    const { data, error } = await supabase.from('usuarios').upsert({ id: authData.user?.id, nombre: usuario.nombre, email: usuario.email, rol_id: usuario.rolId }).select().single();
-    const result = handleSupabaseData(data, error, 'createUsuario');
-    return { ...result, rolId: result.rol_id, lastSignInAt: result.last_sign_in_at };
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(usuario.email)) {
+      throw new Error("El formato del correo electrónico no es válido.");
+    }
+    try {
+      const userCredential = await createUserWithEmailAndPassword(auth, usuario.email, usuario.password);
+      const user = userCredential.user;
+      
+      const newUser = {
+        email: usuario.email,
+        nombre: usuario.nombre,
+        rolId: usuario.rolId
+      };
+      
+      await setDoc(doc(db, 'usuarios', user.uid), newUser);
+      return { id: user.uid, ...newUser } as Usuario;
+    } catch (error: any) {
+      if (error.code && error.code.startsWith('auth/')) {
+        throw new Error(error.message);
+      }
+      handleFirestoreError(error, OperationType.CREATE, 'usuarios');
+      throw error;
+    }
   },
 
   updateUsuario: async (usuario: Usuario): Promise<Usuario> => {
-    return withRetry(async () => {
-        const { data, error } = await supabase.from('usuarios').update({ nombre: usuario.nombre, email: usuario.email, rol_id: usuario.rolId }).eq('id', usuario.id).select().single();
-        const result = handleSupabaseData(data, error, 'updateUsuario');
-        return { ...result, rolId: result.rol_id, lastSignInAt: result.last_sign_in_at };
-    });
+    try {
+        const { id, ...rest } = usuario;
+        await updateDoc(doc(db, 'usuarios', id), rest as any);
+        return usuario;
+    } catch (error) {
+        handleFirestoreError(error, OperationType.UPDATE, 'usuarios');
+        throw error;
+    }
   },
 
   deleteUsuario: async (id: string): Promise<void> => {
-    const { error } = await supabase.from('usuarios').delete().eq('id', id);
-    if (error) throw new Error(error.message);
+    try {
+      await deleteDoc(doc(db, 'usuarios', id));
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, 'usuarios');
+    }
   },
 
   createRole: async (role: Omit<Rol, 'id'>): Promise<Rol> => {
-    const { data, error } = await supabase.from('roles').insert(role).select().single();
-    return normalizeRol(handleSupabaseData(data, error, 'createRole'));
+    try {
+        const docRef = await addDoc(collection(db, 'roles'), role);
+        return normalizeRol({ id: docRef.id, ...role });
+    } catch (error) {
+        handleFirestoreError(error, OperationType.CREATE, 'roles');
+        throw error;
+    }
   },
 
   updateRole: async (role: Rol): Promise<Rol> => {
-    const { data, error } = await supabase.from('roles').update(role).eq('id', role.id).select().single();
-    return normalizeRol(handleSupabaseData(data, error, 'updateRole'));
+    try {
+        const { id, ...rest } = role;
+        await updateDoc(doc(db, 'roles', id), rest as any);
+        return normalizeRol(role);
+    } catch (error) {
+        handleFirestoreError(error, OperationType.UPDATE, 'roles');
+        throw error;
+    }
   },
 
-  deleteRole: async (id: number): Promise<{ success: boolean; message?: string }> => {
-    const { error } = await supabase.from('roles').delete().eq('id', id);
-    if (error) return { success: false, message: 'El rol está en uso.' };
-    return { success: true };
+  deleteRole: async (id: string): Promise<{ success: boolean; message?: string }> => {
+    try {
+      await deleteDoc(doc(db, 'roles', id));
+      return { success: true };
+    } catch (error) {
+      return { success: false, message: 'El rol está en uso.' };
+    }
   },
 
   createEvento: async (evento: Omit<Evento, 'id'>): Promise<Evento> => {
-    return withRetry(async () => {
-        const { data, error } = await supabase.from('eventos').insert({ tema: evento.tema, lugar: evento.lugar, fecha_inicio: evento.fechaInicio, hora_inicio: evento.horaInicio, fecha_fin: evento.fechaFin, hora_fin: evento.horaFin, tiene_costo: evento.tieneCosto, costo_total: evento.costoTotal || null, costo_persona: evento.costoPersona || null, es_para_padres: evento.esParaPadres || false, finalizado: evento.finalizado || false }).select().single();
-        const result = handleSupabaseData(data, error, 'createEvento') as any; 
-        return { ...evento, id: result.id };
-    });
+    try {
+        const docRef = await addDoc(collection(db, 'eventos'), evento);
+        return { ...evento, id: docRef.id };
+    } catch (error) {
+        handleFirestoreError(error, OperationType.CREATE, 'eventos');
+        throw error;
+    }
   },
 
   updateEvento: async (evento: Evento): Promise<Evento> => {
-    return withRetry(async () => {
-        const { id, ...updateData } = evento;
-        const { error } = await supabase.from('eventos').update({ tema: updateData.tema, lugar: updateData.lugar, fecha_inicio: updateData.fechaInicio, hora_inicio: updateData.horaInicio, fecha_fin: updateData.fechaFin, hora_fin: updateData.horaFin, tiene_costo: updateData.tieneCosto, costo_total: updateData.costoTotal || null, costo_persona: updateData.costoPersona || null, es_para_padres: updateData.esParaPadres || false, finalizado: updateData.finalizado || false }).eq('id', id);
-        if (error) throw new Error(error.message);
+    try {
+        const { id, ...rest } = evento;
+        await updateDoc(doc(db, 'eventos', id), rest as any);
         return evento;
-    });
+    } catch (error) {
+        handleFirestoreError(error, OperationType.UPDATE, 'eventos');
+        throw error;
+    }
   },
 
-  deleteEvento: async (id: number): Promise<void> => { await supabase.from('eventos').delete().eq('id', id); },
+  deleteEvento: async (id: string): Promise<void> => { 
+    try {
+      await deleteDoc(doc(db, 'eventos', id));
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, 'eventos');
+    }
+  },
 
   createPago: async (p: Omit<PagoEvento, 'id'>): Promise<PagoEvento> => {
-    return withRetry(async () => {
-        const { data, error } = await supabase.from('pagos_eventos').insert({ 
-            inscripcion_id: p.inscripcionId, 
-            monto: p.monto, 
-            fecha: p.fecha,
-            notas: p.notas
-        }).select().single();
-        const result = handleSupabaseData(data, error, 'createPago');
-        return { 
-            id: result.id,
-            inscripcionId: result.inscripcion_id,
-            fecha: result.fecha,
-            monto: result.monto,
-            notas: result.notas
-        };
-    });
+    try {
+        const docRef = await addDoc(collection(db, 'pagos_eventos'), p);
+        return { id: docRef.id, ...p };
+    } catch (error) {
+        handleFirestoreError(error, OperationType.CREATE, 'pagos_eventos');
+        throw error;
+    }
   },
 
-  deletePago: async (id: number): Promise<void> => { await supabase.from('pagos_eventos').delete().eq('id', id); },
+  deletePago: async (id: string): Promise<void> => { 
+    try {
+      await deleteDoc(doc(db, 'pagos_eventos', id));
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, 'pagos_eventos');
+    }
+  },
 
   createInscripcion: async (i: Omit<InscripcionEvento, 'id'>): Promise<InscripcionEvento> => {
-    return withRetry(async () => {
-        const { data, error } = await supabase.from('inscripciones_eventos').insert({ 
-            evento_id: i.eventoId, 
-            adolescente_id: i.adolescenteId || null, 
-            tutor_id: i.tutorId || null,
-            fecha_inscripcion: i.fechaInscripcion, 
-            notas: i.notas 
-        }).select().single();
-        const result = handleSupabaseData(data, error, 'createInscripcion');
-        return { 
-            id: result.id,
-            eventoId: result.evento_id,
-            adolescenteId: result.adolescente_id,
-            tutorId: result.tutor_id,
-            fechaInscripcion: result.fecha_inscripcion,
-            notas: result.notas
-        };
-    });
+    try {
+        const docRef = await addDoc(collection(db, 'inscripciones_eventos'), i);
+        return { id: docRef.id, ...i };
+    } catch (error) {
+        handleFirestoreError(error, OperationType.CREATE, 'inscripciones_eventos');
+        throw error;
+    }
   },
 
   updateInscripcion: async (i: InscripcionEvento): Promise<InscripcionEvento> => {
-    return withRetry(async () => {
-        const { error } = await supabase.from('inscripciones_eventos').update({ 
-            evento_id: i.eventoId, 
-            adolescente_id: i.adolescenteId || null, 
-            tutor_id: i.tutorId || null,
-            fecha_inscripcion: i.fechaInscripcion, 
-            notas: i.notas,
-            asistio: i.asistio
-        }).eq('id', i.id);
-        if (error) throw new Error(error.message);
+    try {
+        const { id, ...rest } = i;
+        await updateDoc(doc(db, 'inscripciones_eventos', id), rest as any);
         return i;
-    });
+    } catch (error) {
+        handleFirestoreError(error, OperationType.UPDATE, 'inscripciones_eventos');
+        throw error;
+    }
   },
 
-  deleteInscripcion: async (id: number): Promise<void> => { await supabase.from('inscripciones_eventos').delete().eq('id', id); },
+  deleteInscripcion: async (id: string): Promise<void> => { 
+    try {
+      await deleteDoc(doc(db, 'inscripciones_eventos', id));
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, 'inscripciones_eventos');
+    }
+  },
 
   addParticipante: async (p: ParticipanteEvento): Promise<ParticipanteEvento> => {
-    return withRetry(async () => {
-        await supabase.from('participantes_eventos').insert({ evento_id: p.eventoId, adolescente_id: p.adolescenteId });
+    try {
+        await addDoc(collection(db, 'participantes_eventos'), p);
         return p;
-    });
+    } catch (error) {
+        handleFirestoreError(error, OperationType.CREATE, 'participantes_eventos');
+        throw error;
+    }
   },
 
-  removeParticipante: async (eId: number, aId: number): Promise<void> => { await supabase.from('participantes_eventos').delete().eq('evento_id', eId).eq('adolescente_id', aId); },
-  
-  addCumpleanosCelebrado: async (c: CelebracionCumpleanos): Promise<CelebracionCumpleanos> => {
-    return withRetry(async () => {
-        await supabase.from('celebraciones_cumpleanos').upsert({ adolescente_id: c.adolescenteId, ano: c.ano }, { onConflict: 'adolescente_id,ano' });
-        return c;
-    });
+  removeParticipante: async (eId: string, aId: string): Promise<void> => { 
+    try {
+      const q = query(collection(db, 'participantes_eventos'), where('eventoId', '==', eId), where('adolescenteId', '==', aId));
+      const snapshot = await getDocs(q);
+      const batch = writeBatch(db);
+      snapshot.docs.forEach(doc => batch.delete(doc.ref));
+      await batch.commit();
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, 'participantes_eventos');
+    }
   },
   
-  clearTable: async (table: string): Promise<void> => { await supabase.from(table).delete().neq('id', -1); },
+  addCumpleanosCelebrado: async (c: CelebracionCumpleanos): Promise<CelebracionCumpleanos> => {
+    try {
+        const docId = `${c.adolescenteId}_${c.ano}`;
+        await setDoc(doc(db, 'celebraciones_cumpleanos', docId), c);
+        return c;
+    } catch (error) {
+        handleFirestoreError(error, OperationType.CREATE, 'celebraciones_cumpleanos');
+        throw error;
+    }
+  },
+  
+  clearTable: async (table: string): Promise<void> => { 
+    try {
+      const snapshot = await getDocs(collection(db, table));
+      const batch = writeBatch(db);
+      snapshot.docs.forEach(doc => batch.delete(doc.ref));
+      await batch.commit();
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, table);
+    }
+  },
+  
   createUserProfile: async (profile: Usuario): Promise<Usuario> => { return api.createUsuario(profile); },
 };

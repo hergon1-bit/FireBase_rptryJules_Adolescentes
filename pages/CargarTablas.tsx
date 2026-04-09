@@ -180,7 +180,7 @@ const CargarTablas: React.FC = () => {
         const validDetalles = ['Regular', 'Primera Vez', 'Regresa'];
 
         const adolescentesMap = new Map<string, Adolescente>((adolescentes as Adolescente[]).map(a => [a.cedula, a]));
-        const reunionesMap = new Map<number, Reunion>((reuniones as Reunion[]).map(r => [r.id, r]));
+        const reunionesMap = new Map<string, Reunion>((reuniones as Reunion[]).map(r => [r.id, r]));
 
         return rows.map(rowStr => {
             const row = rowStr.split(';');
@@ -192,9 +192,9 @@ const CargarTablas: React.FC = () => {
                  return { data: rawData, isValid: false, error: 'Faltan campos obligatorios.' };
             }
 
-            const reunionIdInt = parseInt(rawReunionId, 10);
-            if (isNaN(reunionIdInt)) {
-                return { data: rawData, isValid: false, error: `ID de Reunión '${rawReunionId}' inválido (debe ser un número).` };
+            const reunionIdInt = rawReunionId;
+            if (!reunionIdInt) {
+                return { data: rawData, isValid: false, error: `ID de Reunión '${rawReunionId}' inválido.` };
             }
 
             const reunion = reunionesMap.get(reunionIdInt);

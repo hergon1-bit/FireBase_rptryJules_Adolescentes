@@ -26,7 +26,7 @@ const Tareas: React.FC = () => {
 
     // --- State for Tab Registro (Submissions) ---
     const [selectedAdolescenteId, setSelectedAdolescenteId] = useState<number | string>('');
-    const [selectedDevocionalIds, setSelectedDevocionalIds] = useState<Set<number>>(new Set());
+    const [selectedDevocionalIds, setSelectedDevocionalIds] = useState<Set<string>>(new Set());
     const [fechaEntrega, setFechaEntrega] = useState<string>(new Date().toISOString().split('T')[0]);
     const [observaciones, setObservaciones] = useState('');
     const [successMessage, setSuccessMessage] = useState('');
@@ -89,7 +89,7 @@ const Tareas: React.FC = () => {
         const ranking = adolescentes
             .filter(a => a.estado === 'Activo')
             .map(ado => {
-                const misEntregas = entregasYear.filter(e => e.adolescenteId === ado.id);
+                const misEntregas = entregasYear.filter(e => String(e.adolescenteId) === String(ado.id));
                 const count = misEntregas.length;
                 const porcentaje = totalDevsMeta > 0 ? (count / totalDevsMeta) * 100 : 0;
                 return {
@@ -159,7 +159,7 @@ const Tareas: React.FC = () => {
     }
 
     // --- Handlers for Registro (New Submissions) ---
-    const handleToggleDevocional = (id: number) => {
+    const handleToggleDevocional = (id: string) => {
         setSelectedDevocionalIds(prev => {
             const next = new Set(prev);
             if (next.has(id)) next.delete(id);
@@ -178,9 +178,9 @@ const Tareas: React.FC = () => {
             return;
         }
 
-        const entregas: Omit<EntregaDevocional, 'id'>[] = Array.from(selectedDevocionalIds).map((devId: number) => ({
+        const entregas: Omit<EntregaDevocional, 'id'>[] = Array.from(selectedDevocionalIds).map((devId: string) => ({
             devocionalId: devId,
-            adolescenteId: Number(selectedAdolescenteId),
+            adolescenteId: String(selectedAdolescenteId),
             fechaEntrega: fechaEntrega,
             observaciones: observaciones
         }));
@@ -234,8 +234,8 @@ const Tareas: React.FC = () => {
         if (editingEntrega) {
             const updated: EntregaDevocional = {
                 id: editingEntrega.id,
-                adolescenteId: Number(editSubmissionValues.adolescenteId),
-                devocionalId: Number(editSubmissionValues.devocionalId),
+                adolescenteId: editSubmissionValues.adolescenteId,
+                devocionalId: editSubmissionValues.devocionalId,
                 fechaEntrega: editSubmissionValues.fechaEntrega,
                 observaciones: editSubmissionValues.observaciones
             };
@@ -253,8 +253,8 @@ const Tareas: React.FC = () => {
     const filteredEntregas = useMemo(() => {
         return entregasDevocionales
             .filter(ent => {
-                const matchAdo = filterAdo === '' || ent.adolescenteId === Number(filterAdo);
-                const matchDev = filterDev === '' || ent.devocionalId === Number(filterDev);
+                const matchAdo = filterAdo === '' || ent.adolescenteId === filterAdo;
+                const matchDev = filterDev === '' || ent.devocionalId === filterDev;
                 
                 let matchDate = true;
                 if (filterDateStart) {
@@ -524,7 +524,7 @@ const Tareas: React.FC = () => {
                                     <div className="divide-y divide-border">
                                         {sortedDevocionales.map(dev => {
                                             const isSelected = selectedDevocionalIds.has(dev.id);
-                                            const alreadySubmitted = selectedAdolescenteId ? entregasDevocionales.some(e => e.devocionalId === dev.id && e.adolescenteId === Number(selectedAdolescenteId)) : false;
+                                            const alreadySubmitted = selectedAdolescenteId ? entregasDevocionales.some(e => e.devocionalId === dev.id && e.adolescenteId === selectedAdolescenteId) : false;
 
                                             return (
                                                 <div 
@@ -671,8 +671,8 @@ const Tareas: React.FC = () => {
                                 </thead>
                                 <tbody className="divide-y divide-border">
                                     {filteredEntregas.map(ent => {
-                                        const ado = adolescentes.find(a => a.id === ent.adolescenteId);
-                                        const dev = devocionales.find(d => d.id === ent.devocionalId);
+                                        const ado = adolescentes.find(a => String(a.id) === String(ent.adolescenteId));
+                                        const dev = devocionales.find(d => String(d.id) === String(ent.devocionalId));
                                         return (
                                             <tr key={ent.id} className="hover:bg-background/50 transition-colors">
                                                 <td className="px-6 py-4 whitespace-nowrap text-sm">{formatDate(ent.fechaEntrega)}</td>

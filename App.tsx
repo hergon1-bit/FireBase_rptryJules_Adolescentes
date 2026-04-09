@@ -23,6 +23,9 @@ import CargarTablas from './pages/CargarTablas';
 import UpdatePassword from './pages/UpdatePassword';
 import LoginPage from './pages/LoginPage';
 import Servidores from './pages/Servidores';
+import VerTablas from './pages/VerTablas';
+
+import MigracionSupabase from './pages/MigracionSupabase';
 
 const AppContent: React.FC = () => {
   const { user, loading } = useAuth();
@@ -62,6 +65,8 @@ const AppContent: React.FC = () => {
       case 'roles': return <Roles />;
       case 'limpiar-tablas': return <LimpiarTablas />;
       case 'cargar-tablas': return <CargarTablas />;
+      case 'migracion-supabase': return <MigracionSupabase />;
+      case 'ver-tablas': return <VerTablas />;
       case 'update-password': return <UpdatePassword navigateTo={navigateTo} />;
       default: return <Dashboard navigateTo={navigateTo} />;
     }

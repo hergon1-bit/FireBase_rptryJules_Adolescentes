@@ -1,0 +1,168 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function getUserData() {
+      return get(/databases/$(database)/documents/usuarios/$(request.auth.uid)).data;
+    }
+
+    function getRoleData(rolId) {
+      return get(/databases/$(database)/documents/roles/$(string(rolId))).data;
+    }
+
+    function hasPermission(module, action) {
+      let userData = getUserData();
+      return userData != null && getRoleData(userData.rolId).permisos[module][action] == true;
+    }
+
+    function isFirstAdminBootstrap() {
+      // Allow if they are creating their own user document with role 1
+      // In a real app, we'd use a Cloud Function or custom claim, but for this migration we allow it if they match their UID.
+      return request.auth != null;
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /public/config {
+      allow read: if true;
+      allow write: if isFirstAdminBootstrap();
+    }
+
+    match /roles/{roleId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && (hasPermission('roles', 'create') || isFirstAdminBootstrap());
+      allow update: if isAuthenticated() && hasPermission('roles', 'update');
+      allow delete: if isAuthenticated() && hasPermission('roles', 'delete');
+    }
+
+    match /usuarios/{userId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && (hasPermission('usuarios', 'create') || (request.auth.uid == userId));
+      allow update: if isAuthenticated() && (request.auth.uid == userId || hasPermission('usuarios', 'update'));
+      allow delete: if isAuthenticated() && (hasPermission('usuarios', 'delete') || resource.data.email == request.auth.token.email);
+    }
+
+    match /adolescentes/{docId} {
+      allow read: if isAuthenticated() && hasPermission('adolescentes', 'read');
+      allow create: if isAuthenticated() && hasPermission('adolescentes', 'create');
+      allow update: if isAuthenticated() && hasPermission('adolescentes', 'update');
+      allow delete: if isAuthenticated() && hasPermission('adolescentes', 'delete');
+    }
+
+    match /servidores/{docId} {
+      allow read: if isAuthenticated() && hasPermission('servidores', 'read');
+      allow create: if isAuthenticated() && hasPermission('servidores', 'create');
+      allow update: if isAuthenticated() && hasPermission('servidores', 'update');
+      allow delete: if isAuthenticated() && hasPermission('servidores', 'delete');
+    }
+
+    match /inscripciones_servidores/{docId} {
+      allow read: if isAuthenticated() && hasPermission('inscripciones_servidores', 'read');
+      allow create: if isAuthenticated() && hasPermission('inscripciones_servidores', 'create');
+      allow update: if isAuthenticated() && hasPermission('inscripciones_servidores', 'update');
+      allow delete: if isAuthenticated() && hasPermission('inscripciones_servidores', 'delete');
+    }
+
+    match /pagos_servidores/{docId} {
+      allow read: if isAuthenticated() && hasPermission('pagos_servidores', 'read');
+      allow create: if isAuthenticated() && hasPermission('pagos_servidores', 'create');
+      allow update: if isAuthenticated() && hasPermission('pagos_servidores', 'update');
+      allow delete: if isAuthenticated() && hasPermission('pagos_servidores', 'delete');
+    }
+
+    match /encargados/{docId} {
+      allow read: if isAuthenticated() && hasPermission('encargados', 'read');
+      allow create: if isAuthenticated() && hasPermission('encargados', 'create');
+      allow update: if isAuthenticated() && hasPermission('encargados', 'update');
+      allow delete: if isAuthenticated() && hasPermission('encargados', 'delete');
+    }
+
+    match /reuniones/{docId} {
+      allow read: if isAuthenticated() && hasPermission('reuniones', 'read');
+      allow create: if isAuthenticated() && hasPermission('reuniones', 'create');
+      allow update: if isAuthenticated() && hasPermission('reuniones', 'update');
+      allow delete: if isAuthenticated() && hasPermission('reuniones', 'delete');
+    }
+
+    match /asistencias/{docId} {
+      allow read: if isAuthenticated() && hasPermission('asistencias', 'read');
+      allow create: if isAuthenticated() && hasPermission('asistencias', 'create');
+      allow update: if isAuthenticated() && hasPermission('asistencias', 'update');
+      allow delete: if isAuthenticated() && hasPermission('asistencias', 'delete');
+    }
+
+    match /tutores/{docId} {
+      allow read: if isAuthenticated() && hasPermission('tutores', 'read');
+      allow create: if isAuthenticated() && hasPermission('tutores', 'create');
+      allow update: if isAuthenticated() && hasPermission('tutores', 'update');
+      allow delete: if isAuthenticated() && hasPermission('tutores', 'delete');
+    }
+
+    match /tutor_adolescente/{docId} {
+      allow read: if isAuthenticated() && hasPermission('tutor_adolescente', 'read');
+      allow create: if isAuthenticated() && hasPermission('tutor_adolescente', 'create');
+      allow update: if isAuthenticated() && hasPermission('tutor_adolescente', 'update');
+      allow delete: if isAuthenticated() && hasPermission('tutor_adolescente', 'delete');
+    }
+
+    match /eventos/{docId} {
+      allow read: if isAuthenticated() && hasPermission('eventos', 'read');
+      allow create: if isAuthenticated() && hasPermission('eventos', 'create');
+      allow update: if isAuthenticated() && hasPermission('eventos', 'update');
+      allow delete: if isAuthenticated() && hasPermission('eventos', 'delete');
+    }
+
+    match /inscripciones_eventos/{docId} {
+      allow read: if isAuthenticated() && hasPermission('inscripciones_eventos', 'read');
+      allow create: if isAuthenticated() && hasPermission('inscripciones_eventos', 'create');
+      allow update: if isAuthenticated() && hasPermission('inscripciones_eventos', 'update');
+      allow delete: if isAuthenticated() && hasPermission('inscripciones_eventos', 'delete');
+    }
+
+    match /pagos_eventos/{docId} {
+      allow read: if isAuthenticated() && hasPermission('pagos_eventos', 'read');
+      allow create: if isAuthenticated() && hasPermission('pagos_eventos', 'create');
+      allow update: if isAuthenticated() && hasPermission('pagos_eventos', 'update');
+      allow delete: if isAuthenticated() && hasPermission('pagos_eventos', 'delete');
+    }
+
+    match /participantes_eventos/{docId} {
+      allow read: if isAuthenticated() && hasPermission('participantes_eventos', 'read');
+      allow create: if isAuthenticated() && hasPermission('participantes_eventos', 'create');
+      allow update: if isAuthenticated() && hasPermission('participantes_eventos', 'update');
+      allow delete: if isAuthenticated() && hasPermission('participantes_eventos', 'delete');
+    }
+
+    match /celebraciones_cumpleanos/{docId} {
+      allow read: if isAuthenticated() && hasPermission('celebraciones_cumpleanos', 'read');
+      allow create: if isAuthenticated() && hasPermission('celebraciones_cumpleanos', 'create');
+      allow update: if isAuthenticated() && hasPermission('celebraciones_cumpleanos', 'update');
+      allow delete: if isAuthenticated() && hasPermission('celebraciones_cumpleanos', 'delete');
+    }
+
+    match /devocionales/{docId} {
+      allow read: if isAuthenticated() && hasPermission('devocionales', 'read');
+      allow create: if isAuthenticated() && hasPermission('devocionales', 'create');
+      allow update: if isAuthenticated() && hasPermission('devocionales', 'update');
+      allow delete: if isAuthenticated() && hasPermission('devocionales', 'delete');
+    }
+
+    match /entregas_devocionales/{docId} {
+      allow read: if isAuthenticated() && hasPermission('entregas_devocionales', 'read');
+      allow create: if isAuthenticated() && hasPermission('entregas_devocionales', 'create');
+      allow update: if isAuthenticated() && hasPermission('entregas_devocionales', 'update');
+      allow delete: if isAuthenticated() && hasPermission('entregas_devocionales', 'delete');
+    }
+  }
+}

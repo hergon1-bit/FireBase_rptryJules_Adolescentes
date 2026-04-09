@@ -7,7 +7,7 @@ export interface Permisos {
 }
 
 export interface Rol {
-  id: number;
+  id: string;
   nombre: string;
   permisos: {
     adolescentes: Permisos;
@@ -35,7 +35,7 @@ export interface Usuario {
   id: string;
   email: string;
   nombre: string;
-  rolId: number;
+  rolId: string;
   avatarUrl?: string;
   lastSignInAt?: string;
 }
@@ -44,7 +44,7 @@ export type Sexo = 'Masculino' | 'Femenino';
 export type EstadoAdolescente = 'Activo' | 'Inactivo' | 'Anulado';
 
 export interface Adolescente {
-  id: number;
+  id: string;
   nombre: string;
   apellido: string;
   cedula: string;
@@ -64,7 +64,7 @@ export type RolServidor = 'Pastor' | 'Padre' | 'Madre' | 'Lider de Color' | 'Lid
 export type TipoBeca = 'Ninguna' | 'Parcial' | 'Total';
 
 export interface Servidor {
-  id: number;
+  id: string;
   nombre: string;
   apellido: string;
   cedula: string;
@@ -74,9 +74,9 @@ export interface Servidor {
 }
 
 export interface InscripcionServidor {
-  id: number;
-  eventoId: number;
-  servidorId: number;
+  id: string;
+  eventoId: string;
+  servidorId: string;
   rol: RolServidor;
   tipoBeca?: TipoBeca;
   montoAcordado?: number;
@@ -86,15 +86,15 @@ export interface InscripcionServidor {
 }
 
 export interface PagoServidor {
-  id: number;
-  inscripcionServidorId: number;
+  id: string;
+  inscripcionServidorId: string;
   fecha: string;
   monto: number;
   notas?: string;
 }
 
 export interface Encargado {
-  id: number;
+  id: string;
   nombre: string;
   apellido: string;
   cedula: string;
@@ -108,10 +108,10 @@ export interface Encargado {
 export type EstadoReunion = 'En Proceso' | 'Finalizado';
 
 export interface Reunion {
-  id: number;
+  id: string;
   fecha: string;
   tema: string;
-  encargadoId: number;
+  encargadoId: string;
   estado: EstadoReunion;
 }
 
@@ -119,14 +119,14 @@ export type TipoAsistencia = 'Presente' | 'Ausente';
 export type AsistenciaDetalle = 'Regular' | 'Primera Vez' | 'Regresa';
 
 export interface Asistencia {
-  reunionId: number;
-  adolescenteId: number;
+  reunionId: string;
+  adolescenteId: string;
   estado: TipoAsistencia;
   detalle?: AsistenciaDetalle;
 }
 
 export interface ResumenReunion {
-  reunionId: number;
+  reunionId: string;
   presentes: number;
   ausentes: number;
 }
@@ -134,7 +134,7 @@ export interface ResumenReunion {
 export type GradoParentesco = 'Padre' | 'Madre' | 'Tío' | 'Tía' | 'Abuelo' | 'Abuela' | 'Tutor Legal';
 
 export interface Tutor {
-    id: number;
+    id: string;
     nombre: string;
     apellido: string;
     cedula: string;
@@ -145,12 +145,12 @@ export interface Tutor {
 }
 
 export interface TutorAdolescente {
-    tutorId: number;
-    adolescenteId: number;
+    tutorId: string;
+    adolescenteId: string;
 }
 
 export interface Evento {
-  id: number;
+  id: string;
   tema: string;
   lugar: string;
   fechaInicio: string;
@@ -165,35 +165,35 @@ export interface Evento {
 }
 
 export interface InscripcionEvento {
-  id: number;
-  eventoId: number;
-  adolescenteId?: number;
-  tutorId?: number;
+  id: string;
+  eventoId: string;
+  adolescenteId?: string;
+  tutorId?: string;
   fechaInscripcion: string;
   notas?: string;
   asistio?: boolean;
 }
 
 export interface PagoEvento {
-  id: number;
-  inscripcionId: number;
+  id: string;
+  inscripcionId: string;
   fecha: string;
   monto: number;
   notas?: string;
 }
 
 export interface ParticipanteEvento {
-  eventoId: number;
-  adolescenteId: number;
+  eventoId: string;
+  adolescenteId: string;
 }
 
 export interface CelebracionCumpleanos {
-  adolescenteId: number;
+  adolescenteId: string;
   ano: number;
 }
 
 export interface Devocional {
-  id: number;
+  id: string;
   numeroSemana: number;
   tema: string;
   fechaDistribucion: string;
@@ -201,11 +201,11 @@ export interface Devocional {
 }
 
 export interface EntregaDevocional {
-  id: number;
-  devocionalId: number;
-  adolescenteId: number;
+  id: string;
+  devocionalId: string;
+  adolescenteId: string;
   fechaEntrega: string;
   observaciones?: string;
 }
 
-export type Page = 'dashboard' | 'adolescentes' | 'encargados' | 'reuniones' | 'tutores' | 'eventos' | 'reportes' | 'reportes-financieros' | 'usuarios' | 'roles' | 'asistencia' | 'limpiar-tablas' | 'cargar-tablas' | 'update-password' | 'tareas' | 'servidores';
+export type Page = 'dashboard' | 'adolescentes' | 'encargados' | 'reuniones' | 'tutores' | 'eventos' | 'reportes' | 'reportes-financieros' | 'usuarios' | 'roles' | 'asistencia' | 'limpiar-tablas' | 'cargar-tablas' | 'update-password' | 'tareas' | 'servidores' | 'migracion-supabase' | 'ver-tablas';

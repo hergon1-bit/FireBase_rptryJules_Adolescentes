@@ -33,7 +33,7 @@ const ReportesFinancieros: React.FC = () => {
         inscripcionesServidores, pagosServidores, fetchData 
     } = useData();
     const [activeReport, setActiveReport] = useState<FinReportType>('balance');
-    const [selectedEventoId, setSelectedEventoId] = useState<number | null>(null);
+    const [selectedEventoId, setSelectedEventoId] = useState<string | null>(null);
     const [isRefreshing, setIsRefreshing] = useState(false);
 
     // Estados para filtros de Balance General
@@ -523,7 +523,7 @@ const ReportesFinancieros: React.FC = () => {
                         <label className="block text-xs font-bold text-text-secondary mb-2 uppercase tracking-widest">Seleccionar Evento</label>
                         <select 
                             value={selectedEventoId || ''} 
-                            onChange={e => { setSelectedEventoId(Number(e.target.value)); setSearchTermBalance(''); setActiveStatusFilter('all'); }} 
+                            onChange={e => { setSelectedEventoId(e.target.value || null); setSearchTermBalance(''); setActiveStatusFilter('all'); }} 
                             className="bg-background border border-border p-3 rounded-lg w-full text-text-primary focus:ring-2 ring-primary outline-none transition-all"
                         >
                             <option value="">-- Seleccione un evento para ver finanzas --</option>

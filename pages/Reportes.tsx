@@ -8,13 +8,15 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
 type ReportType = 'cumpleanos' | 'asistenciaReunion' | 'ausencias' | 'activos' | 'adolescentesTutores' | 'tutores' | 'documentos';
+type DocumentFilter = 'Todos' | 'Ficha Pendiente' | 'Ficha Entregada' | 'Autorización Pendiente' | 'Autorización Entregada' | 'Todo Entregado' | 'Todo Pendiente';
 
 const Reportes: React.FC = () => {
     const { 
         adolescentes, reuniones, asistencias, encargados, tutores, tutoresAdolescentes, fetchData 
     } = useData();
     const [activeReport, setActiveReport] = useState<ReportType>('cumpleanos');
-    const [selectedReunionId, setSelectedReunionId] = useState<number | null>(null);
+    const [selectedReunionId, setSelectedReunionId] = useState<string | null>(null);
+    const [docFilter, setDocFilter] = useState<DocumentFilter>('Todos');
     const [isRefreshing, setIsRefreshing] = useState(false);
 
     useEffect(() => {
@@ -56,24 +58,24 @@ const Reportes: React.FC = () => {
 
             case 'ausencias':
                 // Adolescentes con más de 3 ausencias en las últimas 5 reuniones
-                const ultimas5 = reuniones.slice(0, 5).map(r => r.id);
+                const ultimas5 = reuniones.slice(0, 5).map(r => String(r.id));
                 return adolescentes.filter(a => {
                     if (a.estado !== 'Activo') return false;
-                    const ausencias = asistencias.filter(asis => ultimas5.includes(asis.reunionId) && asis.adolescenteId === a.id && asis.estado === 'Ausente');
+                    const ausencias = asistencias.filter(asis => ultimas5.includes(String(asis.reunionId)) && String(asis.adolescenteId) === String(a.id) && asis.estado === 'Ausente');
                     return ausencias.length >= 3;
                 });
 
             case 'asistenciaReunion':
                 if (!selectedReunionId) return [];
                 return asistencias
-                    .filter(a => Number(a.reunionId) === Number(selectedReunionId) && a.estado === 'Presente')
-                    .map(a => adolescentes.find(ado => ado.id === a.adolescenteId))
+                    .filter(a => String(a.reunionId) === String(selectedReunionId) && a.estado === 'Presente')
+                    .map(a => adolescentes.find(ado => String(ado.id) === String(a.adolescenteId)))
                     .filter(Boolean) as Adolescente[];
 
             case 'adolescentesTutores':
                 return adolescentes.map(ado => {
-                    const adoTutoresIds = tutoresAdolescentes.filter(ta => ta.adolescenteId === ado.id).map(ta => ta.tutorId);
-                    const adoTutores = tutores.filter(t => adoTutoresIds.includes(t.id));
+                    const adoTutoresIds = tutoresAdolescentes.filter(ta => String(ta.adolescenteId) === String(ado.id)).map(ta => String(ta.tutorId));
+                    const adoTutores = tutores.filter(t => adoTutoresIds.includes(String(t.id)));
                     return { ...ado, tutores: adoTutores };
                 }).sort((a, b) => a.nombre.localeCompare(b.nombre));
 
@@ -81,8 +83,21 @@ const Reportes: React.FC = () => {
                 return tutores.sort((a, b) => a.nombre.localeCompare(b.nombre));
 
             case 'documentos':
-                return adolescentes.filter(a => a.estado === 'Activo').sort((a, b) => {
-                    // Sort by missing documents first, then by name
+                let filteredDocs = adolescentes.filter(a => a.estado === 'Activo');
+                if (docFilter === 'Ficha Pendiente') {
+                    filteredDocs = filteredDocs.filter(a => !a.fichaInscripcion);
+                } else if (docFilter === 'Ficha Entregada') {
+                    filteredDocs = filteredDocs.filter(a => a.fichaInscripcion);
+                } else if (docFilter === 'Autorización Pendiente') {
+                    filteredDocs = filteredDocs.filter(a => !a.autorizacion);
+                } else if (docFilter === 'Autorización Entregada') {
+                    filteredDocs = filteredDocs.filter(a => a.autorizacion);
+                } else if (docFilter === 'Todo Entregado') {
+                    filteredDocs = filteredDocs.filter(a => a.fichaInscripcion && a.autorizacion);
+                } else if (docFilter === 'Todo Pendiente') {
+                    filteredDocs = filteredDocs.filter(a => !a.fichaInscripcion || !a.autorizacion);
+                }
+                return filteredDocs.sort((a, b) => {
                     const aMissing = (!a.fichaInscripcion || !a.autorizacion) ? 1 : 0;
                     const bMissing = (!b.fichaInscripcion || !b.autorizacion) ? 1 : 0;
                     if (aMissing !== bMissing) return bMissing - aMissing;
@@ -91,7 +106,7 @@ const Reportes: React.FC = () => {
 
             default: return [];
         }
-    }, [activeReport, adolescentes, reuniones, asistencias, selectedReunionId, tutores, tutoresAdolescentes]);
+    }, [activeReport, adolescentes, reuniones, asistencias, selectedReunionId, tutores, tutoresAdolescentes, docFilter]);
 
     const handlePrint = () => {
         const doc = new jsPDF();
@@ -232,11 +247,30 @@ const Reportes: React.FC = () => {
                         <label className="block text-xs font-bold text-text-secondary uppercase tracking-widest mb-2">Seleccionar Reunión</label>
                         <select 
                             value={selectedReunionId || ''} 
-                            onChange={e => setSelectedReunionId(Number(e.target.value))} 
+                            onChange={e => setSelectedReunionId(e.target.value || null)} 
                             className="bg-background border border-border p-2.5 rounded-md w-full max-w-md text-text-primary focus:ring-2 ring-primary outline-none"
                         >
                             <option value="">-- Selecciona una reunión --</option>
                             {reuniones.map(r => <option key={r.id} value={r.id}>{formatDate(r.fecha)} - {r.tema}</option>)}
+                        </select>
+                    </div>
+                )}
+
+                {activeReport === 'documentos' && (
+                    <div className="mb-6 bg-background/50 p-4 rounded-lg border border-border/50">
+                        <label className="block text-xs font-bold text-text-secondary uppercase tracking-widest mb-2">Filtrar por Estado</label>
+                        <select 
+                            value={docFilter} 
+                            onChange={e => setDocFilter(e.target.value as DocumentFilter)} 
+                            className="bg-background border border-border p-2.5 rounded-md w-full max-w-md text-text-primary focus:ring-2 ring-primary outline-none"
+                        >
+                            <option value="Todos">Todos</option>
+                            <option value="Ficha Pendiente">Ficha Pendiente</option>
+                            <option value="Ficha Entregada">Ficha Entregada</option>
+                            <option value="Autorización Pendiente">Autorización Pendiente</option>
+                            <option value="Autorización Entregada">Autorización Entregada</option>
+                            <option value="Todo Entregado">Todo Entregado</option>
+                            <option value="Todo Pendiente">Todo Pendiente</option>
                         </select>
                     </div>
                 )}

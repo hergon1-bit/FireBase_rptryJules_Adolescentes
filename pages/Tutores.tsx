@@ -17,8 +17,8 @@ const Tutores: React.FC = () => {
     // Estado para el filtro interno del modal
     const [adolescenteModalSearch, setAdolescenteModalSearch] = useState('');
     
-    const [linkedAdolescenteIds, setLinkedAdolescenteIds] = useState<Set<number>>(new Set());
-    const [originalLinkedIds, setOriginalLinkedIds] = useState<Set<number>>(new Set());
+    const [linkedAdolescenteIds, setLinkedAdolescenteIds] = useState<Set<string>>(new Set());
+    const [originalLinkedIds, setOriginalLinkedIds] = useState<Set<string>>(new Set());
     const [isUnsavedConfirmOpen, setIsUnsavedConfirmOpen] = useState(false);
     const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
     const [tutorToDelete, setTutorToDelete] = useState<Tutor | null>(null);
@@ -77,7 +77,7 @@ const Tutores: React.FC = () => {
                  return String(values[formKey] ?? '') !== String(editingTutor[originalKey] ?? '');
             });
 
-            const areSetsEqual = (a: Set<number>, b: Set<number>) =>
+            const areSetsEqual = (a: Set<string>, b: Set<string>) =>
                 a.size === b.size && [...a].every(value => b.has(value));
 
             const linksChanged = !areSetsEqual(linkedAdolescenteIds, originalLinkedIds);
@@ -92,7 +92,7 @@ const Tutores: React.FC = () => {
         }
     };
 
-    const handleLinkChange = (adolescenteId: number) => {
+    const handleLinkChange = (adolescenteId: string) => {
         setLinkedAdolescenteIds(prev => {
             const newSet = new Set(prev);
             if (newSet.has(adolescenteId)) {

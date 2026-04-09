@@ -10,7 +10,8 @@
     "lint": "tsc --noEmit"
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.45.0",
+    "@supabase/supabase-js": "^2.102.1",
+    "firebase": "^12.11.0",
     "jspdf": "^2.5.1",
     "jspdf-autotable": "^3.5.29",
     "postcss-import": "^16.1.1",

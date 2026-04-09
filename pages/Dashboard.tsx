@@ -8,7 +8,7 @@ import { Page } from '../types';
 
 
 interface DashboardProps {
-  navigateTo: (page: Page, params?: { reunionId: number }) => void;
+  navigateTo: (page: Page, params?: { reunionId: string }) => void;
 }
 
 
@@ -78,7 +78,7 @@ const Dashboard: React.FC<DashboardProps> = ({ navigateTo }) => {
             new Date(e.fechaEntrega).getFullYear() === currentYear
         );
 
-        const conteo: { [key: number]: number } = {};
+        const conteo: { [key: string]: number } = {};
         entregasEsteAno.forEach(e => {
             conteo[e.adolescenteId] = (conteo[e.adolescenteId] || 0) + 1;
         });
@@ -87,7 +87,7 @@ const Dashboard: React.FC<DashboardProps> = ({ navigateTo }) => {
 
         return Object.entries(conteo)
             .map(([id, count]) => {
-                const ado = adolescentes.find(a => a.id === Number(id));
+                const ado = adolescentes.find(a => a.id === id);
                 return { 
                     ado, 
                     count, 
@@ -105,15 +105,15 @@ const Dashboard: React.FC<DashboardProps> = ({ navigateTo }) => {
         const reunionesUltimos6Meses = reuniones.filter(r => new Date(r.fecha) >= sixMonthsAgo);
         const reunionesIds = new Set(reunionesUltimos6Meses.map(r => r.id));
         const totalReuniones = reunionesUltimos6Meses.length;
-        const conteo: { [key: number]: number } = {};
+        const conteo: { [key: string]: number } = {};
         asistencias.forEach(a => {
-            if (reunionesIds.has(Number(a.reunionId)) && a.estado === 'Presente') {
+            if (reunionesIds.has(a.reunionId) && a.estado === 'Presente') {
                 conteo[a.adolescenteId] = (conteo[a.adolescenteId] || 0) + 1;
             }
         });
         return Object.entries(conteo)
             .map(([id, count]) => {
-                const ado = adolescentes.find(a => a.id === Number(id));
+                const ado = adolescentes.find(a => a.id === id);
                 return { ado, count, percentage: totalReuniones > 0 ? (count / totalReuniones) * 100 : 0 };
             })
             .filter(item => item.ado && item.ado.estado === 'Activo')
@@ -134,7 +134,7 @@ const Dashboard: React.FC<DashboardProps> = ({ navigateTo }) => {
         return finalAdolescentes.sort((a, b) => calcularProximoCumpleanos(a.fechaNacimiento).getDate() - calcularProximoCumpleanos(b.fechaNacimiento).getDate());
     }, [stats.adolescentesActivosData, celebraciones]);
 
-    const isAdmin = useMemo(() => rol?.id === 1 || rol?.nombre?.toLowerCase().includes('administrador'), [rol]);
+    const isAdmin = useMemo(() => rol?.id === '1' || rol?.nombre?.toLowerCase().includes('administrador'), [rol]);
 
     if (isLoading && reuniones.length === 0) {
         return (

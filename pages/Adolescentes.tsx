@@ -26,7 +26,8 @@ const Adolescentes: React.FC = () => {
 
     const initialFormState: Omit<Adolescente, 'id'> = {
         nombre: '', apellido: '', cedula: '', registro: '', fechaNacimiento: '', barrio: '', 
-        ciudad: '', telefono: '', sexo: 'Masculino', estado: 'Activo'
+        ciudad: '', telefono: '', sexo: 'Masculino', estado: 'Activo',
+        fichaInscripcion: false, autorizacion: false
     };
 
     const { values, handleInputChange, setValues, resetForm } = useForm<Omit<Adolescente, 'id'>>(initialFormState);
@@ -64,7 +65,9 @@ const Adolescentes: React.FC = () => {
             registro: rest.registro || '',
             barrio: rest.barrio || '',
             ciudad: rest.ciudad || '',
-            telefono: rest.telefono || ''
+            telefono: rest.telefono || '',
+            fichaInscripcion: rest.fichaInscripcion || false,
+            autorizacion: rest.autorizacion || false
         });
         setIsModalOpen(true);
     };
@@ -80,6 +83,7 @@ const Adolescentes: React.FC = () => {
     const checkIfChanged = () => {
         if (!editingAdolescente) return true;
         const norm = (v: any) => v === null || v === undefined ? '' : String(v).trim();
+        const normBool = (v: any) => v === true;
         return (
             norm(values.nombre) !== norm(editingAdolescente.nombre) ||
             norm(values.apellido) !== norm(editingAdolescente.apellido) ||
@@ -90,7 +94,9 @@ const Adolescentes: React.FC = () => {
             norm(values.ciudad) !== norm(editingAdolescente.ciudad) ||
             norm(values.telefono) !== norm(editingAdolescente.telefono) ||
             norm(values.sexo) !== norm(editingAdolescente.sexo) ||
-            norm(values.estado) !== norm(editingAdolescente.estado)
+            norm(values.estado) !== norm(editingAdolescente.estado) ||
+            normBool(values.fichaInscripcion) !== normBool(editingAdolescente.fichaInscripcion) ||
+            normBool(values.autorizacion) !== normBool(editingAdolescente.autorizacion)
         );
     };
 
@@ -127,6 +133,8 @@ const Adolescentes: React.FC = () => {
                 telefono: (values.telefono || '').trim(),
                 sexo: values.sexo || 'Masculino',
                 estado: values.estado || 'Activo',
+                fichaInscripcion: values.fichaInscripcion || false,
+                autorizacion: values.autorizacion || false,
             };
 
             if (!cleanValues.nombre || !cleanValues.apellido || !cleanValues.cedula) {

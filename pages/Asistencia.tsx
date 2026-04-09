@@ -7,14 +7,14 @@ import { api } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 
 interface AsistenciaProps {
-  reunionId: number;
+  reunionId: string;
   navigateTo: (page: Page) => void;
 }
 
 const Asistencia: React.FC<AsistenciaProps> = ({ reunionId, navigateTo }) => {
     const { reuniones, adolescentes, asistencias: initialAsistencias, updateReunion, fetchData } = useData();
     const { hasPermission } = useAuth();
-    const [asistenciaLocal, setAsistenciaLocal] = useState<Map<number, Asistencia>>(new Map());
+    const [asistenciaLocal, setAsistenciaLocal] = useState<Map<string, Asistencia>>(new Map());
     const [isLoading, setIsLoading] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
     const [showOnlyPresent, setShowOnlyPresent] = useState(false);
@@ -56,7 +56,7 @@ const Asistencia: React.FC<AsistenciaProps> = ({ reunionId, navigateTo }) => {
     const initializeAsistencias = useCallback(() => {
         if (adolescentesActivos.length === 0) return;
 
-        const newMap = new Map<number, Asistencia>();
+        const newMap = new Map<string, Asistencia>();
         adolescentesActivos.forEach(ado => {
             const existingAsistencia = initialAsistencias.find(a => a.reunionId === reunionId && a.adolescenteId === ado.id);
             if (existingAsistencia) {
@@ -79,7 +79,7 @@ const Asistencia: React.FC<AsistenciaProps> = ({ reunionId, navigateTo }) => {
        initializeAsistencias();
     }, [initializeAsistencias]);
     
-    const handleAsistenciaChange = (adolescenteId: number, estado: TipoAsistencia) => {
+    const handleAsistenciaChange = (adolescenteId: string, estado: TipoAsistencia) => {
         setAsistenciaLocal(prevMap => {
             const current = prevMap.get(adolescenteId);
             if (!current) return prevMap;
@@ -97,7 +97,7 @@ const Asistencia: React.FC<AsistenciaProps> = ({ reunionId, navigateTo }) => {
         setSaveStatus('idle'); // Reset status on change
     };
 
-    const handleDetalleChange = (adolescenteId: number, detalle: AsistenciaDetalle) => {
+    const handleDetalleChange = (adolescenteId: string, detalle: AsistenciaDetalle) => {
         setAsistenciaLocal(prevMap => {
             const current = prevMap.get(adolescenteId);
             if (current) {

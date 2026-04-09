@@ -10,7 +10,7 @@ import { RefreshIcon, UsersIcon } from '../components/ui/Icons';
 import { api } from '../services/api';
 
 interface ReunionesProps {
-  navigateTo: (page: Page, params?: { reunionId: number }) => void;
+  navigateTo: (page: Page, params?: { reunionId: string }) => void;
 }
 
 const Reuniones: React.FC<ReunionesProps> = ({ navigateTo }) => {
@@ -33,7 +33,7 @@ const Reuniones: React.FC<ReunionesProps> = ({ navigateTo }) => {
     const initialFormState: Omit<Reunion, 'id'> = {
         fecha: new Date().toISOString().split('T')[0],
         tema: '',
-        encargadoId: encargados[0]?.id || 0,
+        encargadoId: encargados[0]?.id || '',
         estado: 'En Proceso',
     };
 
@@ -51,10 +51,10 @@ const Reuniones: React.FC<ReunionesProps> = ({ navigateTo }) => {
 
     // Calculate stats directly from the raw asistencias array for reliability
     const attendanceStats = useMemo(() => {
-        const stats = new Map<number, { presentes: number, ausentes: number }>();
+        const stats = new Map<string, { presentes: number, ausentes: number }>();
         
         asistencias.forEach(a => {
-            const rId = Number(a.reunionId);
+            const rId = String(a.reunionId);
             if (!stats.has(rId)) {
                 stats.set(rId, { presentes: 0, ausentes: 0 });
             }
@@ -67,6 +67,7 @@ const Reuniones: React.FC<ReunionesProps> = ({ navigateTo }) => {
             }
         });
         
+        console.log("attendanceStats calculated:", stats.size, "reuniones. Total asistencias:", asistencias.length);
         return stats;
     }, [asistencias]);
 
@@ -81,7 +82,7 @@ const Reuniones: React.FC<ReunionesProps> = ({ navigateTo }) => {
                 } catch (error) {
                     console.error("Error fetching specific attendance:", error);
                     // Fallback to global context if error
-                    setViewingAttendanceData(asistencias.filter(a => Number(a.reunionId) === Number(viewingAttendanceReunion.id)));
+                    setViewingAttendanceData(asistencias.filter(a => String(a.reunionId) === String(viewingAttendanceReunion.id)));
                 } finally {
                     setIsLoadingAttendance(false);
                 }
@@ -119,7 +120,7 @@ const Reuniones: React.FC<ReunionesProps> = ({ navigateTo }) => {
             const hasChanged = 
                 values.fecha !== editingReunion.fecha ||
                 values.tema !== editingReunion.tema ||
-                Number(values.encargadoId) !== editingReunion.encargadoId ||
+                values.encargadoId !== editingReunion.encargadoId ||
                 values.estado !== editingReunion.estado;
             
             if (hasChanged) {
@@ -135,8 +136,8 @@ const Reuniones: React.FC<ReunionesProps> = ({ navigateTo }) => {
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         
-        const selectedEncargadoId = Number(values.encargadoId);
-        if (!selectedEncargadoId || selectedEncargadoId === 0) {
+        const selectedEncargadoId = values.encargadoId;
+        if (!selectedEncargadoId) {
             alert("Error: Debe seleccionar un encargado válido. Si no hay encargados, registre uno primero.");
             return;
         }
@@ -213,7 +214,7 @@ const Reuniones: React.FC<ReunionesProps> = ({ navigateTo }) => {
         const presentesData = reunionAsistencias
             .filter(a => a.estado === 'Presente')
             .flatMap((a): (Adolescente & { detalle?: AsistenciaDetalle })[] => {
-                const ado = adolescentes.find(ado => Number(ado.id) === Number(a.adolescenteId));
+                const ado = adolescentes.find(ado => String(ado.id) === String(a.adolescenteId));
                 return ado ? [{ ...ado, detalle: a.detalle }] : [];
             });
 
@@ -221,7 +222,7 @@ const Reuniones: React.FC<ReunionesProps> = ({ navigateTo }) => {
         const ausentesData = reunionAsistencias
             .filter(a => a.estado === 'Ausente')
             .flatMap(a => {
-                const ado = adolescentes.find(ado => Number(ado.id) === Number(a.adolescenteId));
+                const ado = adolescentes.find(ado => String(ado.id) === String(a.adolescenteId));
                 return ado ? [ado] : [];
             });
 
@@ -275,8 +276,8 @@ const Reuniones: React.FC<ReunionesProps> = ({ navigateTo }) => {
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {filteredReuniones.map(reunion => {
-                    const encargado = encargados.find(e => e.id === reunion.encargadoId);
-                    const stats = attendanceStats.get(reunion.id) || { presentes: 0, ausentes: 0 };
+                    const encargado = encargados.find(e => String(e.id) === String(reunion.encargadoId));
+                    const stats = attendanceStats.get(String(reunion.id)) || { presentes: 0, ausentes: 0 };
                     
                     return (
                         <div key={reunion.id} className="bg-surface p-5 rounded-lg shadow-lg flex flex-col justify-between">

@@ -7,6 +7,7 @@ import {
   Servidor, InscripcionServidor, PagoServidor
 } from '../types';
 import { api } from '../services/api';
+import { useAuth } from './AuthContext';
 
 interface DataContextType {
   adolescentes: Adolescente[];
@@ -33,53 +34,53 @@ interface DataContextType {
   fetchData: () => Promise<void>;
   addAdolescente: (a: Omit<Adolescente, 'id'>) => Promise<void>;
   updateAdolescente: (a: Adolescente) => Promise<void>;
-  deleteAdolescente: (id: number) => Promise<void>;
+  deleteAdolescente: (id: string) => Promise<void>;
   // Fix: changed parameter type to array to match implementation and usage
   addAdolescentesBulk: (a: Omit<Adolescente, 'id'>[]) => Promise<void>;
   
   addServidor: (s: Omit<Servidor, 'id'>) => Promise<void>;
   updateServidor: (s: Servidor) => Promise<void>;
-  deleteServidor: (id: number) => Promise<void>;
+  deleteServidor: (id: string) => Promise<void>;
   
   addInscripcionServidor: (i: Omit<InscripcionServidor, 'id'>) => Promise<InscripcionServidor>;
   updateInscripcionServidor: (i: InscripcionServidor) => Promise<void>;
-  deleteInscripcionServidor: (id: number) => Promise<void>;
+  deleteInscripcionServidor: (id: string) => Promise<void>;
   
-  addPagoServidor: (iId: number, m: number, fecha: string, notas?: string) => Promise<void>;
-  deletePagoServidor: (id: number) => Promise<void>;
+  addPagoServidor: (iId: string, m: number, fecha: string, notas?: string) => Promise<void>;
+  deletePagoServidor: (id: string) => Promise<void>;
 
   addEncargado: (e: Omit<Encargado, 'id'>) => Promise<void>;
   updateEncargado: (e: Encargado) => Promise<void>;
-  deleteEncargado: (id: number) => Promise<void>;
+  deleteEncargado: (id: string) => Promise<void>;
   addEncargadosBulk: (e: Omit<Encargado, 'id'>[]) => Promise<void>;
   
   addReunion: (r: Omit<Reunion, 'id'>) => Promise<void>;
   updateReunion: (r: Reunion) => Promise<void>;
-  deleteReunion: (id: number) => Promise<void>;
+  deleteReunion: (id: string) => Promise<void>;
   addReunionesBulk: (r: any[]) => Promise<void>;
   
   saveAsistencias: (a: Asistencia[]) => Promise<void>;
   
-  addTutor: (t: Omit<Tutor, 'id'>, adolescentIds: number[]) => Promise<void>;
-  updateTutor: (t: Tutor, adolescentIds: number[]) => Promise<void>;
-  deleteTutor: (id: number) => Promise<void>;
+  addTutor: (t: Omit<Tutor, 'id'>, adolescentIds: string[]) => Promise<void>;
+  updateTutor: (t: Tutor, adolescentIds: string[]) => Promise<void>;
+  deleteTutor: (id: string) => Promise<void>;
   addTutoresAndLinkBulk: (t: any[]) => Promise<void>;
   
   addEvento: (e: Omit<Evento, 'id'>) => Promise<void>;
   updateEvento: (e: Evento) => Promise<void>;
-  deleteEvento: (id: number) => Promise<void>;
+  deleteEvento: (id: string) => Promise<void>;
   
-  addInscripcion: (eId: number, aId?: number, tId?: number) => Promise<void>;
+  addInscripcion: (eId: string, aId?: string, tId?: string) => Promise<void>;
   updateInscripcion: (i: InscripcionEvento) => Promise<void>;
-  deleteInscripcion: (id: number) => Promise<void>;
+  deleteInscripcion: (id: string) => Promise<void>;
   
-  addPago: (iId: number, m: number, fecha: string, notas?: string) => Promise<void>;
-  deletePago: (id: number) => Promise<void>;
+  addPago: (iId: string, m: number, fecha: string, notas?: string) => Promise<void>;
+  deletePago: (id: string) => Promise<void>;
   
-  addParticipante: (eId: number, aId: number) => Promise<void>;
-  removeParticipante: (eId: number, aId: number) => Promise<void>;
+  addParticipante: (eId: string, aId: string) => Promise<void>;
+  removeParticipante: (eId: string, aId: string) => Promise<void>;
   
-  addCelebracionCumpleanos: (aId: number, ano: number) => Promise<void>;
+  addCelebracionCumpleanos: (aId: string, ano: number) => Promise<void>;
   
   addUser: (u: any) => Promise<void>;
   updateUser: (u: Usuario) => Promise<void>;
@@ -88,14 +89,14 @@ interface DataContextType {
   
   addRole: (r: Omit<Rol, 'id'>) => Promise<void>;
   updateRole: (r: Rol) => Promise<void>;
-  deleteRole: (id: number) => Promise<{ success: boolean; message?: string }>;
+  deleteRole: (id: string) => Promise<{ success: boolean; message?: string }>;
   
   addDevocional: (d: Omit<Devocional, 'id'>) => Promise<void>;
   updateDevocional: (d: Devocional) => Promise<void>;
-  deleteDevocional: (id: number) => Promise<void>;
+  deleteDevocional: (id: string) => Promise<void>;
   registrarEntregaBulk: (e: Omit<EntregaDevocional, 'id'>[]) => Promise<void>;
   updateEntrega: (e: EntregaDevocional) => Promise<void>;
-  deleteEntrega: (id: number) => Promise<void>;
+  deleteEntrega: (id: string) => Promise<void>;
   
   clearTable: (table: any) => Promise<void>;
 }
@@ -103,6 +104,7 @@ interface DataContextType {
 const DataContext = createContext<DataContextType | undefined>(undefined);
 
 export const DataProvider: React.FC<{children: React.ReactNode}> = ({ children }) => {
+  const { user } = useAuth();
   const [adolescentes, setAdolescentes] = useState<Adolescente[]>([]);
   const [encargados, setEncargados] = useState<Encargado[]>([]);
   const [reuniones, setReuniones] = useState<Reunion[]>([]);
@@ -160,8 +162,10 @@ export const DataProvider: React.FC<{children: React.ReactNode}> = ({ children }
   }, []);
 
   useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+    if (user) {
+      fetchData();
+    }
+  }, [fetchData, user]);
 
   const addAdolescente = async (a: Omit<Adolescente, 'id'>) => { 
       const newAdo = await api.createAdolescente(a); 
@@ -171,7 +175,7 @@ export const DataProvider: React.FC<{children: React.ReactNode}> = ({ children }
       const updatedAdo = await api.updateAdolescente(a); 
       setAdolescentes(prev => prev.map(item => item.id === a.id ? updatedAdo : item));
   };
-  const deleteAdolescente = async (id: number) => { 
+  const deleteAdolescente = async (id: string) => { 
       await api.deleteAdolescente(id); 
       setAdolescentes(prev => prev.filter(item => item.id !== id)); 
   };
@@ -189,7 +193,7 @@ export const DataProvider: React.FC<{children: React.ReactNode}> = ({ children }
     const updated = await api.updateServidor(s);
     setServidores(prev => prev.map(item => item.id === s.id ? updated : item));
   };
-  const deleteServidor = async (id: number) => {
+  const deleteServidor = async (id: string) => {
     await api.deleteServidor(id);
     setServidores(prev => prev.filter(item => item.id !== id));
   };
@@ -203,18 +207,18 @@ export const DataProvider: React.FC<{children: React.ReactNode}> = ({ children }
     await api.updateInscripcionServidor(i);
     setInscripcionesServidores(prev => prev.map(item => item.id === i.id ? i : item));
   };
-  const deleteInscripcionServidor = async (id: number) => {
+  const deleteInscripcionServidor = async (id: string) => {
     await api.deleteInscripcionServidor(id);
     setInscripcionesServidores(prev => prev.filter(item => item.id !== id));
   };
-  const addPagoServidor = async (iId: number, m: number, fecha: string, notas?: string) => {
+  const addPagoServidor = async (iId: string, m: number, fecha: string, notas?: string) => {
     const newPago = await api.createPagoServidor({ inscripcionServidorId: iId, monto: m, fecha, notas });
     setPagosServidores(prev => [...prev, newPago]);
     // Refresco de seguridad
     const fresh = await api.getPagosServidores();
     setPagosServidores(fresh);
   };
-  const deletePagoServidor = async (id: number) => {
+  const deletePagoServidor = async (id: string) => {
     await api.deletePagoServidor(id);
     setPagosServidores(prev => prev.filter(p => p.id !== id));
   };
@@ -227,7 +231,7 @@ export const DataProvider: React.FC<{children: React.ReactNode}> = ({ children }
       const updatedEnc = await api.updateEncargado(e); 
       setEncargados(prev => prev.map(item => item.id === e.id ? updatedEnc : item)); 
   };
-  const deleteEncargado = async (id: number) => { 
+  const deleteEncargado = async (id: string) => { 
       await api.deleteEncargado(id); 
       setEncargados(prev => prev.filter(item => item.id !== id)); 
   };
@@ -241,7 +245,7 @@ export const DataProvider: React.FC<{children: React.ReactNode}> = ({ children }
       const updatedReu = await api.updateReunion(r); 
       setReuniones(prev => prev.map(item => item.id === r.id ? updatedReu : item)); 
   };
-  const deleteReunion = async (id: number) => { 
+  const deleteReunion = async (id: string) => { 
       await api.deleteReunion(id); 
       setReuniones(prev => prev.filter(item => item.id !== id)); 
   };
@@ -253,17 +257,17 @@ export const DataProvider: React.FC<{children: React.ReactNode}> = ({ children }
       setAsistencias(freshAsis);
   };
 
-  const addTutor = async (t: Omit<Tutor, 'id'>, adolescentIds: number[]) => { 
+  const addTutor = async (t: Omit<Tutor, 'id'>, adolescentIds: string[]) => { 
     const nt = await api.createTutor(t); 
     await api.setTutorAdolescenteLinks(nt.id, adolescentIds);
     await fetchData(); 
   };
-  const updateTutor = async (t: Tutor, adolescentIds: number[]) => { 
+  const updateTutor = async (t: Tutor, adolescentIds: string[]) => { 
     await api.updateTutor(t); 
     await api.setTutorAdolescenteLinks(t.id, adolescentIds);
     await fetchData(); 
   };
-  const deleteTutor = async (id: number) => { 
+  const deleteTutor = async (id: string) => { 
       await api.deleteTutor(id); 
       setTutores(prev => prev.filter(t => t.id !== id));
   };
@@ -277,12 +281,12 @@ export const DataProvider: React.FC<{children: React.ReactNode}> = ({ children }
       const updatedEv = await api.updateEvento(e); 
       setEventos(prev => prev.map(item => item.id === e.id ? updatedEv : item)); 
   };
-  const deleteEvento = async (id: number) => { 
+  const deleteEvento = async (id: string) => { 
       await api.deleteEvento(id); 
       setEventos(prev => prev.filter(e => e.id !== id));
   };
 
-  const addInscripcion = async (eId: number, aId?: number, tId?: number) => { 
+  const addInscripcion = async (eId: string, aId?: string, tId?: string) => { 
     await api.createInscripcion({ eventoId: eId, adolescenteId: aId, tutorId: tId, fechaInscripcion: new Date().toISOString().split('T')[0] }); 
     const freshIns = await api.getInscripciones();
     setInscripciones(freshIns);
@@ -291,33 +295,33 @@ export const DataProvider: React.FC<{children: React.ReactNode}> = ({ children }
       await api.updateInscripcion(i); 
       setInscripciones(prev => prev.map(item => item.id === i.id ? i : item));
   };
-  const deleteInscripcion = async (id: number) => { 
+  const deleteInscripcion = async (id: string) => { 
       await api.deleteInscripcion(id); 
       setInscripciones(prev => prev.filter(i => i.id !== id));
   };
 
-  const addPago = async (iId: number, m: number, fecha: string, notas?: string) => { 
+  const addPago = async (iId: string, m: number, fecha: string, notas?: string) => { 
     const newPago = await api.createPago({ inscripcionId: iId, monto: m, fecha, notas }); 
     setPagos(prev => [...prev, newPago]);
     // Refresco de seguridad desde el servidor
     const freshPagos = await api.getPagos();
     setPagos(freshPagos);
   };
-  const deletePago = async (id: number) => { 
+  const deletePago = async (id: string) => { 
       await api.deletePago(id); 
       setPagos(prev => prev.filter(p => p.id !== id));
   };
 
-  const addParticipante = async (eId: number, aId: number) => { 
+  const addParticipante = async (eId: string, aId: string) => { 
       await api.addParticipante({ eventoId: eId, adolescenteId: aId }); 
       setParticipantes(prev => [...prev, { eventoId: eId, adolescenteId: aId }]);
   };
-  const removeParticipante = async (eId: number, aId: number) => { 
+  const removeParticipante = async (eId: string, aId: string) => { 
       await api.removeParticipante(eId, aId); 
       setParticipantes(prev => prev.filter(p => !(p.eventoId === eId && p.adolescenteId === aId)));
   };
 
-  const addCelebracionCumpleanos = async (aId: number, ano: number) => { 
+  const addCelebracionCumpleanos = async (aId: string, ano: number) => { 
       await api.addCumpleanosCelebrado({ adolescenteId: aId, ano }); 
       setCelebraciones(prev => [...prev, { adolescenteId: aId, ano }]);
   };
@@ -329,7 +333,7 @@ export const DataProvider: React.FC<{children: React.ReactNode}> = ({ children }
 
   const addRole = async (r: Omit<Rol, 'id'>) => { await api.createRole(r); await fetchData(); };
   const updateRole = async (r: Rol) => { await api.updateRole(r); await fetchData(); };
-  const deleteRole = async (id: number) => { const res = await api.deleteRole(id); await fetchData(); return res; };
+  const deleteRole = async (id: string) => { const res = await api.deleteRole(id); await fetchData(); return res; };
 
   const addDevocional = async (d: Omit<Devocional, 'id'>) => { 
       const newDev = await api.createDevocional(d); 
@@ -339,7 +343,7 @@ export const DataProvider: React.FC<{children: React.ReactNode}> = ({ children }
       const updatedDev = await api.updateDevocional(d); 
       setDevocionales(prev => prev.map(item => item.id === d.id ? updatedDev : item)); 
   };
-  const deleteDevocional = async (id: number) => { 
+  const deleteDevocional = async (id: string) => { 
       await api.deleteDevocional(id); 
       setDevocionales(prev => prev.filter(d => d.id !== id));
   };
@@ -352,7 +356,7 @@ export const DataProvider: React.FC<{children: React.ReactNode}> = ({ children }
       await api.updateEntregaDevocional(e); 
       setEntregasDevocionales(prev => prev.map(item => item.id === e.id ? e : item));
   };
-  const deleteEntrega = async (id: number) => { 
+  const deleteEntrega = async (id: string) => { 
       await api.deleteEntrega(id); 
       setEntregasDevocionales(prev => prev.filter(e => e.id !== id));
   };

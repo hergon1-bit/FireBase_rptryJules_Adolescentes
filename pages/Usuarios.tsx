@@ -118,7 +118,7 @@ const Usuarios: React.FC = () => {
             return;
         }
 
-        const userData = { ...values, rolId: Number(values.rolId) };
+        const userData = { ...values, rolId: String(values.rolId) };
         
         try {
             if (editingUser) {

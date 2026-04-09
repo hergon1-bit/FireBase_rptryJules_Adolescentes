@@ -49,7 +49,7 @@ const RoleEditorModal: React.FC<RoleEditorModalProps> = ({ role, isOpen, onClose
     if (!isOpen) return null;
 
     return (
-        <Modal isOpen={isOpen} onClose={onClose} title={role.id === 0 ? "Crear Nuevo Rol" : "Editar Rol"}>
+        <Modal isOpen={isOpen} onClose={onClose} title={role.id === '' ? "Crear Nuevo Rol" : "Editar Rol"}>
             <form onSubmit={handleSubmit} className="space-y-4">
                 <InputField label="Nombre del Rol" value={currentRole.nombre} onChange={handleNameChange} required />
                 
@@ -97,7 +97,7 @@ const Roles: React.FC = () => {
     const { roles, addRole, updateRole, deleteRole } = useData();
     const { hasPermission } = useAuth();
     
-    const [selectedRoleId, setSelectedRoleId] = useState<number | null>(null);
+    const [selectedRoleId, setSelectedRoleId] = useState<string | null>(null);
     const [isRoleModalOpen, setIsRoleModalOpen] = useState(false);
     const [editingRole, setEditingRole] = useState<Rol | null>(null);
     const [isRoleConfirmOpen, setIsRoleConfirmOpen] = useState(false);
@@ -133,7 +133,7 @@ const Roles: React.FC = () => {
             tutores: { read: false, create: false, update: false, delete: false },
             usuarios: { read: false, create: false, update: false, delete: false },
         };
-        setEditingRole({ id: 0, nombre: '', permisos: defaultPermissions });
+        setEditingRole({ id: '', nombre: '', permisos: defaultPermissions });
         setIsRoleModalOpen(true);
     };
 
@@ -144,7 +144,7 @@ const Roles: React.FC = () => {
     };
 
     const handleSaveRole = async (role: Rol) => {
-        if (role.id === 0) {
+        if (role.id === '') {
             const { id, ...newRole } = role;
             await addRole(newRole);
         } else {
@@ -187,7 +187,7 @@ const Roles: React.FC = () => {
 
             <div className="bg-surface p-6 rounded-lg shadow-lg">
                 <label htmlFor="role-select" className="block text-sm font-medium text-text-secondary mb-1">Seleccionar Rol</label>
-                <select id="role-select" value={selectedRoleId || ''} onChange={(e) => setSelectedRoleId(Number(e.target.value))} className="bg-background border border-border p-2 rounded-md mb-4 w-full max-w-sm">
+                <select id="role-select" value={selectedRoleId || ''} onChange={(e) => setSelectedRoleId(e.target.value)} className="bg-background border border-border p-2 rounded-md mb-4 w-full max-w-sm">
                     {roles.map(role => (
                         <option key={role.id} value={role.id}>{role.nombre}</option>
                     ))}
