@@ -103,17 +103,17 @@ const Dashboard: React.FC<DashboardProps> = ({ navigateTo }) => {
         const sixMonthsAgo = new Date();
         sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
         const reunionesUltimos6Meses = reuniones.filter(r => new Date(r.fecha) >= sixMonthsAgo);
-        const reunionesIds = new Set(reunionesUltimos6Meses.map(r => r.id));
+        const reunionesIds = new Set(reunionesUltimos6Meses.map(r => String(r.id)));
         const totalReuniones = reunionesUltimos6Meses.length;
         const conteo: { [key: string]: number } = {};
         asistencias.forEach(a => {
-            if (reunionesIds.has(a.reunionId) && a.estado === 'Presente') {
-                conteo[a.adolescenteId] = (conteo[a.adolescenteId] || 0) + 1;
+            if (reunionesIds.has(String(a.reunionId)) && a.estado === 'Presente') {
+                conteo[String(a.adolescenteId)] = (conteo[String(a.adolescenteId)] || 0) + 1;
             }
         });
         return Object.entries(conteo)
             .map(([id, count]) => {
-                const ado = adolescentes.find(a => a.id === id);
+                const ado = adolescentes.find(a => String(a.id) === String(id));
                 return { ado, count, percentage: totalReuniones > 0 ? (count / totalReuniones) * 100 : 0 };
             })
             .filter(item => item.ado && item.ado.estado === 'Activo')

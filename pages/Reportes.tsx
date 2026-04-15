@@ -67,10 +67,15 @@ const Reportes: React.FC = () => {
 
             case 'asistenciaReunion':
                 if (!selectedReunionId) return [];
-                return asistencias
+                const presentes = asistencias
                     .filter(a => String(a.reunionId) === String(selectedReunionId) && a.estado === 'Presente')
                     .map(a => adolescentes.find(ado => String(ado.id) === String(a.adolescenteId)))
                     .filter(Boolean) as Adolescente[];
+                return presentes.sort((a, b) => {
+                    const nameA = `${a.nombre} ${a.apellido}`.toLowerCase();
+                    const nameB = `${b.nombre} ${b.apellido}`.toLowerCase();
+                    return nameA.localeCompare(nameB);
+                });
 
             case 'adolescentesTutores':
                 return adolescentes.map(ado => {

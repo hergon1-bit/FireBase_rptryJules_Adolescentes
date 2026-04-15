@@ -50,7 +50,7 @@ const Asistencia: React.FC<AsistenciaProps> = ({ reunionId, navigateTo }) => {
             // Check current local status if filter is active
             const currentStatus = asistenciaLocal.get(a.id)?.estado;
             return matchesSearch && currentStatus === 'Presente';
-        }),
+        }).sort((a, b) => a.nombre.localeCompare(b.nombre)),
     [adolescentesActivos, searchTerm, showOnlyPresent, asistenciaLocal]);
 
     const initializeAsistencias = useCallback(() => {
