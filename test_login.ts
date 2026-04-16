@@ -1,8 +1,8 @@
 import { initializeApp } from 'firebase/app';
 import { getFirestore, collection, getDocs, doc, getDoc, query, where } from 'firebase/firestore';
-import fs from 'fs';
+import { getFirebaseConfig } from './firebase-config';
 
-const config = JSON.parse(fs.readFileSync('./firebase-applet-config.json', 'utf8'));
+const config = getFirebaseConfig();
 const app = initializeApp(config);
 const db = getFirestore(app, config.firestoreDatabaseId);
 
@@ -19,7 +19,7 @@ async function testLoadProfile(email: string) {
         }
         
         const docSnap = snapshot.docs[0];
-        const profile = { id: docSnap.id, ...docSnap.data() };
+        const profile = { id: docSnap.id, ...docSnap.data() } as any;
         console.log("Found profile:", profile);
         
         if (profile.rolId) {
