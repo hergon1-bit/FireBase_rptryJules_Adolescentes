@@ -1,5 +1,6 @@
 /** @type {import('tailwindcss').Config} */
 export default {
+  darkMode: 'class',
   content: [
     "./index.html",
     "./**/*.{js,ts,jsx,tsx}",
@@ -7,13 +8,13 @@ export default {
   theme: {
     extend: {
       colors: {
-        'primary': '#4f46e5',
-        'secondary': '#10b981',
-        'background': '#111827',
-        'surface': '#1f2937',
-        'text-primary': '#f9fafb',
-        'text-secondary': '#d1d5db',
-        'border': '#374151',
+        'primary': 'rgb(var(--color-primary) / <alpha-value>)',
+        'secondary': 'rgb(var(--color-secondary) / <alpha-value>)',
+        'background': 'rgb(var(--color-background) / <alpha-value>)',
+        'surface': 'rgb(var(--color-surface) / <alpha-value>)',
+        'text-primary': 'rgb(var(--color-text-primary) / <alpha-value>)',
+        'text-secondary': 'rgb(var(--color-text-secondary) / <alpha-value>)',
+        'border': 'rgb(var(--color-border) / <alpha-value>)',
       },
     },
   },
