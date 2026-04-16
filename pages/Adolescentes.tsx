@@ -183,6 +183,24 @@ const Adolescentes: React.FC = () => {
             .sort((a, b) => a.nombre.localeCompare(b.nombre));
     }, [adolescentes, searchTerm, estadoFilter]);
 
+    const adoToTutoresMap = useMemo(() => {
+        const tutorMap = new Map(tutores.map(t => [t.id, t]));
+        const map = new Map<string, typeof tutores>();
+
+        tutoresAdolescentes.forEach(ta => {
+            const tutor = tutorMap.get(ta.tutorId);
+            if (tutor) {
+                let current = map.get(ta.adolescenteId);
+                if (!current) {
+                    current = [];
+                    map.set(ta.adolescenteId, current);
+                }
+                current.push(tutor);
+            }
+        });
+        return map;
+    }, [tutores, tutoresAdolescentes]);
+
     const handleExportCSV = () => {
         if (filteredAdolescentes.length === 0) return;
         const headers = ["ID", "Nombre", "Apellido", "Cedula", "Reg. Salud", "Edad", "Estado"];
@@ -253,8 +271,7 @@ const Adolescentes: React.FC = () => {
                         </thead>
                         <tbody className="divide-y divide-border">
                             {filteredAdolescentes.map((ado) => {
-                                const adoTutoresIds = tutoresAdolescentes.filter(ta => ta.adolescenteId === ado.id).map(ta => ta.tutorId);
-                                const adoTutores = tutores.filter(t => adoTutoresIds.includes(t.id));
+                                const adoTutores = adoToTutoresMap.get(ado.id) || [];
 
                                 return (
                                 <tr key={ado.id} className="hover:bg-primary/5 transition-colors">
