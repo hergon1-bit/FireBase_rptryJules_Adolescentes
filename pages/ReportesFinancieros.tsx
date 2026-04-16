@@ -195,7 +195,7 @@ const ReportesFinancieros: React.FC = () => {
         });
 
         // UI muestra ordenado por Persona (Nombre)
-        return Array.from(groups.values()).sort((a, b) => a.nombre.localeCompare(b.nombre));
+        return [...groups.values()].sort((a, b) => a.nombre.localeCompare(b.nombre));
     }, [selectedEventoId, inscripciones, inscripcionesServidores, pagos, pagosServidores, adolescentes, servidores]);
 
     const balanceTotals = useMemo(() => {

@@ -76,7 +76,7 @@ const Tareas: React.FC = () => {
         entregasDevocionales.forEach(e => {
             if (e.fechaEntrega) years.add(new Date(e.fechaEntrega).getFullYear());
         });
-        return Array.from(years).sort((a, b) => b - a);
+        return [...years].sort((a, b) => b - a);
     }, [devocionales, entregasDevocionales]);
 
     // --- Computed Data for Dashboard ---
@@ -178,7 +178,7 @@ const Tareas: React.FC = () => {
             return;
         }
 
-        const entregas: Omit<EntregaDevocional, 'id'>[] = Array.from(selectedDevocionalIds).map((devId: string) => ({
+        const entregas: Omit<EntregaDevocional, 'id'>[] = [...selectedDevocionalIds].map((devId: string) => ({
             devocionalId: devId,
             adolescenteId: String(selectedAdolescenteId),
             fechaEntrega: fechaEntrega,
