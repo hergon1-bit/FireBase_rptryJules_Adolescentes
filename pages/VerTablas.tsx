@@ -32,8 +32,8 @@ const VerTablas: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Solo administradores pueden ver esto (rolId === 1)
-  const isAdmin = rol?.id === 1 || rol?.nombre?.toLowerCase() === 'admin' || rol?.nombre?.toLowerCase() === 'administrador';
+  // Solo administradores pueden ver esto
+  const isAdmin = (String(rol?.id) === '1') || rol?.nombre?.toLowerCase() === 'admin' || rol?.nombre?.toLowerCase() === 'administrador';
 
   const fetchData = async (tableName: string) => {
     if (!tableName) return;

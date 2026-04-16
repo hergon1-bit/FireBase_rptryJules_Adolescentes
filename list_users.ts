@@ -1,8 +1,8 @@
 import { initializeApp } from 'firebase/app';
 import { getFirestore, collection, getDocs } from 'firebase/firestore';
-import fs from 'fs';
+import { getFirebaseConfig } from './firebase-config';
 
-const firebaseConfig = JSON.parse(fs.readFileSync('./firebase-applet-config.json', 'utf8'));
+const firebaseConfig = getFirebaseConfig();
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
 
