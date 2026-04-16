@@ -128,7 +128,7 @@ const VerTablas: React.FC = () => {
               <thead>
                 <tr className="bg-background border-b border-border">
                   {/* Obtener todas las claves únicas de todos los objetos para las columnas */}
-                  {Array.from(new Set(data.flatMap(item => Object.keys(item)))).map(key => (
+                  {[...new Set(data.flatMap(item => Object.keys(item)))].map(key => (
                     <th key={key} className="px-4 py-3 text-xs font-semibold text-text-secondary uppercase tracking-wider whitespace-nowrap">
                       {key}
                     </th>
@@ -138,7 +138,7 @@ const VerTablas: React.FC = () => {
               <tbody className="divide-y divide-border">
                 {data.map((item, index) => (
                   <tr key={item.id || index} className="hover:bg-background/50 transition-colors">
-                    {Array.from(new Set(data.flatMap(i => Object.keys(i)))).map(key => (
+                    {[...new Set(data.flatMap(i => Object.keys(i)))].map(key => (
                       <td key={key} className="px-4 py-3 text-sm text-text-primary whitespace-nowrap max-w-xs truncate" title={typeof item[key] === 'object' ? JSON.stringify(item[key]) : String(item[key] ?? '')}>
                         {item[key] === undefined || item[key] === null 
                           ? <span className="text-text-secondary italic">null</span>
