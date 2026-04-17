@@ -1,7 +1,6 @@
 import React from 'react';
 import { useAuth } from '../../contexts/AuthContext';
-import { useTheme } from '../../contexts/ThemeContext';
-import { MenuIcon, LogOutIcon, SunIcon, MoonIcon } from '../ui/Icons';
+import { MenuIcon, LogOutIcon } from '../ui/Icons';
 
 interface HeaderProps {
     toggleSidebar: () => void;
@@ -9,7 +8,6 @@ interface HeaderProps {
 
 const Header: React.FC<HeaderProps> = ({ toggleSidebar }) => {
   const { user, rol, logout } = useAuth();
-  const { theme, toggleTheme } = useTheme();
 
   const handleLogout = async () => {
       try {
@@ -33,13 +31,6 @@ const Header: React.FC<HeaderProps> = ({ toggleSidebar }) => {
             </h1>
         </div>
       <div className="flex items-center gap-4">
-        <button
-            onClick={toggleTheme}
-            className="p-2 rounded-full text-text-secondary hover:bg-surface hover:text-text-primary transition-colors focus:outline-none"
-            title={theme === 'light' ? 'Cambiar a modo oscuro' : 'Cambiar a modo claro'}
-        >
-            {theme === 'light' ? <MoonIcon className="w-5 h-5" /> : <SunIcon className="w-5 h-5" />}
-        </button>
         <div className="flex items-center">
             <div className="text-right mr-3 hidden md:block">
                 <p className="font-semibold text-text-primary text-sm">{user?.nombre}</p>

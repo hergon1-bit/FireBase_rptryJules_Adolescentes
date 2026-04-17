@@ -28,35 +28,46 @@ export const AuthProvider: React.FC<{children: React.ReactNode}> = ({ children }
     
     // Si ya hay una carga en progreso para este usuario, esperamos a que termine
     if (processingId.current === userId && loadingPromise.current) {
+        console.log(`[Auth] Waiting for existing loadUserProfile promise for ${userId}`);
         return loadingPromise.current;
     }
 
     processingId.current = userId;
     
     const doLoad = async () => {
+        console.log(`[Auth] loadUserProfile called for userId: ${userId}, email: ${email}`);
+
         try {
           let profile = await api.getUsuarioById(userId);
+          console.log(`[Auth] getUsuarioById result:`, profile);
           
           // Si no encontramos el perfil por ID, intentamos buscarlo por email (para usuarios migrados)
           if (!profile && email) {
+              console.log(`[Auth] Profile not found by ID, trying by email...`);
               const profileByEmail = await api.getUsuarioByEmail(email);
+              console.log(`[Auth] getUsuarioByEmail result:`, profileByEmail);
               
               if (profileByEmail) {
+                  console.log(`[Auth] Migrating user ID from ${profileByEmail.id} to ${userId}`);
                   // Migramos el ID del usuario al nuevo UID de Firebase Auth
                   const { id, ...userData } = profileByEmail;
                   await api.migrateUsuarioId(id, userId, userData);
                   profile = { id: userId, ...userData } as Usuario;
+                  console.log(`[Auth] Migration successful.`);
               }
           }
 
           if (profile) {
+            console.log(`[Auth] Profile loaded successfully. Setting user state.`);
             setUser(profile);
             const roleData = await api.getRolById(profile.rolId.toString());
+            console.log(`[Auth] Role loaded:`, roleData);
             setRol(roleData);
             api.updateLastSignIn(userId).catch(() => {});
             return true;
           }
           
+          console.log(`[Auth] Profile is still null after all attempts. Returning false.`);
           return false;
         } catch (error) {
           console.error("[Auth] Error cargando perfil:", error);
