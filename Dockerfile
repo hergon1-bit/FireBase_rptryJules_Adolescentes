@@ -1,40 +1,31 @@
-# Etapa 1: Construcción (Build)
-FROM node:20-alpine AS build
+# Step 1: Build the React application
+FROM node:20-alpine AS builder
 
-# Establecer el directorio de trabajo dentro del contenedor
 WORKDIR /app
 
-# Copiar los archivos de definición de dependencias
-COPY package.json package-lock.json* ./
+# Copy package.json and package-lock.json (if available)
+COPY package*.json ./
 
-# Instalar las dependencias del proyecto
+# Install dependencies
 RUN npm ci
 
-# Copiar el resto de los archivos del código fuente
+# Copy the rest of the application files
 COPY . .
 
-# Construir la aplicación (Vite genera los archivos estáticos en la carpeta "dist")
+# Build the application
 RUN npm run build
 
-# Etapa 2: Servidor (Production / Serve)
+# Step 2: Serve the application using Nginx
 FROM nginx:alpine
 
-# Copiar los archivos estáticos generados en la etapa anterior a la carpeta pública de Nginx
-COPY --from=build /app/dist /usr/share/nginx/html
+# Copy the build output from the previous step to the Nginx html directory
+COPY --from=builder /app/dist /usr/share/nginx/html
 
-# Configurar Nginx para aplicaciones de una sola página (SPA)
-# Esto asegura que todas las rutas se redirijan a "index.html" para que el router de React se encargue de ellas.
-RUN echo "server { \
-    listen 80; \
-    location / { \
-        root /usr/share/nginx/html; \
-        index index.html index.htm; \
-        try_files \$uri \$uri/ /index.html; \
-    } \
-}" > /etc/nginx/conf.d/default.conf
+# Copy the custom Nginx configuration
+COPY nginx.conf /etc/nginx/conf.d/default.conf
 
-# Exponer el puerto 80
+# Expose port 80
 EXPOSE 80
 
-# Iniciar el servidor Nginx
+# Start Nginx
 CMD ["nginx", "-g", "daemon off;"]
