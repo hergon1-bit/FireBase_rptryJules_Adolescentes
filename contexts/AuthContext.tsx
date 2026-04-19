@@ -156,6 +156,7 @@ export const AuthProvider: React.FC<{children: React.ReactNode}> = ({ children }
 
   const hasPermission = (module: keyof Rol['permisos'], action: keyof Permisos): boolean => {
     if (!rol) return false;
+    if (rol.id === '1' || rol.nombre.toLowerCase().includes('administrador') || rol.nombre.toLowerCase() === 'admin') return true;
     const modulePerms = (rol.permisos as any)[module];
     return modulePerms ? !!modulePerms[action] : false;
   };

@@ -26,6 +26,7 @@ import Servidores from './pages/Servidores';
 import VerTablas from './pages/VerTablas';
 
 import MigracionSupabase from './pages/MigracionSupabase';
+import InactivarTeens from './pages/InactivarTeens';
 
 const AppContent: React.FC = () => {
   const { user, loading } = useAuth();
@@ -66,6 +67,7 @@ const AppContent: React.FC = () => {
       case 'limpiar-tablas': return <LimpiarTablas />;
       case 'cargar-tablas': return <CargarTablas />;
       case 'migracion-supabase': return <MigracionSupabase />;
+      case 'inactivar-teens': return <InactivarTeens />;
       case 'ver-tablas': return <VerTablas />;
       case 'update-password': return <UpdatePassword navigateTo={navigateTo} />;
       default: return <Dashboard navigateTo={navigateTo} />;

@@ -10,8 +10,9 @@ import { useForm } from '../hooks/useForm';
 import { DownloadCloudIcon, RefreshIcon } from '../components/ui/Icons';
 
 const Adolescentes: React.FC = () => {
-    const { adolescentes, tutores, tutoresAdolescentes, addAdolescente, updateAdolescente, deleteAdolescente } = useData();
-    const { hasPermission } = useAuth();
+    const { adolescentes, tutores, tutoresAdolescentes, addAdolescente, updateAdolescente, deleteAdolescente, reuniones, asistencias } = useData();
+    const { hasPermission, rol } = useAuth();
+    const isAdmin = rol?.id === '1' || rol?.nombre?.toLowerCase().includes('administrador') || rol?.nombre?.toLowerCase() === 'admin';
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
     const [secondsElapsed, setSecondsElapsed] = useState(0);
@@ -200,11 +201,56 @@ const Adolescentes: React.FC = () => {
         link.click();
     };
 
+    const handleInactivarAusentes = async () => {
+        const oneYearAgo = new Date();
+        oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
+
+        const reunionesUltimoAnioIds = reuniones
+            .filter(r => new Date(r.fecha) >= oneYearAgo)
+            .map(r => String(r.id));
+
+        const activos = adolescentes.filter(a => a.estado === 'Activo');
+
+        const paraInactivar = activos.filter(a => {
+            const asistioEnElAnio = asistencias.some(asis => 
+                String(asis.adolescenteId) === String(a.id) && 
+                asis.estado === 'Presente' && 
+                reunionesUltimoAnioIds.includes(String(asis.reunionId))
+            );
+            return !asistioEnElAnio;
+        });
+
+        if (paraInactivar.length === 0) {
+            alert("No hay adolescentes activos con más de 1 año de inasistencia.");
+            return;
+        }
+
+        if (confirm(`Se encontraron ${paraInactivar.length} adolescentes activos sin asistencias en el último año. ¿Desea marcarlos como 'Inactivos'?`)) {
+            setIsSaving(true);
+            try {
+                for (const ado of paraInactivar) {
+                    await updateAdolescente({ ...ado, estado: 'Inactivo' });
+                }
+                alert(`Se inactivaron ${paraInactivar.length} adolescentes correctamente.`);
+            } catch (error) {
+                console.error("Error inactivando:", error);
+                alert("Hubo un error inactivando a los adolescentes.");
+            } finally {
+                setIsSaving(false);
+            }
+        }
+    };
+
     return (
         <div className="space-y-6">
             <div className="flex justify-between items-center flex-wrap gap-4">
                 <h1 className="text-3xl font-bold text-text-primary">Gestión de Adolescentes</h1>
                 <div className="flex items-center gap-2">
+                    {isAdmin && (
+                        <button onClick={handleInactivarAusentes} disabled={isSaving} className="bg-red-600 border-2 border-red-800 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition flex items-center gap-2 shadow-md font-bold disabled:opacity-50">
+                            <span>Inactivar Ausentes {'>'} 1 Año</span>
+                        </button>
+                    )}
                     <button onClick={handleExportCSV} className="bg-secondary text-white px-4 py-2 rounded-lg hover:bg-emerald-600 transition flex items-center gap-2 shadow-md font-bold">
                         <DownloadCloudIcon className="w-5 h-5" />
                         <span>Exportar</span>

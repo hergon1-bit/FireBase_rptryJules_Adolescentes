@@ -36,7 +36,7 @@ const NavItem: React.FC<{
 const Sidebar: React.FC<SidebarProps> = ({ currentPage, navigateTo, isOpen, setOpen }) => {
   const { user, hasPermission } = useAuth();
   
-  const adminSubPages: Page[] = ['usuarios', 'roles', 'limpiar-tablas', 'cargar-tablas', 'migracion-supabase', 'ver-tablas'];
+  const adminSubPages: Page[] = ['usuarios', 'roles', 'inactivar-teens', 'limpiar-tablas', 'cargar-tablas', 'migracion-supabase', 'ver-tablas'];
   const [isAdminOpen, setIsAdminOpen] = useState(adminSubPages.includes(currentPage));
   
   if (!user) return null;
@@ -103,6 +103,12 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, navigateTo, isOpen, setO
                       label="Roles y Permisos"
                       isActive={currentPage === 'roles'}
                       onClick={() => navigateTo('roles')}
+                    />
+                    <NavItem
+                      icon={<UsersIcon className="w-5 h-5" />}
+                      label="Inactivar Teens"
+                      isActive={currentPage === 'inactivar-teens'}
+                      onClick={() => navigateTo('inactivar-teens')}
                     />
                     <NavItem
                       icon={<TrashIcon className="w-5 h-5" />}

@@ -90,17 +90,17 @@ const Reportes: React.FC = () => {
             case 'documentos':
                 let filteredDocs = adolescentes.filter(a => a.estado === 'Activo');
                 if (docFilter === 'Ficha Pendiente') {
-                    filteredDocs = filteredDocs.filter(a => !a.fichaInscripcion);
+                    filteredDocs = filteredDocs.filter(a => !a.fichaInscripcion && a.autorizacion);
                 } else if (docFilter === 'Ficha Entregada') {
-                    filteredDocs = filteredDocs.filter(a => a.fichaInscripcion);
+                    filteredDocs = filteredDocs.filter(a => a.fichaInscripcion && !a.autorizacion);
                 } else if (docFilter === 'Autorización Pendiente') {
-                    filteredDocs = filteredDocs.filter(a => !a.autorizacion);
+                    filteredDocs = filteredDocs.filter(a => a.fichaInscripcion && !a.autorizacion);
                 } else if (docFilter === 'Autorización Entregada') {
-                    filteredDocs = filteredDocs.filter(a => a.autorizacion);
+                    filteredDocs = filteredDocs.filter(a => !a.fichaInscripcion && a.autorizacion);
                 } else if (docFilter === 'Todo Entregado') {
                     filteredDocs = filteredDocs.filter(a => a.fichaInscripcion && a.autorizacion);
                 } else if (docFilter === 'Todo Pendiente') {
-                    filteredDocs = filteredDocs.filter(a => !a.fichaInscripcion || !a.autorizacion);
+                    filteredDocs = filteredDocs.filter(a => !a.fichaInscripcion && !a.autorizacion);
                 }
                 return filteredDocs.sort((a, b) => {
                     const aMissing = (!a.fichaInscripcion || !a.autorizacion) ? 1 : 0;
