@@ -95,7 +95,10 @@ export const formatDate = (date: Date | string) => {
   
   if (dateStr && /^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
       const [year, month, day] = dateStr.split('-').map(Number);
-      return `${day.toString().padStart(2, '0')}/${month.toString().padStart(2, '0')}/${year}`;
+      const d = new Date(year, month - 1, day);
+      if (d.getFullYear() === year && d.getMonth() === month - 1 && d.getDate() === day) {
+        return `${day.toString().padStart(2, '0')}/${month.toString().padStart(2, '0')}/${year}`;
+      }
   }
 
   const d = typeof date === 'string' ? new Date(date) : date;
