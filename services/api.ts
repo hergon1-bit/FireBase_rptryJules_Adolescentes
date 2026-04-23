@@ -10,23 +10,9 @@ import {
   Usuario, Rol, Adolescente, Encargado, Reunion, Tutor, Evento, Asistencia, 
   TutorAdolescente, InscripcionEvento, PagoEvento, ParticipanteEvento, TipoAsistencia, AsistenciaDetalle,
   CelebracionCumpleanos, ResumenReunion, Devocional, EntregaDevocional,
-  Servidor, InscripcionServidor, PagoServidor, Permisos
+  Servidor, InscripcionServidor, PagoServidor
 } from '../types';
-
-const createFullPermissions = (defaultPerms: Permisos, overrides: Partial<Rol['permisos']> = {}): Rol['permisos'] => {
-  const modules: (keyof Rol['permisos'])[] = [
-    'adolescentes', 'asistencias', 'celebraciones_cumpleanos', 'devocionales', 'encargados',
-    'entregas_devocionales', 'eventos', 'inscripciones_eventos', 'inscripciones_servidores',
-    'pagos_eventos', 'pagos_servidores', 'participantes_eventos', 'reuniones', 'roles',
-    'servidores', 'tutor_adolescente', 'tutores', 'usuarios'
-  ];
-
-  const permisos = {} as Rol['permisos'];
-  modules.forEach(m => {
-    permisos[m] = overrides[m] ? { ...overrides[m] } : { ...defaultPerms };
-  });
-  return permisos;
-};
+import { createFullPermissions } from '../utils/helpers';
 
 const normalizeRol = (rol: any): Rol => {
   const defaultPerms = { read: false, create: false, update: false, delete: false };
