@@ -10,22 +10,30 @@ import {
   Usuario, Rol, Adolescente, Encargado, Reunion, Tutor, Evento, Asistencia, 
   TutorAdolescente, InscripcionEvento, PagoEvento, ParticipanteEvento, TipoAsistencia, AsistenciaDetalle,
   CelebracionCumpleanos, ResumenReunion, Devocional, EntregaDevocional,
-  Servidor, InscripcionServidor, PagoServidor
+  Servidor, InscripcionServidor, PagoServidor, Permisos
 } from '../types';
+
+const createFullPermissions = (defaultPerms: Permisos, overrides: Partial<Rol['permisos']> = {}): Rol['permisos'] => {
+  const modules: (keyof Rol['permisos'])[] = [
+    'adolescentes', 'asistencias', 'celebraciones_cumpleanos', 'devocionales', 'encargados',
+    'entregas_devocionales', 'eventos', 'inscripciones_eventos', 'inscripciones_servidores',
+    'pagos_eventos', 'pagos_servidores', 'participantes_eventos', 'reuniones', 'roles',
+    'servidores', 'tutor_adolescente', 'tutores', 'usuarios'
+  ];
+
+  const permisos = {} as Rol['permisos'];
+  modules.forEach(m => {
+    permisos[m] = overrides[m] ? { ...overrides[m] } : { ...defaultPerms };
+  });
+  return permisos;
+};
 
 const normalizeRol = (rol: any): Rol => {
   const defaultPerms = { read: false, create: false, update: false, delete: false };
   if (!rol) {
       return {
           id: '0', nombre: 'Invitado',
-          permisos: {
-            adolescentes: { ...defaultPerms }, asistencias: { ...defaultPerms }, celebraciones_cumpleanos: { ...defaultPerms },
-            devocionales: { ...defaultPerms }, encargados: { ...defaultPerms }, entregas_devocionales: { ...defaultPerms },
-            eventos: { ...defaultPerms }, inscripciones_eventos: { ...defaultPerms }, inscripciones_servidores: { ...defaultPerms },
-            pagos_eventos: { ...defaultPerms }, pagos_servidores: { ...defaultPerms }, participantes_eventos: { ...defaultPerms },
-            reuniones: { ...defaultPerms }, roles: { ...defaultPerms }, servidores: { ...defaultPerms },
-            tutor_adolescente: { ...defaultPerms }, tutores: { ...defaultPerms }, usuarios: { ...defaultPerms },
-          }
+          permisos: createFullPermissions(defaultPerms)
       };
   }
   return {
@@ -155,8 +163,22 @@ export const api = {
       const defaultPerms = { read: true, create: true, update: true, delete: true };
       const guestPerms = { read: true, create: false, update: false, delete: false };
       
-      await setDoc(doc(db, 'roles', '1'), { nombre: 'Administrador', permisos: { adolescentes: defaultPerms, asistencias: defaultPerms, celebraciones_cumpleanos: defaultPerms, devocionales: defaultPerms, encargados: defaultPerms, entregas_devocionales: defaultPerms, eventos: defaultPerms, inscripciones_eventos: defaultPerms, inscripciones_servidores: defaultPerms, pagos_eventos: defaultPerms, pagos_servidores: defaultPerms, participantes_eventos: defaultPerms, reuniones: defaultPerms, roles: defaultPerms, servidores: defaultPerms, tutor_adolescente: defaultPerms, tutores: defaultPerms, usuarios: defaultPerms } });
-      await setDoc(doc(db, 'roles', '2'), { nombre: 'Encargado', permisos: { adolescentes: defaultPerms, asistencias: defaultPerms, celebraciones_cumpleanos: guestPerms, devocionales: guestPerms, encargados: guestPerms, entregas_devocionales: defaultPerms, eventos: guestPerms, inscripciones_eventos: defaultPerms, inscripciones_servidores: defaultPerms, pagos_eventos: defaultPerms, pagos_servidores: defaultPerms, participantes_eventos: defaultPerms, reuniones: defaultPerms, roles: guestPerms, servidores: defaultPerms, tutor_adolescente: defaultPerms, tutores: defaultPerms, usuarios: guestPerms } });
+      await setDoc(doc(db, 'roles', '1'), {
+        nombre: 'Administrador',
+        permisos: createFullPermissions(defaultPerms)
+      });
+
+      await setDoc(doc(db, 'roles', '2'), {
+        nombre: 'Encargado',
+        permisos: createFullPermissions(defaultPerms, {
+          celebraciones_cumpleanos: guestPerms,
+          devocionales: guestPerms,
+          encargados: guestPerms,
+          eventos: guestPerms,
+          roles: guestPerms,
+          usuarios: guestPerms
+        })
+      });
     } catch (e) {
       handleFirestoreError(e, OperationType.WRITE, 'roles');
     }
