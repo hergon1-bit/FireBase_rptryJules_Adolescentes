@@ -125,3 +125,20 @@ export const formatRelativeTime = (date: Date | string) => {
 export const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('es-PY', { style: 'currency', currency: 'PYG', minimumFractionDigits: 0 }).format(amount);
 };
+
+import { Rol, Permisos } from '../types';
+
+export const createFullPermissions = (defaultPerms: Permisos, overrides: Partial<Rol['permisos']> = {}): Rol['permisos'] => {
+  const modules: (keyof Rol['permisos'])[] = [
+    'adolescentes', 'asistencias', 'celebraciones_cumpleanos', 'devocionales', 'encargados',
+    'entregas_devocionales', 'eventos', 'inscripciones_eventos', 'inscripciones_servidores',
+    'pagos_eventos', 'pagos_servidores', 'participantes_eventos', 'reuniones', 'roles',
+    'servidores', 'tutor_adolescente', 'tutores', 'usuarios'
+  ];
+
+  const permisos = {} as Rol['permisos'];
+  modules.forEach(m => {
+    permisos[m] = overrides[m] ? { ...overrides[m] } : { ...defaultPerms };
+  });
+  return permisos;
+};
