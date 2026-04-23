@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { useData } from '../contexts/DataContext';
 import { useAuth } from '../contexts/AuthContext';
 import { Rol, Permisos } from '../types';
+import { createFullPermissions } from '../utils/helpers';
 import Modal from '../components/ui/Modal';
 import ConfirmationModal from '../components/ui/ConfirmationModal';
 
@@ -113,26 +114,7 @@ const Roles: React.FC = () => {
 
     // --- Role Handlers ---
     const handleCreateRole = () => {
-        const defaultPermissions: Rol['permisos'] = {
-            adolescentes: { read: false, create: false, update: false, delete: false },
-            asistencias: { read: false, create: false, update: false, delete: false },
-            celebraciones_cumpleanos: { read: false, create: false, update: false, delete: false },
-            devocionales: { read: false, create: false, update: false, delete: false },
-            encargados: { read: false, create: false, update: false, delete: false },
-            entregas_devocionales: { read: false, create: false, update: false, delete: false },
-            eventos: { read: false, create: false, update: false, delete: false },
-            inscripciones_eventos: { read: false, create: false, update: false, delete: false },
-            inscripciones_servidores: { read: false, create: false, update: false, delete: false },
-            pagos_eventos: { read: false, create: false, update: false, delete: false },
-            pagos_servidores: { read: false, create: false, update: false, delete: false },
-            participantes_eventos: { read: false, create: false, update: false, delete: false },
-            reuniones: { read: false, create: false, update: false, delete: false },
-            roles: { read: false, create: false, update: false, delete: false },
-            servidores: { read: false, create: false, update: false, delete: false },
-            tutor_adolescente: { read: false, create: false, update: false, delete: false },
-            tutores: { read: false, create: false, update: false, delete: false },
-            usuarios: { read: false, create: false, update: false, delete: false },
-        };
+        const defaultPermissions = createFullPermissions({ read: false, create: false, update: false, delete: false });
         setEditingRole({ id: '', nombre: '', permisos: defaultPermissions });
         setIsRoleModalOpen(true);
     };
