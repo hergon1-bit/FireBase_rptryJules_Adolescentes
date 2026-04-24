@@ -269,18 +269,6 @@ const Tareas: React.FC = () => {
             .sort((a, b) => new Date(b.fechaEntrega).getTime() - new Date(a.fechaEntrega).getTime());
     }, [entregasDevocionales, filterAdo, filterDev, filterDateStart, filterDateEnd]);
 
-    const adolescentesMap = useMemo(() => {
-        const map = new Map<string, Adolescente>();
-        adolescentes.forEach(a => map.set(String(a.id), a));
-        return map;
-    }, [adolescentes]);
-
-    const devocionalesMap = useMemo(() => {
-        const map = new Map<string, Devocional>();
-        devocionales.forEach(d => map.set(String(d.id), d));
-        return map;
-    }, [devocionales]);
-
     
     return (
         <div className="space-y-6">
@@ -683,8 +671,8 @@ const Tareas: React.FC = () => {
                                 </thead>
                                 <tbody className="divide-y divide-border">
                                     {filteredEntregas.map(ent => {
-                                        const ado = adolescentesMap.get(String(ent.adolescenteId));
-                                        const dev = devocionalesMap.get(String(ent.devocionalId));
+                                        const ado = adolescentes.find(a => String(a.id) === String(ent.adolescenteId));
+                                        const dev = devocionales.find(d => String(d.id) === String(ent.devocionalId));
                                         return (
                                             <tr key={ent.id} className="hover:bg-background/50 transition-colors">
                                                 <td className="px-6 py-4 whitespace-nowrap text-sm">{formatDate(ent.fechaEntrega)}</td>

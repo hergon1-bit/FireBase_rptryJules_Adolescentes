@@ -3,7 +3,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { useData } from '../contexts/DataContext';
 import { formatDate, calcularEdad } from '../utils/helpers';
 import { Adolescente } from '../types';
-import { RefreshIcon, PrinterIcon, UsersIcon, CalendarDaysIcon, ClipboardListIcon } from '../components/ui/Icons';
+import { RefreshIcon, PrinterIcon, UsersIcon, CalendarDaysIcon, ClipboardListIcon, DocumentDownloadIcon } from '../components/ui/Icons';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
@@ -204,11 +204,73 @@ const Reportes: React.FC = () => {
         doc.save(`reporte_${activeReport}.pdf`);
     };
 
+    const handleExportExcel = () => {
+        if (activeReport !== 'activos') return;
+
+        // Create CSV content for 'activos'
+        const headers = ['Nombre y Apellido', 'Edad', 'Ciudad', 'Tutores'];
+        
+        const csvRows = [];
+        csvRows.push(headers.join(',')); // Add headers
+        
+        reportData.forEach((item: any) => {
+            const a = item as Adolescente;
+            const age = calcularEdad(a.fechaNacimiento);
+            const city = a.ciudad ? a.ciudad : (a.barrio ? `Barrio ${a.barrio}` : '');
+            
+            // Find tutors for this teen
+            const adoTutoresIds = tutoresAdolescentes
+                .filter(ta => String(ta.adolescenteId) === String(a.id))
+                .map(ta => String(ta.tutorId));
+                
+            const adoTutores = tutores.filter(t => adoTutoresIds.includes(String(t.id)));
+            const tutoresNames = adoTutores.length > 0 
+                ? adoTutores.map(t => `${t.nombre} ${t.apellido}`).join('; ')
+                : 'Ninguno';
+
+            // Escape quotes and commas
+            const escapeCsv = (str: string) => `"${String(str).replace(/"/g, '""')}"`;
+            
+            const row = [
+                escapeCsv(`${a.nombre} ${a.apellido}`),
+                age,
+                escapeCsv(city),
+                escapeCsv(tutoresNames)
+            ];
+            
+            csvRows.push(row.join(','));
+        });
+
+        const csvString = csvRows.join('\n');
+        
+        // Add BOM for correct UTF-8 display in Excel
+        const blob = new Blob(["\uFEFF" + csvString], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement('a');
+        
+        const url = URL.createObjectURL(blob);
+        link.setAttribute('href', url);
+        link.setAttribute('download', `Lista_Activos_${new Date().toISOString().split('T')[0]}.csv`);
+        link.style.display = 'none';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    };
+
     return (
         <div className="space-y-6">
             <div className="flex justify-between items-center">
                 <h1 className="text-3xl font-bold">Reportes de Seguimiento</h1>
                 <div className="flex gap-2">
+                    {activeReport === 'activos' && (
+                        <button 
+                            onClick={handleExportExcel} 
+                            className="bg-green-600 border border-green-700 p-2 rounded-lg text-white hover:bg-green-700 transition-colors flex items-center gap-2 text-sm font-medium px-4"
+                            title="Desgargar Excel (CSV)"
+                        >
+                            <DocumentDownloadIcon className="w-5 h-5" />
+                            <span className="hidden sm:inline">Exportar Excel</span>
+                        </button>
+                    )}
                     <button 
                         onClick={handlePrint} 
                         className="bg-surface border border-border p-2 rounded-lg text-text-secondary hover:text-text-primary transition-colors"
