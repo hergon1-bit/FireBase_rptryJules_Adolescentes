@@ -901,6 +901,20 @@ export const api = {
     }
   },
 
+  updateInscripcionesBulk: async (inscripciones: InscripcionEvento[]): Promise<void> => {
+    try {
+      const batch = writeBatch(db);
+      inscripciones.forEach(i => {
+        const { id, ...rest } = i;
+        batch.update(doc(db, 'inscripciones_eventos', id), rest as any);
+      });
+      await batch.commit();
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, 'inscripciones_eventos');
+      throw error;
+    }
+  },
+
   deleteInscripcion: async (id: string): Promise<void> => { 
     try {
       await deleteDoc(doc(db, 'inscripciones_eventos', id));
