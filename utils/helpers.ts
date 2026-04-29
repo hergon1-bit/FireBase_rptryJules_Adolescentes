@@ -93,9 +93,15 @@ export const formatDate = (date: Date | string) => {
   
   const dateStr = typeof date === 'string' ? date.split('T')[0] : '';
   
+  // Format YYYY-MM-DD to DD/MM/YYYY
   if (dateStr && /^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
       const [year, month, day] = dateStr.split('-').map(Number);
       return `${day.toString().padStart(2, '0')}/${month.toString().padStart(2, '0')}/${year}`;
+  }
+
+  // If it's already DD-MM-YYYY or DD/MM/YYYY, try to return with slashes
+  if (dateStr && /^\d{2}[-/]\d{2}[-/]\d{4}$/.test(dateStr)) {
+      return dateStr.replace(/-/g, '/');
   }
 
   const d = typeof date === 'string' ? new Date(date) : date;
