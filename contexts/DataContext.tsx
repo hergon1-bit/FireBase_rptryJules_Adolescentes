@@ -72,6 +72,7 @@ interface DataContextType {
   
   addInscripcion: (eId: string, aId?: string, tId?: string) => Promise<void>;
   updateInscripcion: (i: InscripcionEvento) => Promise<void>;
+  updateInscripcionesBulk: (inscripciones: InscripcionEvento[]) => Promise<void>;
   deleteInscripcion: (id: string) => Promise<void>;
   
   addPago: (iId: string, m: number, fecha: string, notas?: string) => Promise<void>;
@@ -295,6 +296,13 @@ export const DataProvider: React.FC<{children: React.ReactNode}> = ({ children }
       await api.updateInscripcion(i); 
       setInscripciones(prev => prev.map(item => item.id === i.id ? i : item));
   };
+  const updateInscripcionesBulk = async (inscripcionesToUpdate: InscripcionEvento[]) => {
+      await api.updateInscripcionesBulk(inscripcionesToUpdate);
+      setInscripciones(prev => {
+          const updatedMap = new Map(inscripcionesToUpdate.map(i => [i.id, i]));
+          return prev.map(item => updatedMap.has(item.id) ? updatedMap.get(item.id)! : item);
+      });
+  };
   const deleteInscripcion = async (id: string) => { 
       await api.deleteInscripcion(id); 
       setInscripciones(prev => prev.filter(i => i.id !== id));
@@ -375,7 +383,7 @@ export const DataProvider: React.FC<{children: React.ReactNode}> = ({ children }
       addReunion, updateReunion, deleteReunion, addReunionesBulk, saveAsistencias,
       addTutor, updateTutor, deleteTutor, addTutoresAndLinkBulk,
       addEvento, updateEvento, deleteEvento,
-      addInscripcion, updateInscripcion, deleteInscripcion,
+      addInscripcion, updateInscripcion, updateInscripcionesBulk, deleteInscripcion,
       addPago, deletePago, addParticipante, removeParticipante,
       addCelebracionCumpleanos, addUser, updateUser, deleteUser, sendPasswordReset,
       addRole, updateRole, deleteRole,
