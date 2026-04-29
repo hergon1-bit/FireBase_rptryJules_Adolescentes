@@ -27,7 +27,7 @@ const Eventos: React.FC = () => {
     const { 
         eventos, adolescentes, tutores, inscripciones, pagos, servidores, inscripcionesServidores, pagosServidores,
         addEvento, updateEvento, deleteEvento,
-        addInscripcion, updateInscripcion, deleteInscripcion, addPago, deletePago,
+        addInscripcion, updateInscripcion, updateInscripcionesBulk, deleteInscripcion, addPago, deletePago,
         addInscripcionServidor, updateInscripcionServidor, deleteInscripcionServidor, addPagoServidor, deletePagoServidor
     } = useData();
     const { hasPermission } = useAuth();
@@ -548,10 +548,12 @@ const Eventos: React.FC = () => {
                                         {selectedEvent.esParaPadres && (
                                             <button 
                                                 onClick={async () => {
-                                                    const promises = eventDetails.inscritos
+                                                    const toUpdate = eventDetails.inscritos
                                                         .filter(i => !i.inscripcion.asistio)
-                                                        .map(i => updateInscripcion({ ...i.inscripcion, asistio: true }));
-                                                    await Promise.all(promises);
+                                                        .map(i => ({ ...i.inscripcion, asistio: true }));
+                                                    if (toUpdate.length > 0) {
+                                                        await updateInscripcionesBulk(toUpdate);
+                                                    }
                                                 }}
                                                 className="bg-green-500/20 text-green-400 hover:bg-green-500/30 px-3 py-2 rounded-md border border-green-500/50 text-xs font-bold transition-colors"
                                             >
