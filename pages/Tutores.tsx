@@ -277,7 +277,7 @@ const Tutores: React.FC = () => {
     );
 };
 
-// Reusable components (can be moved to a shared file later)
+// Componentes reutilizables (pueden ser movidos a un archivo compartido más adelante)
 const InputField: React.FC<React.InputHTMLAttributes<HTMLInputElement> & { label: string }> = ({ label, ...props }) => (
     <div>
         <label htmlFor={props.name} className="block text-sm font-medium text-text-secondary">{label}</label>
