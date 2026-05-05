@@ -106,7 +106,6 @@ const Tutores: React.FC = () => {
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        // FIX: Replaced `Array.from` with spread syntax to correctly convert the Set to an array.
         const ids = [...linkedAdolescenteIds];
         if (editingTutor) {
             await updateTutor({ ...values, id: editingTutor.id }, ids);
