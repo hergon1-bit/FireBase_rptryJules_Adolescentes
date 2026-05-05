@@ -56,33 +56,58 @@ const Reportes: React.FC = () => {
             case 'activos':
                 return adolescentes.filter(a => a.estado === 'Activo').sort((a,b) => a.nombre.localeCompare(b.nombre));
 
-            case 'ausencias':
+            case 'ausencias': {
                 // Adolescentes con más de 3 ausencias en las últimas 5 reuniones
-                const ultimas5 = reuniones.slice(0, 5).map(r => String(r.id));
-                return adolescentes.filter(a => {
-                    if (a.estado !== 'Activo') return false;
-                    const ausencias = asistencias.filter(asis => ultimas5.includes(String(asis.reunionId)) && String(asis.adolescenteId) === String(a.id) && asis.estado === 'Ausente');
-                    return ausencias.length >= 3;
+                const ultimas5 = new Set(reuniones.slice(0, 5).map(r => String(r.id)));
+                const ausenciasMap = new Map<string, number>();
+
+                asistencias.forEach(asis => {
+                    if (asis.estado === 'Ausente' && ultimas5.has(String(asis.reunionId))) {
+                        const adoId = String(asis.adolescenteId);
+                        ausenciasMap.set(adoId, (ausenciasMap.get(adoId) || 0) + 1);
+                    }
                 });
 
-            case 'asistenciaReunion':
+                return adolescentes.filter(a => {
+                    if (a.estado !== 'Activo') return false;
+                    return (ausenciasMap.get(String(a.id)) || 0) >= 3;
+                });
+            }
+
+            case 'asistenciaReunion': {
                 if (!selectedReunionId) return [];
+                const selectedIdStr = String(selectedReunionId);
+                const adoMap = new Map(adolescentes.map(a => [String(a.id), a]));
+
                 const presentes = asistencias
-                    .filter(a => String(a.reunionId) === String(selectedReunionId) && a.estado === 'Presente')
-                    .map(a => adolescentes.find(ado => String(ado.id) === String(a.adolescenteId)))
-                    .filter(Boolean) as Adolescente[];
+                    .filter(a => String(a.reunionId) === selectedIdStr && a.estado === 'Presente')
+                    .map(a => adoMap.get(String(a.adolescenteId)))
+                    .filter((a): a is Adolescente => !!a);
+
                 return presentes.sort((a, b) => {
                     const nameA = `${a.nombre} ${a.apellido}`.toLowerCase();
                     const nameB = `${b.nombre} ${b.apellido}`.toLowerCase();
                     return nameA.localeCompare(nameB);
                 });
+            }
 
-            case 'adolescentesTutores':
+            case 'adolescentesTutores': {
+                const adoTutoresIdsMap = new Map<string, Set<string>>();
+                tutoresAdolescentes.forEach(ta => {
+                    const adoId = String(ta.adolescenteId);
+                    if (!adoTutoresIdsMap.has(adoId)) {
+                        adoTutoresIdsMap.set(adoId, new Set());
+                    }
+                    adoTutoresIdsMap.get(adoId)!.add(String(ta.tutorId));
+                });
+
                 return adolescentes.map(ado => {
-                    const adoTutoresIds = tutoresAdolescentes.filter(ta => String(ta.adolescenteId) === String(ado.id)).map(ta => String(ta.tutorId));
-                    const adoTutores = tutores.filter(t => adoTutoresIds.includes(String(t.id)));
+                    const adoId = String(ado.id);
+                    const adoTutoresIds = adoTutoresIdsMap.get(adoId) || new Set();
+                    const adoTutores = tutores.filter(t => adoTutoresIds.has(String(t.id)));
                     return { ...ado, tutores: adoTutores };
                 }).sort((a, b) => a.nombre.localeCompare(b.nombre));
+            }
 
             case 'tutores':
                 return tutores.sort((a, b) => a.nombre.localeCompare(b.nombre));
@@ -212,18 +237,25 @@ const Reportes: React.FC = () => {
         
         const csvRows = [];
         csvRows.push(headers.join(',')); // Add headers
-        
+
+        // Pre-calculate maps for optimization
+        const adoTutoresIdsMap = new Map<string, Set<string>>();
+        tutoresAdolescentes.forEach(ta => {
+            const adoId = String(ta.adolescenteId);
+            if (!adoTutoresIdsMap.has(adoId)) {
+                adoTutoresIdsMap.set(adoId, new Set());
+            }
+            adoTutoresIdsMap.get(adoId)!.add(String(ta.tutorId));
+        });
+
         reportData.forEach((item: any) => {
             const a = item as Adolescente;
             const age = calcularEdad(a.fechaNacimiento);
             const city = a.ciudad ? a.ciudad : (a.barrio ? `Barrio ${a.barrio}` : '');
             
-            // Find tutors for this teen
-            const adoTutoresIds = tutoresAdolescentes
-                .filter(ta => String(ta.adolescenteId) === String(a.id))
-                .map(ta => String(ta.tutorId));
-                
-            const adoTutores = tutores.filter(t => adoTutoresIds.includes(String(t.id)));
+            // Find tutors for this teen using pre-calculated maps
+            const adoTutoresIds = adoTutoresIdsMap.get(String(a.id)) || new Set();
+            const adoTutores = tutores.filter(t => adoTutoresIds.has(String(t.id)));
             const tutoresNames = adoTutores.length > 0 
                 ? adoTutores.map(t => `${t.nombre} ${t.apellido}`).join('; ')
                 : 'Ninguno';
