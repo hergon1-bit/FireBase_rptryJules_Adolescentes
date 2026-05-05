@@ -1,10 +1,9 @@
 import { initializeApp } from 'firebase/app';
 import { getFirestore, collection, getDocs } from 'firebase/firestore';
-import fs from 'fs';
+import { firebaseConfig as config } from './utils/config';
 
-const firebaseConfig = JSON.parse(fs.readFileSync('./firebase-applet-config.json', 'utf8'));
-const app = initializeApp(firebaseConfig);
-const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
+const app = initializeApp(config);
+const db = getFirestore(app, config.firestoreDatabaseId);
 
 async function listUsers() {
   console.log("Listando documentos en la colección 'usuarios'...");
