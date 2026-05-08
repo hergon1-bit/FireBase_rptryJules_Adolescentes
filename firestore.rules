@@ -27,7 +27,7 @@ service cloud.firestore {
     function isFirstAdminBootstrap() {
       // Allow if they are creating their own user document with role 1
       // In a real app, we'd use a Cloud Function or custom claim, but for this migration we allow it if they match their UID.
-      return request.auth != null;
+      return request.auth != null && !exists(/databases/$(database)/documents/public/config);
     }
 
     // ===============================================================
