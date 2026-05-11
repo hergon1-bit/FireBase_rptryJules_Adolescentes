@@ -132,8 +132,8 @@ const Usuarios: React.FC = () => {
             }
             setIsUserModalOpen(false);
         } catch (error: any) {
-            const msg = error instanceof Error ? error.message : (typeof error === 'string' ? error : JSON.stringify(error));
-            setActionError(msg || "Ocurrió un error al guardar el usuario.");
+            console.error("Error al guardar usuario:", error);
+            setActionError("Ocurrió un error inesperado al guardar el usuario.");
         }
     };
 
@@ -156,12 +156,11 @@ const Usuarios: React.FC = () => {
             setUserToDelete(null);
         } catch (error: any) {
             console.error("Delete error:", error);
-            const msg = error instanceof Error ? error.message : (typeof error === 'string' ? error : JSON.stringify(error));
             
             // Intentamos refrescar los datos de todas formas, por si el borrado parcial ocurrió
             await fetchData();
             
-            setActionError(`Error al eliminar: ${msg}`);
+            setActionError("Ocurrió un error inesperado al eliminar el usuario.");
             setIsUserConfirmOpen(false); 
         } finally {
             setIsDeleting(false);
@@ -175,7 +174,8 @@ const Usuarios: React.FC = () => {
                 await sendPasswordReset(email);
                 alert(`Correo enviado a ${email}.`);
             } catch (error: any) {
-                setActionError(`Error al enviar correo: ${error.message}`);
+                console.error("Error al enviar correo de recuperación:", error);
+                setActionError("Ocurrió un error inesperado al enviar el correo de recuperación.");
             }
         }
     }
