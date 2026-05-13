@@ -78,11 +78,13 @@ const CargarTablas: React.FC = () => {
 
     const parseAdolescentes = useCallback((rows: string[]): ParsedRow[] => {
         const cedulasInFile = new Set<string>();
+        const isTrue = (v: string | undefined) => v === 'Si' || v === 'Sí' || v === 'true' || v === '1';
+
         return rows.map(rowStr => {
             const row = rowStr.split(';');
-            const [nombre, apellido, cedula, rawFechaNacimiento, barrio, ciudad, telefono, sexo, estado] = row.map(field => field?.trim());
+            const [nombre, apellido, cedula, rawFechaNacimiento, barrio, ciudad, telefono, sexo, estado, registro, ficha, autoriz] = row.map(field => field?.trim());
             const fechaNacimiento = normalizeDateStr(rawFechaNacimiento) || rawFechaNacimiento;
-            const rawData = { nombre, apellido, cedula, fechaNacimiento, barrio, ciudad, telefono, sexo, estado };
+            const rawData = { nombre, apellido, cedula, fechaNacimiento, barrio, ciudad, telefono, sexo, estado, registro, ficha, autoriz };
 
             if (!nombre || !apellido || !cedula || !fechaNacimiento) return { data: rawData, isValid: false, error: 'Faltan campos obligatorios.' };
             if (existingCedulas.adolescentes.has(cedula) || cedulasInFile.has(cedula)) return { data: rawData, isValid: false, error: `Cédula '${cedula}' duplicada.` };
@@ -95,6 +97,9 @@ const CargarTablas: React.FC = () => {
                     barrio: barrio || '', ciudad: ciudad || '', telefono: telefono || '',
                     sexo: (sexo === 'Masculino' || sexo === 'Femenino' ? sexo : 'Masculino'),
                     estado: (estado === 'Activo' || estado === 'Inactivo' || estado === 'Anulado' ? estado : 'Activo'),
+                    registro: registro || '',
+                    fichaInscripcion: isTrue(ficha),
+                    autorizacion: isTrue(autoriz)
                 },
                 isValid: true
             };
@@ -346,7 +351,7 @@ const CargarTablas: React.FC = () => {
         adolescentes: {
             title: 'Adolescentes',
             instructions: <ol className="list-decimal list-inside space-y-1">
-                <li>Nombre (Requerido)</li><li>Apellido (Requerido)</li><li>Cédula (Requerido, único)</li><li>Fecha Nacimiento (Requerido, AAAA-MM-DD)</li><li>Barrio</li><li>Ciudad</li><li>Teléfono</li><li>Sexo ('Masculino' o 'Femenino')</li><li>Estado ('Activo', 'Inactivo', o 'Anulado')</li>
+                <li>Nombre (Requerido)</li><li>Apellido (Requerido)</li><li>Cédula (Requerido, único)</li><li>Fecha Nacimiento (Requerido, AAAA-MM-DD)</li><li>Barrio</li><li>Ciudad</li><li>Teléfono</li><li>Sexo ('Masculino' o 'Femenino')</li><li>Estado ('Activo', 'Inactivo', o 'Anulado')</li><li>Registro de Salud (Opcional)</li><li>Ficha de Inscripción (Si/No)</li><li>Autorización (Si/No)</li>
             </ol>,
             previewHeaders: ['Nombre', 'Cédula', 'Fecha Nac.', 'Estado', 'Validación', 'Observación'],
             renderRow: (row: ParsedRow, index: number) => <tr key={index} className={`border-t border-border ${!row.isValid ? 'bg-red-900/40' : ''}`}>

@@ -508,14 +508,18 @@ export const api = {
   
   registrarEntregasBulk: async (entregas: Omit<EntregaDevocional, 'id'>[]): Promise<void> => {
     try {
-      const batch = writeBatch(db);
-      entregas.forEach(e => {
-        const docRef = doc(collection(db, 'entregas_devocionales'));
-        batch.set(docRef, e);
-      });
-      await batch.commit();
+      for (let i = 0; i < entregas.length; i += 400) {
+        const chunk = entregas.slice(i, i + 400);
+        const batch = writeBatch(db);
+        chunk.forEach(e => {
+          const docRef = doc(collection(db, 'entregas_devocionales'));
+          batch.set(docRef, e);
+        });
+        await batch.commit();
+      }
     } catch (error) {
       handleFirestoreError(error, OperationType.CREATE, 'entregas_devocionales');
+      throw error;
     }
   },
 
@@ -568,14 +572,18 @@ export const api = {
 
   createAdolescentesBulk: async (adolescentes: Omit<Adolescente, 'id'>[]): Promise<void> => {
     try {
-      const batch = writeBatch(db);
-      adolescentes.forEach(a => {
-        const docRef = doc(collection(db, 'adolescentes'));
-        batch.set(docRef, a);
-      });
-      await batch.commit();
+      for (let i = 0; i < adolescentes.length; i += 400) {
+        const chunk = adolescentes.slice(i, i + 400);
+        const batch = writeBatch(db);
+        chunk.forEach(a => {
+          const docRef = doc(collection(db, 'adolescentes'));
+          batch.set(docRef, a);
+        });
+        await batch.commit();
+      }
     } catch (error) {
       handleFirestoreError(error, OperationType.CREATE, 'adolescentes');
+      throw error;
     }
   },
 
@@ -610,14 +618,18 @@ export const api = {
 
   createEncargadosBulk: async (encargados: Omit<Encargado, 'id'>[]): Promise<void> => {
     try {
-      const batch = writeBatch(db);
-      encargados.forEach(e => {
-        const docRef = doc(collection(db, 'encargados'));
-        batch.set(docRef, e);
-      });
-      await batch.commit();
+      for (let i = 0; i < encargados.length; i += 400) {
+        const chunk = encargados.slice(i, i + 400);
+        const batch = writeBatch(db);
+        chunk.forEach(e => {
+          const docRef = doc(collection(db, 'encargados'));
+          batch.set(docRef, e);
+        });
+        await batch.commit();
+      }
     } catch (error) {
       handleFirestoreError(error, OperationType.CREATE, 'encargados');
+      throw error;
     }
   },
 
@@ -650,30 +662,38 @@ export const api = {
     }
   },
 
-  createReunionesBulk: async (reuniones: any[]): Promise<void> => {
+  createReunionesBulk: async (reuniones: Omit<Reunion, 'id'>[]): Promise<void> => {
     try {
-      const batch = writeBatch(db);
-      reuniones.forEach(r => {
-        const docRef = doc(collection(db, 'reuniones'));
-        batch.set(docRef, r);
-      });
-      await batch.commit();
+      for (let i = 0; i < reuniones.length; i += 400) {
+        const chunk = reuniones.slice(i, i + 400);
+        const batch = writeBatch(db);
+        chunk.forEach(r => {
+          const docRef = doc(collection(db, 'reuniones'));
+          batch.set(docRef, r);
+        });
+        await batch.commit();
+      }
     } catch (error) {
       handleFirestoreError(error, OperationType.CREATE, 'reuniones');
+      throw error;
     }
   },
 
   saveAsistencias: async (nuevasAsistencias: Asistencia[]): Promise<void> => {
     try {
-      const batch = writeBatch(db);
-      nuevasAsistencias.forEach(a => {
-        const docId = `${a.reunionId}_${a.adolescenteId}`;
-        const docRef = doc(db, 'asistencias', docId);
-        batch.set(docRef, a);
-      });
-      await batch.commit();
+      for (let i = 0; i < nuevasAsistencias.length; i += 400) {
+        const chunk = nuevasAsistencias.slice(i, i + 400);
+        const batch = writeBatch(db);
+        chunk.forEach(a => {
+          const docId = `${a.reunionId}_${a.adolescenteId}`;
+          const docRef = doc(db, 'asistencias', docId);
+          batch.set(docRef, a);
+        });
+        await batch.commit();
+      }
     } catch (error) {
       handleFirestoreError(error, OperationType.CREATE, 'asistencias');
+      throw error;
     }
   },
 
@@ -903,12 +923,15 @@ export const api = {
 
   updateInscripcionesBulk: async (inscripciones: InscripcionEvento[]): Promise<void> => {
     try {
-      const batch = writeBatch(db);
-      inscripciones.forEach(i => {
-        const { id, ...rest } = i;
-        batch.update(doc(db, 'inscripciones_eventos', id), rest as any);
-      });
-      await batch.commit();
+      for (let i = 0; i < inscripciones.length; i += 400) {
+        const chunk = inscripciones.slice(i, i + 400);
+        const batch = writeBatch(db);
+        chunk.forEach(item => {
+          const { id, ...rest } = item;
+          batch.update(doc(db, 'inscripciones_eventos', id), rest as any);
+        });
+        await batch.commit();
+      }
     } catch (error) {
       handleFirestoreError(error, OperationType.UPDATE, 'inscripciones_eventos');
       throw error;
