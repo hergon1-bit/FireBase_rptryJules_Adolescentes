@@ -48,7 +48,6 @@ const VerTablas: React.FC = () => {
       }));
       setData(fetchedData);
     } catch (err: any) {
-      console.error("Error fetching data:", err);
       setError(err.message || "Error al cargar los datos de la tabla.");
       setData([]);
     } finally {
