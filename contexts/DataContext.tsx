@@ -35,7 +35,6 @@ interface DataContextType {
   addAdolescente: (a: Omit<Adolescente, 'id'>) => Promise<void>;
   updateAdolescente: (a: Adolescente) => Promise<void>;
   deleteAdolescente: (id: string) => Promise<void>;
-  // Fix: changed parameter type to array to match implementation and usage
   addAdolescentesBulk: (a: Omit<Adolescente, 'id'>[]) => Promise<void>;
   
   addServidor: (s: Omit<Servidor, 'id'>) => Promise<void>;
@@ -57,7 +56,7 @@ interface DataContextType {
   addReunion: (r: Omit<Reunion, 'id'>) => Promise<void>;
   updateReunion: (r: Reunion) => Promise<void>;
   deleteReunion: (id: string) => Promise<void>;
-  addReunionesBulk: (r: any[]) => Promise<void>;
+  addReunionesBulk: (r: Omit<Reunion, 'id'>[]) => Promise<void>;
   
   saveAsistencias: (a: Asistencia[]) => Promise<void>;
   
@@ -250,7 +249,7 @@ export const DataProvider: React.FC<{children: React.ReactNode}> = ({ children }
       await api.deleteReunion(id); 
       setReuniones(prev => prev.filter(item => item.id !== id)); 
   };
-  const addReunionesBulk = async (r: any[]) => { await api.createReunionesBulk(r); await fetchData(); };
+  const addReunionesBulk = async (r: Omit<Reunion, 'id'>[]) => { await api.createReunionesBulk(r); await fetchData(); };
 
   const saveAsistencias = async (a: Asistencia[]) => { 
       await api.saveAsistencias(a); 
