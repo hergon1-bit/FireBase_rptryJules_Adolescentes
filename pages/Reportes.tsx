@@ -101,10 +101,12 @@ const Reportes: React.FC = () => {
                     adoTutoresIdsMap.get(adoId)!.add(String(ta.tutorId));
                 });
 
+                const tutoresMap = new Map(tutores.map(t => [String(t.id), t]));
+
                 return adolescentes.map(ado => {
                     const adoId = String(ado.id);
                     const adoTutoresIds = adoTutoresIdsMap.get(adoId) || new Set();
-                    const adoTutores = tutores.filter(t => adoTutoresIds.has(String(t.id)));
+                    const adoTutores = [...adoTutoresIds].map(id => tutoresMap.get(id)).filter(t => !!t);
                     return { ...ado, tutores: adoTutores };
                 }).sort((a, b) => a.nombre.localeCompare(b.nombre));
             }
@@ -248,6 +250,8 @@ const Reportes: React.FC = () => {
             adoTutoresIdsMap.get(adoId)!.add(String(ta.tutorId));
         });
 
+        const tutoresMap = new Map(tutores.map(t => [String(t.id), t]));
+
         reportData.forEach((item: any) => {
             const a = item as Adolescente;
             const age = calcularEdad(a.fechaNacimiento);
@@ -255,7 +259,7 @@ const Reportes: React.FC = () => {
             
             // Find tutors for this teen using pre-calculated maps
             const adoTutoresIds = adoTutoresIdsMap.get(String(a.id)) || new Set();
-            const adoTutores = tutores.filter(t => adoTutoresIds.has(String(t.id)));
+            const adoTutores = [...adoTutoresIds].map(id => tutoresMap.get(id)).filter(t => !!t);
             const tutoresNames = adoTutores.length > 0 
                 ? adoTutores.map(t => `${t.nombre} ${t.apellido}`).join('; ')
                 : 'Ninguno';
